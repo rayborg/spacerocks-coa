@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:spacerocks:coa:manifest:v1",
+  "title": "Spacerocks self-contained COA manifest",
+  "description": "Version 1 manifest for a signed, offline-verifiable meteorite certificate package.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "packageFormat",
+    "packageVersion",
+    "recordType",
+    "certificate",
+    "issuer",
+    "specimen",
+    "photographs",
+    "files",
+    "signature",
+    "generation"
+  ],
+  "properties": {
+    "$schema": { "const": "coa-manifest-v1.schema.json" },
+    "schemaVersion": { "const": "1.0.0" },
+    "packageFormat": { "const": "Spacerocks Self-Contained COA Package" },
+    "packageVersion": { "const": 1 },
+    "recordType": { "const": "meteorite-certificate-of-authenticity" },
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "issueDate", "version", "status", "recordFile", "recordSha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "issueDate": { "type": "string", "format": "date" },
+        "version": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["active", "superseded", "revoked", "transferred"] },
+        "recordFile": { "const": "certificate-record.json" },
+        "recordSha256": { "$ref": "#/$defs/sha256" },
+        "supersedes": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "collection",
+        "publicKeyAlgorithm",
+        "publicKeyFile",
+        "publicKeyFingerprint",
+        "publicKeyFingerprintMethod"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "collection": { "type": "string", "minLength": 1 },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "website": { "type": "string" },
+        "logoFile": { "type": "string" },
+        "publicKeyAlgorithm": { "const": "Ed25519" },
+        "publicKeyFile": { "const": "public-key.pem" },
+        "publicKeyFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "publicKeyFingerprintMethod": { "const": "SHA-256 of SubjectPublicKeyInfo DER" }
+      }
+    },
+    "specimen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "meteorite",
+        "classification",
+        "weightGrams",
+        "weightPrecision",
+        "form",
+        "numberOfPieces",
+        "recordedOwner",
+        "fall",
+        "provenance"
+      ],
+      "properties": {
+        "meteorite": { "type": "string", "minLength": 1 },
+        "classification": { "type": "string", "minLength": 1 },
+        "weightGrams": { "type": "number", "exclusiveMinimum": 0 },
+        "weightPrecision": { "type": "number", "minimum": 0 },
+        "form": { "type": "string", "minLength": 1 },
+        "dimensions": { "type": "string" },
+        "numberOfPieces": { "type": "integer", "minimum": 1 },
+        "preparationState": { "type": "string" },
+        "identifyingMarks": { "type": "string" },
+        "recordedOwner": { "type": "string", "minLength": 1 },
+        "fall": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "date", "country", "region", "locality", "latitude", "longitude"],
+          "properties": {
+            "status": { "type": "string", "minLength": 1 },
+            "date": { "type": "string", "format": "date" },
+            "country": { "type": "string", "minLength": 1 },
+            "region": { "type": "string" },
+            "locality": { "type": "string", "minLength": 1 },
+            "latitude": { "type": "string", "minLength": 1 },
+            "longitude": { "type": "string", "minLength": 1 },
+            "metbullCode": { "type": "string" },
+            "officialReferenceUrl": { "type": "string" },
+            "recoveryInformation": { "type": "string" }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["statement"],
+          "properties": {
+            "statement": { "type": "string", "minLength": 1 },
+            "previousOwner": { "type": "string" },
+            "buyer": { "type": "string" },
+            "transferDate": { "type": "string" },
+            "invoiceReference": { "type": "string" },
+            "transferNotes": { "type": "string" }
+          }
+        }
+      }
+    },
+    "photographs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "originalFilename", "caption", "mediaType", "bytes", "sha256", "captureDate", "isUnmodifiedOriginal"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^original-photographs/" },
+          "originalFilename": { "type": "string", "minLength": 1 },
+          "caption": { "type": "string" },
+          "mediaType": { "type": "string", "minLength": 1 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "captureDate": { "type": "string" },
+          "isUnmodifiedOriginal": { "const": true }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "signedFile", "signatureFile", "signatureEncoding"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "signedFile": { "const": "manifest.json" },
+        "signatureFile": { "const": "signature.sig" },
+        "signatureEncoding": { "const": "raw 64-byte Ed25519 signature" }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["application", "version", "generatedAt", "manifestSerialization"],
+      "properties": {
+        "application": { "const": "Spacerocks COA Studio" },
+        "version": { "type": "string", "minLength": 1 },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "manifestSerialization": { "const": "UTF-8, sorted keys, two-space indentation, LF, final newline, no BOM" }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^([A-F0-9]{2}:){31}[A-F0-9]{2}$"
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "mediaType", "bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

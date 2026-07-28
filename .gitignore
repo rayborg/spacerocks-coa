@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+playwright-report/
+test-results/
+
+# Never commit signing secrets or environment credentials.
+private/
+*.key
+*-private.pem
+.env
+.env.*
+
+# Local handoff source material is retained outside the public repository.
+Spacerocks_COA_Website_OpenCode_Handoff.zip
+Spacerocks_COA_Website_OpenCode_Handoff/
