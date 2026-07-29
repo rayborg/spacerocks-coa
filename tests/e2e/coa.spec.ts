@@ -147,8 +147,12 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(preview.locator(".certificate-preview__id")).toContainText("Pending");
   await expect(preview.locator(".certificate-preview__facts")).toContainText("Not entered");
   await expect(preview.locator(".certificate-preview__facts")).toContainText("Specimen form");
-  await expect(preview.locator(".certificate-preview__weight strong")).toHaveText("--");
-  await expect(preview.locator(".certificate-preview__weight")).not.toContainText("0 g");
+  const specimenSummary = preview.locator(".certificate-preview__weight");
+  await expect(specimenSummary).toHaveAttribute("data-specimen-state", "empty");
+  await expect(specimenSummary.locator("span")).toHaveText("Recorded specimen");
+  await expect(specimenSummary.locator("strong")).toHaveText("Awaiting details");
+  await expect(specimenSummary.locator("em")).toHaveCount(0);
+  await expect(specimenSummary).not.toContainText(/--|0 g|Specimen form/);
   await expect(preview.locator(".certificate-preview__signoff strong")).toHaveText("Issuer");
 
   await page.getByRole("button", { name: "Issue signed COA package" }).click();
@@ -229,6 +233,218 @@ test("starts with blank content, provisional preview labels, and readable respon
     expect(styles.photoCardFits, `photo card overflow at ${width}px`).toBe(true);
     expect(styles.controlsFit, `control overflow at ${width}px`).toBe(true);
     await expect(preview).toBeVisible();
+  }
+});
+
+test("makes vertical continuation obvious and accessible from the hero", async ({ page }) => {
+  const artifactDirectory = process.env.COA_ARTIFACT_DIR;
+  if (artifactDirectory) await mkdir(artifactDirectory, { recursive: true });
+
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
+    await page.goto("/");
+    const hero = page.locator(".hero");
+    const cue = page.getByRole("link", { name: "Explore below" });
+    await expect(cue).toBeVisible();
+    await expect(cue).toHaveAttribute("href", "#principles");
+    await expect(page.locator("#principles")).toHaveCount(1);
+    expect(await page.evaluate(() => window.scrollY), `initial scroll at ${width}px`).toBe(0);
+    if (artifactDirectory) {
+      await page.screenshot({ path: join(artifactDirectory, `hero-viewport-${width}.png`) });
+    }
+
+    const [heroBox, cueBox, contentBox, actionsBox, ledgerBox] = await Promise.all([
+      hero.boundingBox(),
+      cue.boundingBox(),
+      page.locator(".hero__content").boundingBox(),
+      page.locator(".hero__actions").boundingBox(),
+      page.locator(".hero__ledger").boundingBox(),
+    ]);
+    expect(heroBox && cueBox && contentBox && actionsBox && ledgerBox, `hero geometry at ${width}px`).toBeTruthy();
+    expect(cueBox!.y, `cue initial viewport top at ${width}px`).toBeGreaterThanOrEqual(0);
+    expect(cueBox!.y + cueBox!.height, `cue initial viewport bottom at ${width}px`).toBeLessThanOrEqual(width === 1280 ? 900 : 844);
+    expect(cueBox!.x, `cue left containment at ${width}px`).toBeGreaterThanOrEqual(heroBox!.x);
+    expect(cueBox!.x + cueBox!.width, `cue right containment at ${width}px`).toBeLessThanOrEqual(heroBox!.x + heroBox!.width);
+    expect(cueBox!.y, `cue top containment at ${width}px`).toBeGreaterThanOrEqual(heroBox!.y);
+    expect(cueBox!.y + cueBox!.height, `cue bottom containment at ${width}px`).toBeLessThanOrEqual(heroBox!.y + heroBox!.height);
+    expect(boxesIntersect(cueBox!, contentBox!), `cue/content overlap at ${width}px`).toBe(false);
+    expect(boxesIntersect(cueBox!, actionsBox!), `cue/actions overlap at ${width}px`).toBe(false);
+    expect(boxesIntersect(cueBox!, ledgerBox!), `cue/ledger overlap at ${width}px`).toBe(false);
+    if (width <= 900) {
+      expect(cueBox!.y, `mobile cue follows content at ${width}px`).toBeGreaterThanOrEqual(contentBox!.y + contentBox!.height);
+      expect(ledgerBox!.y, `mobile ledger follows cue at ${width}px`).toBeGreaterThanOrEqual(cueBox!.y + cueBox!.height);
+    }
+
+    await cue.focus();
+    await expect(cue).toBeFocused();
+
+  }
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(page.locator(".hero__scroll-cue i")).toHaveCSS("animation-name", "none");
+});
+
+test("renders coherent specimen states and complete responsive certificate headings", async ({ page }) => {
+  await page.goto("/#builder");
+  const preview = page.locator(".certificate-preview");
+  const summary = preview.locator(".certificate-preview__weight");
+  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+
+  await expect(summary).toHaveClass(/certificate-preview__weight--empty/);
+  await page.getByLabel("Weight (grams)").fill("18.25");
+  await expect(summary).toHaveAttribute("data-specimen-state", "partial");
+  await expect(summary.locator("span")).toHaveText("Recorded weight");
+  await expect(summary.locator("strong")).toHaveText("18.25 g");
+  await expect(summary.locator("em")).toHaveCount(0);
+
+  await page.getByLabel("Specimen form").selectOption({ label: "Half stone / end cut" });
+  await expect(summary).toHaveAttribute("data-specimen-state", "complete");
+  await expect(summary.locator("span")).toHaveText("Specimen details");
+  await expect(summary.locator("strong")).toHaveText("18.25 g");
+  await expect(summary.locator("em")).toHaveText("Half stone / end cut");
+
+  await page.getByLabel("Weight (grams)").fill("");
+  await expect(summary).toHaveAttribute("data-specimen-state", "partial");
+  await expect(summary.locator("span")).toHaveText("Specimen form");
+  await expect(summary.locator("strong")).toHaveText("Half stone / end cut");
+  await expect(summary).not.toContainText(/--|0 g|Awaiting/);
+
+  await page.getByLabel("Meteorite name").fill("Northwest Africa 15000");
+  await page.getByLabel("Classification").fill("Lunar feldspathic breccia");
+  await page.locator('input[name="certificateId"]').fill("MUS-2026-0042");
+  await page.getByLabel("Collection or business").fill("Natural History Research Collection");
+  await page.getByLabel("Weight (grams)").fill("18.25");
+
+  const styles = [
+    ["Regal Archive", "regal-archive"],
+    ["Museum Ledger", "museum-ledger"],
+    ["Celestial Formal", "celestial-formal"],
+  ] as const;
+  const artifactDirectory = process.env.COA_ARTIFACT_DIR;
+  if (artifactDirectory) await mkdir(artifactDirectory, { recursive: true });
+
+  for (const width of [1280, 760, 390, 320]) {
+    await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+    for (const [name, id] of styles) {
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await expect(preview).toHaveAttribute("data-certificate-style", id);
+      const geometry = await preview.evaluate((element) => {
+        const box = (selector: string) => element.querySelector<HTMLElement>(selector)!.getBoundingClientRect().toJSON();
+        const fontSize = (selector: string) => Number.parseFloat(getComputedStyle(element.querySelector(selector)!).fontSize);
+        const heading = element.querySelector<HTMLElement>(".certificate-preview__header > strong")!;
+        const meteoriteName = element.querySelector<HTMLElement>(".certificate-preview__title h3")!;
+        const recordType = element.querySelector<HTMLElement>(".certificate-preview__record-type")!;
+        const collection = element.querySelector<HTMLElement>(".certificate-preview__collection")!;
+        return {
+          headingText: heading.textContent,
+          recordTypeText: recordType.textContent,
+          heading: heading.getBoundingClientRect().toJSON(),
+          headingFits: heading.scrollWidth <= heading.clientWidth,
+          meteoriteNameFits: meteoriteName.scrollWidth <= meteoriteName.clientWidth,
+          collectionFits: collection.scrollWidth <= collection.clientWidth,
+          fontSizes: {
+            recordType: fontSize(".certificate-preview__record-type"),
+            heading: fontSize(".certificate-preview__header > strong"),
+            certificateId: fontSize(".certificate-preview__id"),
+            meteoriteName: fontSize(".certificate-preview__title h3"),
+            classification: fontSize(".certificate-preview__title p"),
+            factLabel: fontSize(".certificate-preview__facts dt"),
+            factValue: fontSize(".certificate-preview__facts dd"),
+            specimenWeight: fontSize(".certificate-preview__weight strong"),
+            signoff: fontSize(".certificate-preview__signoff strong"),
+          },
+          id: box(".certificate-preview__id"),
+          photo: box(".certificate-preview__photo"),
+          facts: box(".certificate-preview__facts"),
+          summary: box(".certificate-preview__weight"),
+          signoff: box(".certificate-preview__signoff"),
+          seal: box(".certificate-preview__seal"),
+          frame: box(".certificate-preview__frame"),
+        };
+      });
+      expect(geometry.headingText).toBe("Certificate of Authenticity");
+      expect(geometry.recordTypeText).toBe("Archival specimen record");
+      expect(geometry.headingFits, `${id} title clipping at ${width}px`).toBe(true);
+      expect(geometry.meteoriteNameFits, `${id} representative meteorite name clipping at ${width}px`).toBe(true);
+      expect(geometry.collectionFits, `${id} representative collection clipping at ${width}px`).toBe(true);
+      for (const [level, size, minimum, maximum] of [
+        ["record type", geometry.fontSizes.recordType, 4, 7],
+        ["certificate heading", geometry.fontSizes.heading, 7, 20],
+        ["certificate ID", geometry.fontSizes.certificateId, 6, 12],
+        ["meteorite name", geometry.fontSizes.meteoriteName, 10, 30],
+        ["classification", geometry.fontSizes.classification, 5, 10],
+        ["fact label", geometry.fontSizes.factLabel, 4.5, 8],
+        ["fact value", geometry.fontSizes.factValue, 5.5, 10.5],
+        ["specimen weight", geometry.fontSizes.specimenWeight, 13, 30],
+        ["signoff", geometry.fontSizes.signoff, 7, 16],
+      ] as const) {
+        expect(size, `${id} ${level} too small at ${width}px`).toBeGreaterThanOrEqual(minimum);
+        expect(size, `${id} ${level} too large at ${width}px`).toBeLessThanOrEqual(maximum);
+      }
+      expect(boxesIntersect(geometry.heading, geometry.id), `${id} title/id at ${width}px`).toBe(false);
+      expect(boxesIntersect(geometry.photo, geometry.summary), `${id} photo/summary at ${width}px`).toBe(false);
+      expect(boxesIntersect(geometry.facts, geometry.signoff), `${id} facts/signoff at ${width}px`).toBe(false);
+      expect(boxesIntersect(geometry.summary, geometry.seal), `${id} summary/seal at ${width}px`).toBe(false);
+      for (const content of [geometry.heading, geometry.id, geometry.photo, geometry.facts, geometry.summary, geometry.signoff, geometry.seal]) {
+        expect(content.x, `${id} content left at ${width}px`).toBeGreaterThanOrEqual(geometry.frame.x);
+        expect(content.x + content.width, `${id} content right at ${width}px`).toBeLessThanOrEqual(geometry.frame.x + geometry.frame.width);
+        expect(content.y, `${id} content top at ${width}px`).toBeGreaterThanOrEqual(geometry.frame.y);
+        expect(content.y + content.height, `${id} content bottom at ${width}px`).toBeLessThanOrEqual(geometry.frame.y + geometry.frame.height);
+      }
+    }
+  }
+
+  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check();
+  const museumSignature = await preview.evaluate((element) => {
+    const id = getComputedStyle(element.querySelector(".certificate-preview__id")!);
+    const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
+    const seal = getComputedStyle(element.querySelector(".certificate-preview__seal")!);
+    const watermark = getComputedStyle(element.querySelector(".certificate-preview__body")!, "::before");
+    return {
+      accessionBackground: id.backgroundColor,
+      factsBorder: facts.borderTopWidth,
+      factsShadow: facts.boxShadow,
+      sealRadius: seal.borderRadius,
+      sealBorder: seal.borderTopWidth,
+      watermark: watermark.backgroundImage,
+    };
+  });
+  expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
+  expect(museumSignature.factsShadow).not.toBe("none");
+  expect(museumSignature.sealRadius).toBe("50%");
+  expect(Number.parseFloat(museumSignature.sealBorder)).toBeGreaterThanOrEqual(2);
+  expect(museumSignature.watermark).not.toBe("none");
+
+  if (artifactDirectory) {
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    for (const [name, id] of styles) {
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await preview.screenshot({ path: join(artifactDirectory, `filled-${id}-1280.png`) });
+    }
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check();
+      await preview.screenshot({ path: join(artifactDirectory, `filled-museum-ledger-${width}.png`) });
+    }
+  }
+});
+
+test("captures blank certificate style references when requested", async ({ page }) => {
+  test.skip(!process.env.COA_ARTIFACT_DIR, "External visual artifacts were not requested.");
+  const artifactDirectory = process.env.COA_ARTIFACT_DIR!;
+  await mkdir(artifactDirectory, { recursive: true });
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.goto("/#builder");
+  const preview = page.locator(".certificate-preview");
+  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+  for (const [name, id] of [
+    ["Regal Archive", "regal-archive"],
+    ["Museum Ledger", "museum-ledger"],
+    ["Celestial Formal", "celestial-formal"],
+  ] as const) {
+    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+    await preview.screenshot({ path: join(artifactDirectory, `blank-${id}-1280.png`) });
   }
 });
 
@@ -360,7 +576,7 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   expect(detailsBox!.y).toBeGreaterThanOrEqual(photoBox!.y + photoBox!.height);
   expect(sealBox!.y).toBeGreaterThanOrEqual(detailsBox!.y + detailsBox!.height);
   expect(sealBox!.width).toBeLessThan(detailsBox!.width / 2);
-  await expect(certificatePreview.getByText("Specimen details")).toBeVisible();
+  await expect(certificatePreview.getByText("Recorded specimen")).toBeVisible();
 
   const desktopDimensions = await page.evaluate(() => ({
     pageWidth: document.documentElement.scrollWidth,
@@ -487,6 +703,9 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
 
   await page.getByRole("radio", { name: /Royal Amethyst/ }).check();
   await page.getByRole("radio", { name: /Museum Ledger/ }).check();
+  if (process.env.COA_ARTIFACT_DIR) {
+    await page.locator('select[name="certificateStatus"]').selectOption("revoked");
+  }
 
   const createKey = page.locator(".key-option").first();
   await createKey.getByLabel("Passphrase", { exact: true }).fill("correct horse battery staple");
@@ -547,6 +766,17 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     testInfo.outputPath("generated-certificate.png"),
     await archive.file(`${root}certificate.png`)!.async("nodebuffer"),
   );
+  if (process.env.COA_ARTIFACT_DIR) {
+    await mkdir(process.env.COA_ARTIFACT_DIR, { recursive: true });
+    await writeFile(
+      join(process.env.COA_ARTIFACT_DIR, "revoked-museum-ledger-certificate.png"),
+      await archive.file(`${root}certificate.png`)!.async("nodebuffer"),
+    );
+    await writeFile(
+      join(process.env.COA_ARTIFACT_DIR, "revoked-museum-ledger-certificate.pdf"),
+      await archive.file(`${root}certificate.pdf`)!.async("nodebuffer"),
+    );
+  }
   const certificateRecord = JSON.parse(await archive.file(`${root}certificate-record.json`)!.async("text")) as {
     certificate: { visualStyle?: string; visualTheme?: string };
   };

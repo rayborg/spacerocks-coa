@@ -179,6 +179,9 @@ function CertificatePreview({
   const statusClass = values.certificateStatus === "active" ? "" : " certificate-preview--flagged";
   const theme = getCertificateTheme(values.certificateTheme);
   const certificateStyle = getCertificateStyle(values.certificateStyle);
+  const hasWeight = Boolean(values.weightGrams.trim());
+  const hasSpecimenForm = Boolean(values.specimenForm.trim());
+  const specimenState = hasWeight && hasSpecimenForm ? "complete" : hasWeight || hasSpecimenForm ? "partial" : "empty";
   const themeStyle = {
     "--certificate-dark": theme.dark,
     "--certificate-dark-soft": theme.darkSoft,
@@ -203,6 +206,7 @@ function CertificatePreview({
             {logoPreviewUrl ? <img className="certificate-preview__logo" src={logoPreviewUrl} alt={`${values.collectionName || "Collection"} logo`} /> : <span className="orbit-mark" aria-hidden="true"><i /></span>}
             <span>{values.collectionName || "Collection name"}</span>
           </div>
+          <span className="certificate-preview__record-type">Archival specimen record</span>
           <strong>Certificate of Authenticity</strong>
           <div className="certificate-preview__id">
             <span>Certificate ID</span>
@@ -220,13 +224,19 @@ function CertificatePreview({
           <dl className="certificate-preview__facts">
             <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>
             <div><dt>Locality</dt><dd>{values.locality || "Not entered"}</dd></div>
-            <div><dt>Specimen form</dt><dd>{values.specimenForm || "Specimen form"}</dd></div>
+            <div><dt>Specimen form</dt><dd>{values.specimenForm || "Not recorded"}</dd></div>
             <div><dt>Recorded owner</dt><dd>{values.recordedOwner || "Not entered"}</dd></div>
           </dl>
-          <div className="certificate-preview__weight">
-            <span>Specimen details</span>
-            <strong>{values.weightGrams ? <>{values.weightGrams}<small> g</small></> : "--"}</strong>
-            <em>{values.specimenForm || "Specimen form"}</em>
+          <div className={`certificate-preview__weight certificate-preview__weight--${specimenState}`} data-specimen-state={specimenState}>
+            {specimenState === "empty" ? (
+              <><span>Recorded specimen</span><strong>Awaiting details</strong></>
+            ) : (
+              <>
+                <span>{specimenState === "complete" ? "Specimen details" : hasWeight ? "Recorded weight" : "Specimen form"}</span>
+                <strong>{hasWeight ? <>{values.weightGrams}<small> g</small></> : values.specimenForm}</strong>
+                {specimenState === "complete" ? <em>{values.specimenForm}</em> : null}
+              </>
+            )}
           </div>
           <div className="certificate-preview__signoff">
             <span>Digitally signed by</span>
@@ -540,9 +550,13 @@ export default function App() {
             </ol>
             <div className="ledger__foot"><span>Website dependency</span><strong>NONE</strong></div>
           </div>
+          <a className="hero__scroll-cue" href="#principles">
+            <span>Explore below</span>
+            <i aria-hidden="true" />
+          </a>
         </section>
 
-        <section className="principles" aria-label="Core principles">
+        <section className="principles" id="principles" aria-label="Core principles">
           <div><strong>01</strong><span><b>Private by design</b>Your signing key and photographs never leave this browser.</span></div>
           <div><strong>02</strong><span><b>Tamper evident</b>A one-byte change breaks the signed hash chain.</span></div>
           <div><strong>03</strong><span><b>Open and portable</b>JSON, PEM, text, PNG, PDF, and a plain Python verifier.</span></div>
