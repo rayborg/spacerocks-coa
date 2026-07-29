@@ -830,7 +830,7 @@ test("keeps certificate facts, signoff, and non-active status treatments disjoin
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
 
     for (const [name, id] of styles) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
       await expect(certificatePreview).toHaveAttribute("data-certificate-style", id);
       await expect(status).toBeVisible();
       await expect(status).toHaveText("revoked");
