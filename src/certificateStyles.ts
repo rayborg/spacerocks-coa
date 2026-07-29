@@ -16,12 +16,12 @@ export const certificateStyles: readonly CertificateStyle[] = [
   {
     id: "regal-archive",
     name: "Regal Archive",
-    description: "Layered double rules, ceremonial symmetry, and formal corner flourishes.",
+    description: "Engraved keylines, ceremonial cartouches, and balanced archival symmetry.",
   },
   {
     id: "museum-ledger",
     name: "Museum Ledger",
-    description: "Light institutional fields, square geometry, and open archival rules.",
+    description: "Accession-grid structure, documentation plates, and institutional catalog rules.",
   },
   {
     id: "celestial-formal",

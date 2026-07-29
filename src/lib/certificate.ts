@@ -224,13 +224,28 @@ function drawStyleFoundation(
     context.moveTo(112, 1270);
     context.lineTo(2070, 1270);
     context.stroke();
-    context.globalAlpha = 0.12;
-    context.lineWidth = 2;
-    for (let radius = 130; radius <= 360; radius += 38) {
+    context.globalAlpha = 0.08;
+    context.lineWidth = 1;
+    for (let x = 112; x <= 2070; x += 164) {
       context.beginPath();
-      context.ellipse(1600, 1320, radius, radius * 0.58, -0.22, 0, Math.PI * 2);
+      context.moveTo(x, 410);
+      context.lineTo(x, 1560);
       context.stroke();
     }
+    for (let y = 410; y <= 1560; y += 82) {
+      context.beginPath();
+      context.moveTo(112, y);
+      context.lineTo(2070, y);
+      context.stroke();
+    }
+    context.globalAlpha = 0.4;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(1990, 1475);
+    context.lineTo(2050, 1475);
+    context.moveTo(2020, 1445);
+    context.lineTo(2020, 1505);
+    context.stroke();
   } else if (style === "celestial-formal") {
     context.strokeStyle = `${accent}3d`;
     context.fillStyle = `${dark}26`;
@@ -261,6 +276,26 @@ function drawStyleFoundation(
     context.lineTo(1570, 770);
     context.lineTo(2015, 858);
     context.stroke();
+  } else {
+    context.globalAlpha = 0.12;
+    context.strokeStyle = accent;
+    context.lineWidth = 2;
+    for (let x = 120; x <= 2080; x += 44) {
+      context.beginPath();
+      context.moveTo(x, 405);
+      context.lineTo(x + 22, 425);
+      context.lineTo(x, 445);
+      context.lineTo(x - 22, 425);
+      context.closePath();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(x, 1518);
+      context.lineTo(x + 22, 1538);
+      context.lineTo(x, 1558);
+      context.lineTo(x - 22, 1538);
+      context.closePath();
+      context.stroke();
+    }
   }
   context.restore();
 }
@@ -288,6 +323,15 @@ function drawStyleFrame(
     context.moveTo(57, 384);
     context.lineTo(WIDTH - 57, 384);
     context.stroke();
+    context.lineWidth = 3;
+    for (const [x, y] of [[84, 84], [WIDTH - 84, 84], [84, HEIGHT - 84], [WIDTH - 84, HEIGHT - 84]] as const) {
+      context.beginPath();
+      context.moveTo(x - 22, y);
+      context.lineTo(x + 22, y);
+      context.moveTo(x, y - 22);
+      context.lineTo(x, y + 22);
+      context.stroke();
+    }
   } else if (style === "celestial-formal") {
     context.strokeStyle = accent;
     context.lineWidth = 5;
@@ -322,6 +366,24 @@ function drawStyleFrame(
       context.stroke();
       context.save();
       context.translate(x + xDirection * 28, y + yDirection * 28);
+      context.rotate(Math.PI / 4);
+      context.strokeRect(-10, -10, 20, 20);
+      context.restore();
+    }
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(WIDTH / 2 - 150, 54);
+    context.lineTo(WIDTH / 2 - 22, 54);
+    context.moveTo(WIDTH / 2 + 22, 54);
+    context.lineTo(WIDTH / 2 + 150, 54);
+    context.moveTo(WIDTH / 2 - 150, HEIGHT - 54);
+    context.lineTo(WIDTH / 2 - 22, HEIGHT - 54);
+    context.moveTo(WIDTH / 2 + 22, HEIGHT - 54);
+    context.lineTo(WIDTH / 2 + 150, HEIGHT - 54);
+    context.stroke();
+    for (const y of [54, HEIGHT - 54]) {
+      context.save();
+      context.translate(WIDTH / 2, y);
       context.rotate(Math.PI / 4);
       context.strokeRect(-10, -10, 20, 20);
       context.restore();
@@ -389,18 +451,32 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
       context.fill();
     }
   } else {
-    const headerGradient = context.createLinearGradient(0, 0, 0, 372);
-    headerGradient.addColorStop(0, NAVY_SOFT);
-    headerGradient.addColorStop(1, NAVY);
+    const headerGradient = context.createLinearGradient(0, 0, WIDTH, 372);
+    headerGradient.addColorStop(0, IVORY);
+    headerGradient.addColorStop(0.5, "#ffffff");
+    headerGradient.addColorStop(1, IVORY);
     context.fillStyle = headerGradient;
     context.fillRect(0, 0, WIDTH, 372);
+    context.fillStyle = NAVY;
+    context.fillRect(0, 0, WIDTH, 22);
     context.strokeStyle = GOLD;
     context.lineWidth = 3;
-    context.strokeRect(72, 38, WIDTH - 144, 296);
+    context.strokeRect(72, 42, WIDTH - 144, 286);
+    context.strokeStyle = `${NAVY}99`;
+    context.lineWidth = 2;
+    context.strokeRect(86, 56, WIDTH - 172, 258);
+    context.strokeStyle = GOLD;
     context.beginPath();
-    context.moveTo(WIDTH / 2 - 110, 350);
-    context.lineTo(WIDTH / 2 + 110, 350);
+    context.moveTo(650, 348);
+    context.lineTo(790, 348);
+    context.moveTo(850, 348);
+    context.lineTo(990, 348);
     context.stroke();
+    context.save();
+    context.translate(820, 348);
+    context.rotate(Math.PI / 4);
+    context.strokeRect(-11, -11, 22, 22);
+    context.restore();
   }
 
   drawStyleFrame(context, certificateStyle, NAVY, GOLD);
@@ -430,17 +506,17 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     }
     drawContainedImage(context, logo, 105, 70, 120, 105);
   } else if (certificateStyle === "museum-ledger") drawLedgerMark(context, 162, 122, NAVY);
-  else drawOrbitMark(context, 162, 122, GOLD_LIGHT);
+  else drawOrbitMark(context, 162, 122, certificateStyle === "regal-archive" ? NAVY : GOLD_LIGHT);
 
-  const headerAccent = certificateStyle === "museum-ledger" ? theme.accentText : GOLD_LIGHT;
-  const headerInk = certificateStyle === "museum-ledger" ? NAVY : "#fbf8ef";
+  const headerAccent = certificateStyle === "celestial-formal" ? GOLD_LIGHT : theme.accentText;
+  const headerInk = certificateStyle === "celestial-formal" ? "#fbf8ef" : NAVY;
   context.fillStyle = headerAccent;
   context.font = "600 28px Arial, sans-serif";
   context.fillText(input.values.collectionName.toUpperCase(), 255, 134);
 
   context.fillStyle = headerAccent;
   context.font = "700 18px Arial, sans-serif";
-  context.fillText("ARCHIVAL SPECIMEN RECORD", 105, 211);
+  context.fillText(certificateStyle === "museum-ledger" ? "SIGNED SPECIMEN CATALOG" : "ARCHIVAL SPECIMEN RECORD", 105, 211);
 
   context.fillStyle = headerInk;
   const certificateTitle = "CERTIFICATE OF AUTHENTICITY";
@@ -452,12 +528,16 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     "Georgia, serif",
   );
   context.font = `400 ${certificateTitleSize}px Georgia, serif`;
-  context.fillText(certificateTitle, 105, 286);
+  if (certificateStyle === "regal-archive") {
+    context.textAlign = "center";
+    context.fillText(certificateTitle, 820, 286);
+    context.textAlign = "left";
+  } else context.fillText(certificateTitle, 105, 286);
 
   context.textAlign = "right";
   context.fillStyle = certificateStyle === "museum-ledger" ? GOLD_LIGHT : headerAccent;
   context.font = "600 21px Arial, sans-serif";
-  context.fillText("CERTIFICATE ID", 2080, 105);
+  context.fillText(certificateStyle === "museum-ledger" ? "CATALOG RECORD / COA ID" : "CERTIFICATE ID", 2080, 105);
   context.fillStyle = certificateStyle === "museum-ledger" ? IVORY : headerInk;
   context.font = "600 36px Georgia, serif";
   context.fillText(input.values.certificateId, 2080, 166);
@@ -491,6 +571,13 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.moveTo(116, 625);
   context.lineTo(1420, 625);
   context.stroke();
+  if (certificateStyle === "regal-archive") {
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(116, 637);
+    context.lineTo(1420, 637);
+    context.stroke();
+  }
 
   const photoFrame = { x: 1510, y: 426, width: 560, height: 455 };
   const detailRadius = certificateStyle === "museum-ledger" ? 0 : certificateStyle === "celestial-formal" ? 28 : 8;
@@ -522,6 +609,13 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.textAlign = "left";
   }
   context.restore();
+  if (certificateStyle === "museum-ledger") {
+    context.fillStyle = NAVY;
+    context.fillRect(photoFrame.x, photoFrame.y + photoFrame.height - 54, photoFrame.width, 54);
+    context.fillStyle = GOLD_LIGHT;
+    context.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
+    context.fillText("DOCUMENTATION PLATE / 01", photoFrame.x + 22, photoFrame.y + photoFrame.height - 20);
+  }
   context.fillStyle = NAVY;
   context.font = "600 18px Arial, sans-serif";
   context.fillText("EXACT SPECIMEN PHOTOGRAPH", photoFrame.x, photoFrame.y + photoFrame.height + 42);
@@ -546,15 +640,23 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.fillStyle = NAVY;
     context.font = "700 17px Arial, sans-serif";
     context.fillText("OBJECT CATALOG / SIGNED SPECIMEN RECORD", tableX, tableY - 25);
+  } else if (certificateStyle === "regal-archive") {
+    context.fillStyle = "#ffffff80";
+    context.fillRect(tableX, tableY, tableWidth, rows.length * rowHeight);
   } else if (certificateStyle === "celestial-formal") {
     context.fillStyle = `${NAVY}0d`;
     roundedRect(context, tableX, tableY, tableWidth, rows.length * rowHeight, 22);
     context.fill();
   }
   context.strokeStyle = certificateStyle === "museum-ledger" ? NAVY : `${GOLD}a6`;
-  context.lineWidth = certificateStyle === "regal-archive" ? 5 : certificateStyle === "museum-ledger" ? 2 : 3;
-  roundedRect(context, tableX, tableY, tableWidth, rows.length * rowHeight, certificateStyle === "museum-ledger" ? 0 : 18);
+  context.lineWidth = certificateStyle === "museum-ledger" ? 2 : 3;
+  roundedRect(context, tableX, tableY, tableWidth, rows.length * rowHeight, certificateStyle === "celestial-formal" ? 18 : 0);
   context.stroke();
+  if (certificateStyle === "regal-archive") {
+    context.strokeStyle = `${NAVY}99`;
+    context.lineWidth = 2;
+    context.strokeRect(tableX + 12, tableY + 12, tableWidth - 24, rows.length * rowHeight - 24);
+  }
   context.beginPath();
   context.moveTo(tableX + labelColumnWidth, tableY);
   context.lineTo(tableX + labelColumnWidth, tableY + rows.length * rowHeight);
@@ -570,6 +672,15 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
       context.beginPath();
       context.moveTo(tableX + labelColumnWidth, y + rowHeight);
       context.lineTo(tableX + tableWidth, y + rowHeight);
+      context.stroke();
+    } else if (certificateStyle === "regal-archive") {
+      context.fillStyle = `${GOLD}1f`;
+      context.fillRect(tableX + 14, y + 14, labelColumnWidth - 27, rowHeight - 14);
+      context.strokeStyle = `${NAVY}33`;
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(tableX + 12, y + rowHeight);
+      context.lineTo(tableX + tableWidth - 12, y + rowHeight);
       context.stroke();
     } else if (index % 2 === 1) {
       context.fillStyle = `${GOLD}17`;
@@ -594,6 +705,8 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.strokeStyle = `${GOLD_LIGHT}66`;
     context.lineWidth = 2;
     context.strokeRect(1525, 975, 530, 182);
+    context.fillStyle = GOLD;
+    context.fillRect(1510, 960, 16, 212);
   } else if (certificateStyle === "celestial-formal") {
     const detailGradient = context.createLinearGradient(1510, 960, 2070, 1172);
     detailGradient.addColorStop(0, NAVY);
@@ -604,21 +717,30 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.lineWidth = 3;
     context.stroke();
   } else {
-    context.fillStyle = NAVY;
+    context.fillStyle = "#ffffffcc";
     context.fill();
-    context.strokeStyle = GOLD_LIGHT;
+    context.strokeStyle = GOLD;
     context.lineWidth = 4;
-    roundedRect(context, 1526, 976, 528, 180, Math.max(0, detailRadius - 4));
+    context.stroke();
+    context.strokeStyle = NAVY;
+    context.lineWidth = 2;
+    context.strokeRect(1526, 976, 528, 180);
+    context.strokeStyle = GOLD;
+    context.beginPath();
+    context.moveTo(1680, 1147);
+    context.lineTo(1755, 1147);
+    context.moveTo(1825, 1147);
+    context.lineTo(1900, 1147);
     context.stroke();
   }
-  context.fillStyle = GOLD_LIGHT;
+  context.fillStyle = certificateStyle === "regal-archive" ? theme.accentText : GOLD_LIGHT;
   context.textAlign = "center";
   context.font = "600 19px Arial, sans-serif";
   context.fillText("SPECIMEN DETAILS", 1790, 1018);
-  context.fillStyle = "#ffffff";
+  context.fillStyle = certificateStyle === "regal-archive" ? NAVY : "#ffffff";
   context.font = "400 59px Georgia, serif";
   context.fillText(`${input.values.weightGrams} g`, 1790, 1092);
-  context.fillStyle = GOLD_LIGHT;
+  context.fillStyle = certificateStyle === "regal-archive" ? theme.accentText : GOLD_LIGHT;
   context.font = "600 18px Arial, sans-serif";
   context.fillText(input.values.specimenForm.toUpperCase(), 1790, 1132);
   context.textAlign = "left";
@@ -644,6 +766,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   if (certificateStyle === "museum-ledger") {
     context.save();
     context.translate(1595, 1394);
+    context.rotate(-0.04);
     context.fillStyle = `${IVORY}dd`;
     context.beginPath();
     context.arc(0, 0, 91, 0, Math.PI * 2);
@@ -670,6 +793,52 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.lineTo(42, 42);
     context.stroke();
     context.restore();
+  } else if (certificateStyle === "regal-archive") {
+    context.save();
+    context.translate(1595, 1394);
+    context.fillStyle = `${IVORY}ee`;
+    context.beginPath();
+    context.arc(0, 0, 94, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = GOLD;
+    context.lineWidth = 5;
+    context.stroke();
+    context.beginPath();
+    context.arc(0, 0, 79, 0, Math.PI * 2);
+    context.strokeStyle = NAVY;
+    context.lineWidth = 2;
+    context.stroke();
+    context.save();
+    context.rotate(Math.PI / 4);
+    context.strokeStyle = GOLD;
+    context.strokeRect(-42, -42, 84, 84);
+    context.restore();
+    context.fillStyle = NAVY;
+    context.textAlign = "center";
+    context.font = "700 20px Arial, sans-serif";
+    context.fillText("SHA", 0, -8);
+    context.fillStyle = theme.accentText;
+    context.font = "700 16px Arial, sans-serif";
+    context.fillText("256", 0, 25);
+    context.restore();
+  }
+
+  if (certificateStyle === "regal-archive") {
+    context.strokeStyle = `${GOLD}b3`;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(112, 1302);
+    context.lineTo(640, 1302);
+    context.moveTo(730, 1302);
+    context.lineTo(1210, 1302);
+    context.stroke();
+  } else if (certificateStyle === "museum-ledger") {
+    context.strokeStyle = NAVY;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(112, 1302);
+    context.lineTo(1210, 1302);
+    context.stroke();
   }
 
   context.fillStyle = NAVY;

@@ -173,7 +173,7 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(photoCaption).toHaveAttribute("placeholder", "e.g., Front face");
   await expect(photoCaptureDate).toHaveAttribute("placeholder", "e.g., 2026-07-29");
 
-  for (const width of [1280, 760, 390, 320]) {
+  for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
     const styles = await page.evaluate(() => {
       const fontSize = (selector: string) => Number.parseFloat(getComputedStyle(document.querySelector(selector)!).fontSize);
@@ -291,26 +291,37 @@ test("renders coherent specimen states and complete responsive certificate headi
   const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
 
   await expect(summary).toHaveClass(/certificate-preview__weight--empty/);
-  for (const width of [1280, 760, 390, 320]) {
+  for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
     for (const name of ["Regal Archive", "Museum Ledger", "Celestial Formal"]) {
       await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
       const blankSummary = await summary.evaluate((element) => {
         const label = element.querySelector<HTMLElement>("span")!;
         const detail = element.querySelector<HTMLElement>("strong")!;
+        const cardBox = element.getBoundingClientRect();
+        const labelBox = label.getBoundingClientRect();
+        const detailBox = detail.getBoundingClientRect();
         return {
           labelSize: Number.parseFloat(getComputedStyle(label).fontSize),
           detailSize: Number.parseFloat(getComputedStyle(detail).fontSize),
           labelFits: label.scrollWidth <= label.clientWidth,
           detailFits: detail.scrollWidth <= detail.clientWidth,
+          labelContained: labelBox.left >= cardBox.left && labelBox.right <= cardBox.right
+            && labelBox.top >= cardBox.top && labelBox.bottom <= cardBox.bottom,
+          detailContained: detailBox.left >= cardBox.left && detailBox.right <= cardBox.right
+            && detailBox.top >= cardBox.top && detailBox.bottom <= cardBox.bottom,
+          cardOverflow: getComputedStyle(element).overflow,
           labelWhiteSpace: getComputedStyle(label).whiteSpace,
           detailWhiteSpace: getComputedStyle(detail).whiteSpace,
         };
       });
-      expect(blankSummary.labelSize, `${name} blank label at ${width}px`).toBeLessThanOrEqual(5);
-      expect(blankSummary.detailSize, `${name} blank detail at ${width}px`).toBeLessThanOrEqual(9);
+      expect(blankSummary.labelSize, `${name} blank label at ${width}px`).toBeLessThanOrEqual(3.5);
+      expect(blankSummary.detailSize, `${name} blank detail at ${width}px`).toBeLessThanOrEqual(5);
       expect(blankSummary.labelFits, `${name} blank label clipping at ${width}px`).toBe(true);
       expect(blankSummary.detailFits, `${name} blank detail clipping at ${width}px`).toBe(true);
+      expect(blankSummary.labelContained, `${name} blank label containment at ${width}px`).toBe(true);
+      expect(blankSummary.detailContained, `${name} blank detail containment at ${width}px`).toBe(true);
+      expect(blankSummary.cardOverflow).toBe("hidden");
       expect(blankSummary.labelWhiteSpace).toBe("nowrap");
       expect(blankSummary.detailWhiteSpace).toBe("nowrap");
     }
@@ -348,7 +359,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   const artifactDirectory = process.env.COA_ARTIFACT_DIR;
   if (artifactDirectory) await mkdir(artifactDirectory, { recursive: true });
 
-  for (const width of [1280, 760, 390, 320]) {
+  for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
     for (const [name, id] of styles) {
       await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
@@ -360,9 +371,11 @@ test("renders coherent specimen states and complete responsive certificate headi
         const meteoriteName = element.querySelector<HTMLElement>(".certificate-preview__title h3")!;
         const recordType = element.querySelector<HTMLElement>(".certificate-preview__record-type")!;
         const collection = element.querySelector<HTMLElement>(".certificate-preview__collection")!;
+        const idLabel = element.querySelector<HTMLElement>(".certificate-preview__id span")!;
         return {
           headingText: heading.textContent,
           recordTypeText: recordType.textContent,
+          idLabelText: idLabel.textContent,
           heading: heading.getBoundingClientRect().toJSON(),
           headingFits: heading.scrollWidth <= heading.clientWidth,
           meteoriteNameFits: meteoriteName.scrollWidth <= meteoriteName.clientWidth,
@@ -388,7 +401,8 @@ test("renders coherent specimen states and complete responsive certificate headi
         };
       });
       expect(geometry.headingText).toBe("Certificate of Authenticity");
-      expect(geometry.recordTypeText).toBe("Archival specimen record");
+      expect(geometry.recordTypeText).toBe(id === "museum-ledger" ? "Signed specimen catalog" : "Archival specimen record");
+      expect(geometry.idLabelText).toBe(id === "museum-ledger" ? "Catalog record / COA ID" : "Certificate ID");
       expect(geometry.headingFits, `${id} title clipping at ${width}px`).toBe(true);
       expect(geometry.meteoriteNameFits, `${id} representative meteorite name clipping at ${width}px`).toBe(true);
       expect(geometry.collectionFits, `${id} representative collection clipping at ${width}px`).toBe(true);
@@ -423,12 +437,17 @@ test("renders coherent specimen states and complete responsive certificate headi
   const museumSignature = await preview.evaluate((element) => {
     const id = getComputedStyle(element.querySelector(".certificate-preview__id")!);
     const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
+    const factLabel = getComputedStyle(element.querySelector(".certificate-preview__facts dt")!);
+    const photoCaption = getComputedStyle(element.querySelector(".certificate-preview__photo")!, "::after");
+    const weight = getComputedStyle(element.querySelector(".certificate-preview__weight")!);
     const seal = getComputedStyle(element.querySelector(".certificate-preview__seal")!);
     const watermark = getComputedStyle(element.querySelector(".certificate-preview__body")!, "::before");
     return {
       accessionBackground: id.backgroundColor,
       factsBorder: facts.borderTopWidth,
-      factsShadow: facts.boxShadow,
+      factLabelBackground: factLabel.backgroundColor,
+      photoCaption: photoCaption.content,
+      measurementRail: weight.borderLeftWidth,
       sealRadius: seal.borderRadius,
       sealBorder: seal.borderTopWidth,
       watermark: watermark.backgroundImage,
@@ -436,10 +455,39 @@ test("renders coherent specimen states and complete responsive certificate headi
   });
   expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
-  expect(museumSignature.factsShadow).not.toBe("none");
+  expect(museumSignature.factLabelBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(museumSignature.photoCaption).toContain("Documentation plate / 01");
+  expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);
   expect(museumSignature.sealRadius).toBe("50%");
   expect(Number.parseFloat(museumSignature.sealBorder)).toBeGreaterThanOrEqual(2);
-  expect(museumSignature.watermark).not.toBe("none");
+  expect(museumSignature.watermark).toContain("linear-gradient");
+  expect(museumSignature.watermark).not.toContain("radial-gradient");
+
+  await stylePicker.getByRole("radio", { name: /Regal Archive/ }).check();
+  const regalSignature = await preview.evaluate((element) => {
+    const frame = getComputedStyle(element.querySelector(".certificate-preview__frame")!);
+    const title = getComputedStyle(element.querySelector(".certificate-preview__title")!);
+    const photo = getComputedStyle(element.querySelector(".certificate-preview__photo")!);
+    const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
+    const weight = getComputedStyle(element.querySelector(".certificate-preview__weight")!);
+    const seal = getComputedStyle(element.querySelector(".certificate-preview__seal")!);
+    return {
+      frameShadow: frame.boxShadow,
+      titleAlignment: title.textAlign,
+      photoBorder: photo.borderTopStyle,
+      factsBorder: facts.borderTopStyle,
+      weightBackground: weight.backgroundColor,
+      weightColor: weight.color,
+      sealShadow: seal.boxShadow,
+    };
+  });
+  expect(regalSignature.frameShadow).not.toBe("none");
+  expect(regalSignature.titleAlignment).toBe("center");
+  expect(regalSignature.photoBorder).toBe("double");
+  expect(regalSignature.factsBorder).toBe("double");
+  expect(regalSignature.weightBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(regalSignature.weightColor).not.toBe("rgb(255, 255, 255)");
+  expect(regalSignature.sealShadow).not.toBe("none");
 
   if (artifactDirectory) {
     await page.setViewportSize({ width: 1280, height: 1000 });
@@ -800,6 +848,26 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     await writeFile(
       join(process.env.COA_ARTIFACT_DIR, "revoked-museum-ledger-certificate.pdf"),
       await archive.file(`${root}certificate.pdf`)!.async("nodebuffer"),
+    );
+
+    await page.getByRole("radio", { name: /Regal Archive/ }).check();
+    await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-style", "regal-archive");
+    const regalPackageDownload = page.waitForEvent("download", { timeout: 90_000 });
+    await page.getByRole("button", { name: "Issue signed COA package" }).click();
+    const regalDownload = await regalPackageDownload;
+    const regalPackagePath = await regalDownload.path();
+    expect(regalPackagePath).toBeTruthy();
+    const regalArchive = await JSZip.loadAsync(await readFile(regalPackagePath!));
+    const regalManifestName = Object.keys(regalArchive.files).find((name) => name.endsWith("/manifest.json"));
+    expect(regalManifestName).toBeTruthy();
+    const regalRoot = regalManifestName!.slice(0, -"manifest.json".length);
+    await writeFile(
+      join(process.env.COA_ARTIFACT_DIR, "revoked-regal-archive-certificate.png"),
+      await regalArchive.file(`${regalRoot}certificate.png`)!.async("nodebuffer"),
+    );
+    await writeFile(
+      join(process.env.COA_ARTIFACT_DIR, "revoked-regal-archive-certificate.pdf"),
+      await regalArchive.file(`${regalRoot}certificate.pdf`)!.async("nodebuffer"),
     );
   }
   const certificateRecord = JSON.parse(await archive.file(`${root}certificate-record.json`)!.async("text")) as {

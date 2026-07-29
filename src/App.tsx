@@ -182,6 +182,7 @@ function CertificatePreview({
   const hasWeight = Boolean(values.weightGrams.trim());
   const hasSpecimenForm = Boolean(values.specimenForm.trim());
   const specimenState = hasWeight && hasSpecimenForm ? "complete" : hasWeight || hasSpecimenForm ? "partial" : "empty";
+  const isMuseumLedger = certificateStyle.id === "museum-ledger";
   const themeStyle = {
     "--certificate-dark": theme.dark,
     "--certificate-dark-soft": theme.darkSoft,
@@ -206,10 +207,10 @@ function CertificatePreview({
             {logoPreviewUrl ? <img className="certificate-preview__logo" src={logoPreviewUrl} alt={`${values.collectionName || "Collection"} logo`} /> : <span className="orbit-mark" aria-hidden="true"><i /></span>}
             <span>{values.collectionName || "Collection name"}</span>
           </div>
-          <span className="certificate-preview__record-type">Archival specimen record</span>
+          <span className="certificate-preview__record-type">{isMuseumLedger ? "Signed specimen catalog" : "Archival specimen record"}</span>
           <strong>Certificate of Authenticity</strong>
           <div className="certificate-preview__id">
-            <span>Certificate ID</span>
+            <span>{isMuseumLedger ? "Catalog record / COA ID" : "Certificate ID"}</span>
             {values.certificateId || "Pending"}
           </div>
         </header>

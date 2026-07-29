@@ -28,8 +28,8 @@ describe("certificate styles", () => {
   });
 
   it("describes a distinct visual foundation for every style", () => {
-    expect(getCertificateStyle("regal-archive").description).toMatch(/double rules|ceremonial/i);
-    expect(getCertificateStyle("museum-ledger").description).toMatch(/light institutional|square/i);
+    expect(getCertificateStyle("regal-archive").description).toMatch(/engraved|ceremonial/i);
+    expect(getCertificateStyle("museum-ledger").description).toMatch(/accession-grid|institutional/i);
     expect(getCertificateStyle("celestial-formal").description).toMatch(/orbital|star-map/i);
     expect(new Set(certificateStyles.map(({ description }) => description)).size).toBe(3);
   });

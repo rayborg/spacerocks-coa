@@ -1414,47 +1414,213 @@ a {
   box-shadow: inset 0 0 0 4px var(--certificate-paper), inset 0 0 0 5px var(--certificate-accent);
 }
 
+.certificate-preview--regal-archive {
+  padding: 11px;
+  background:
+    repeating-linear-gradient(45deg, transparent 0 5px, color-mix(in srgb, var(--certificate-accent) 16%, transparent) 5px 6px),
+    var(--certificate-dark);
+  border: 1px solid var(--certificate-dark);
+  box-shadow:
+    inset 0 0 0 3px var(--certificate-accent),
+    inset 0 0 0 6px var(--certificate-dark),
+    0 24px 55px rgba(7, 26, 47, 0.2);
+}
+
+.certificate-preview--regal-archive .certificate-preview__frame {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--certificate-accent) 5%, transparent), transparent 18% 82%, color-mix(in srgb, var(--certificate-accent) 5%, transparent)),
+    var(--certificate-paper);
+  border: 1px solid var(--certificate-accent);
+  box-shadow:
+    inset 0 0 0 4px var(--certificate-paper),
+    inset 0 0 0 5px var(--certificate-dark),
+    inset 0 0 0 8px var(--certificate-paper),
+    inset 0 0 0 9px color-mix(in srgb, var(--certificate-accent) 72%, transparent);
+}
+
+.certificate-preview--regal-archive .certificate-preview__frame::before {
+  position: absolute;
+  z-index: 2;
+  inset: 13px;
+  content: "";
+  border: 1px solid color-mix(in srgb, var(--certificate-accent) 55%, transparent);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--certificate-paper) 76%, transparent);
+  pointer-events: none;
+}
+
 .certificate-preview--regal-archive .certificate-preview__frame::after {
   position: absolute;
   z-index: 3;
   inset: 8px;
   content: "";
   background:
-    linear-gradient(45deg, transparent 44%, var(--certificate-accent) 45% 48%, transparent 49%) left top / 5% 8% no-repeat,
-    linear-gradient(-45deg, transparent 44%, var(--certificate-accent) 45% 48%, transparent 49%) right top / 5% 8% no-repeat,
-    linear-gradient(135deg, transparent 44%, var(--certificate-accent) 45% 48%, transparent 49%) left bottom / 5% 8% no-repeat,
-    linear-gradient(-135deg, transparent 44%, var(--certificate-accent) 45% 48%, transparent 49%) right bottom / 5% 8% no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) left top / 12% 2px no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) left top / 2px 17% no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) right top / 12% 2px no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) right top / 2px 17% no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) left bottom / 12% 2px no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) left bottom / 2px 17% no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) right bottom / 12% 2px no-repeat,
-    linear-gradient(var(--certificate-accent), var(--certificate-accent)) right bottom / 2px 17% no-repeat;
+    linear-gradient(45deg, transparent 42%, var(--certificate-accent) 43% 48%, transparent 49%) left top / 5% 8% no-repeat,
+    linear-gradient(-45deg, transparent 42%, var(--certificate-accent) 43% 48%, transparent 49%) right top / 5% 8% no-repeat,
+    linear-gradient(135deg, transparent 42%, var(--certificate-accent) 43% 48%, transparent 49%) left bottom / 5% 8% no-repeat,
+    linear-gradient(-135deg, transparent 42%, var(--certificate-accent) 43% 48%, transparent 49%) right bottom / 5% 8% no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) left top / 15% 2px no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) left top / 2px 19% no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) right top / 15% 2px no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) right top / 2px 19% no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) left bottom / 15% 2px no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) left bottom / 2px 19% no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) right bottom / 15% 2px no-repeat,
+    linear-gradient(var(--certificate-dark), var(--certificate-dark)) right bottom / 2px 19% no-repeat;
   pointer-events: none;
 }
 
 .certificate-preview--regal-archive .certificate-preview__header {
   background:
-    linear-gradient(90deg, transparent 0 8%, color-mix(in srgb, var(--certificate-accent) 22%, transparent) 8% 8.3%, transparent 8.3% 91.7%, color-mix(in srgb, var(--certificate-accent) 22%, transparent) 91.7% 92%, transparent 92%),
-    linear-gradient(var(--certificate-dark-soft), var(--certificate-dark));
-  border-top: 3px double var(--certificate-accent);
-  border-bottom: 4px double var(--certificate-accent);
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--certificate-accent) 12%, transparent) 0 1px, transparent 1px 12px) left top / 100% 8px no-repeat,
+    linear-gradient(90deg, color-mix(in srgb, var(--certificate-accent) 8%, transparent), transparent 24% 76%, color-mix(in srgb, var(--certificate-accent) 8%, transparent)),
+    var(--certificate-paper);
+  border-top: 0;
+  border-bottom: 3px double var(--certificate-accent);
+}
+
+.certificate-preview--regal-archive .certificate-preview__header::after {
+  position: absolute;
+  bottom: 6%;
+  left: 34%;
+  width: 20%;
+  height: 4px;
+  content: "";
+  background:
+    linear-gradient(90deg, transparent, var(--certificate-accent) 18% 44%, transparent 44% 56%, var(--certificate-accent) 56% 82%, transparent),
+    linear-gradient(45deg, transparent 40%, var(--certificate-accent) 41% 59%, transparent 60%) center / 4px 4px no-repeat;
+}
+
+.certificate-preview--regal-archive .certificate-preview__collection {
+  max-width: 58%;
+  color: var(--certificate-accent-text);
+}
+
+.certificate-preview--regal-archive .orbit-mark {
+  border-color: var(--certificate-dark);
+}
+
+.certificate-preview--regal-archive .orbit-mark i {
+  background: var(--certificate-accent);
+}
+
+.certificate-preview--regal-archive .certificate-preview__record-type {
+  left: 9%;
+  width: 62%;
+  color: var(--certificate-accent-text);
+  text-align: center;
+}
+
+.certificate-preview--regal-archive .certificate-preview__header > strong {
+  left: 9%;
+  width: 62%;
+  max-width: 62%;
+  color: var(--certificate-dark);
+  text-align: center;
+}
+
+.certificate-preview--regal-archive .certificate-preview__id {
+  top: 20%;
+  right: 5%;
+  width: 18%;
+  padding-left: 3%;
+  color: var(--certificate-dark);
+  border-left: 1px solid color-mix(in srgb, var(--certificate-accent) 72%, transparent);
+}
+
+.certificate-preview--regal-archive .certificate-preview__id span {
+  color: var(--certificate-accent-text);
 }
 
 .certificate-preview--regal-archive .certificate-preview__title {
-  border-bottom: 4px double var(--certificate-accent);
+  padding: 0 2% 1.5%;
+  border-bottom: 3px double var(--certificate-accent);
+  text-align: center;
 }
 
 .certificate-preview--regal-archive .certificate-preview__photo {
-  border: 5px double var(--certificate-accent);
+  padding: 7px;
+  background: var(--certificate-dark);
+  border: 3px double var(--certificate-accent-light);
   outline: 2px solid var(--certificate-dark);
-  outline-offset: 2px;
+  outline-offset: 3px;
+  box-shadow: inset 0 0 0 2px var(--certificate-dark);
 }
 
 .certificate-preview--regal-archive .certificate-preview__facts {
+  overflow: hidden;
   border: 3px double color-mix(in srgb, var(--certificate-accent) 72%, var(--certificate-dark));
+  background: color-mix(in srgb, var(--certificate-paper) 88%, white);
+}
+
+.certificate-preview--regal-archive .certificate-preview__facts > div {
+  grid-template-columns: 34% 1fr;
+  padding: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--certificate-dark) 20%, transparent);
+  background: transparent;
+}
+
+.certificate-preview--regal-archive .certificate-preview__facts > div:last-child {
+  border-bottom: 0;
+}
+
+.certificate-preview--regal-archive .certificate-preview__facts dt {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 8%;
+  color: var(--certificate-accent-text);
+  background: color-mix(in srgb, var(--certificate-accent) 13%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--certificate-accent) 40%, transparent);
+}
+
+.certificate-preview--regal-archive .certificate-preview__facts dd {
+  padding: 0 5%;
+}
+
+.certificate-preview--regal-archive .certificate-preview__body::before {
+  position: absolute;
+  right: 3%;
+  bottom: 2%;
+  left: 3%;
+  height: 15%;
+  content: "";
+  background:
+    repeating-linear-gradient(45deg, transparent 0 7px, color-mix(in srgb, var(--certificate-accent) 8%, transparent) 7px 8px),
+    repeating-linear-gradient(-45deg, transparent 0 7px, color-mix(in srgb, var(--certificate-dark) 5%, transparent) 7px 8px);
+  mask-image: linear-gradient(90deg, transparent, black 18% 82%, transparent);
+  pointer-events: none;
+}
+
+.certificate-preview--regal-archive .certificate-preview__weight {
+  color: var(--certificate-dark);
+  background: color-mix(in srgb, var(--certificate-paper) 90%, white);
+  border: 3px double var(--certificate-accent);
+  box-shadow:
+    inset 0 0 0 3px var(--certificate-paper),
+    inset 0 0 0 4px color-mix(in srgb, var(--certificate-dark) 72%, transparent);
+}
+
+.certificate-preview--regal-archive .certificate-preview__weight span,
+.certificate-preview--regal-archive .certificate-preview__weight em {
+  color: var(--certificate-accent-text);
+}
+
+.certificate-preview--regal-archive .certificate-preview__signoff {
+  left: 7%;
+  width: 53%;
+  text-align: center;
+  border-top: 3px double color-mix(in srgb, var(--certificate-accent) 62%, var(--certificate-dark));
+}
+
+.certificate-preview--regal-archive .certificate-preview__seal {
+  right: 7%;
+  color: var(--certificate-dark);
+  background: color-mix(in srgb, var(--certificate-paper) 82%, white);
+  border: 3px double var(--certificate-accent);
+  box-shadow:
+    0 0 0 2px var(--certificate-paper),
+    0 0 0 3px var(--certificate-dark),
+    inset 0 0 0 3px color-mix(in srgb, var(--certificate-accent) 16%, transparent);
 }
 
 .certificate-preview--museum-ledger {
@@ -1482,6 +1648,7 @@ a {
   inset: 7px;
   content: "";
   border: 1px solid color-mix(in srgb, var(--certificate-accent) 58%, transparent);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--certificate-paper) 78%, transparent);
   pointer-events: none;
 }
 
@@ -1491,6 +1658,16 @@ a {
     linear-gradient(90deg, var(--certificate-accent) 0 1.2%, transparent 1.2% 70%, var(--certificate-dark) 70%),
     color-mix(in srgb, var(--certificate-paper) 88%, white);
   border-bottom: 4px double var(--certificate-accent);
+}
+
+.certificate-preview--museum-ledger .certificate-preview__header::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 68.8%;
+  width: 1px;
+  content: "";
+  background: color-mix(in srgb, var(--certificate-accent) 66%, transparent);
 }
 
 .certificate-preview--museum-ledger .certificate-preview__collection {
@@ -1515,6 +1692,7 @@ a {
   overflow: hidden;
   color: var(--certificate-paper);
   background: var(--certificate-dark);
+  border-left: 1px solid var(--certificate-accent);
 }
 
 .certificate-preview--museum-ledger .certificate-preview__id span {
@@ -1539,17 +1717,36 @@ a {
 .certificate-preview--museum-ledger .certificate-preview__title {
   width: 59%;
   padding-left: 2%;
-  border-bottom: 3px double var(--certificate-accent);
+  border-bottom: 1px solid var(--certificate-dark);
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--certificate-accent) 72%, transparent);
 }
 
 .certificate-preview--museum-ledger .certificate-preview__photo {
-  padding: 6px;
+  padding: 6px 6px 12%;
   color: color-mix(in srgb, var(--certificate-paper) 76%, var(--certificate-muted));
   background: var(--certificate-dark);
   border: 2px solid var(--certificate-accent);
-  outline: 4px solid var(--certificate-dark);
+  outline: 3px solid var(--certificate-dark);
   outline-offset: 1px;
-  box-shadow: 0 5px 0 color-mix(in srgb, var(--certificate-dark) 18%, transparent);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--certificate-accent) 42%, transparent);
+}
+
+.certificate-preview--museum-ledger .certificate-preview__photo::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 2.5% 4%;
+  content: "Documentation plate / 01";
+  color: var(--certificate-accent-light);
+  background: var(--certificate-dark);
+  border-top: 1px solid var(--certificate-accent);
+  font-family: var(--mono);
+  font-size: clamp(3px, 0.75cqw, 4.5px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__facts,
@@ -1558,21 +1755,48 @@ a {
 }
 
 .certificate-preview--museum-ledger .certificate-preview__facts {
+  top: 39%;
   left: 5.6%;
   width: 57.4%;
-  overflow: hidden;
+  overflow: visible;
   background: color-mix(in srgb, var(--certificate-paper) 78%, white);
   border: 2px solid var(--certificate-dark);
-  box-shadow: 4px 4px 0 color-mix(in srgb, var(--certificate-accent) 32%, transparent);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--certificate-dark) 13%, transparent);
+}
+
+.certificate-preview--museum-ledger .certificate-preview__facts::before {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 0;
+  content: "Object catalog / signed specimen record";
+  color: var(--certificate-dark);
+  font-family: var(--mono);
+  font-size: clamp(3px, 0.78cqw, 5px);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__facts > div {
-  grid-template-columns: 35% 1fr;
+  grid-template-columns: 34% 1fr;
+  min-height: clamp(13px, 3.6cqw, 20px);
+  padding: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--certificate-dark) 22%, transparent);
+  background: transparent;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__facts dt {
-  color: var(--certificate-accent-text);
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 7%;
+  color: var(--certificate-accent-light);
+  background: var(--certificate-dark);
+  border-right: 1px solid var(--certificate-accent);
+}
+
+.certificate-preview--museum-ledger .certificate-preview__facts dd {
+  padding: 0 5%;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__facts > div:last-child {
@@ -1580,11 +1804,14 @@ a {
 }
 
 .certificate-preview--museum-ledger .certificate-preview__weight {
+  top: 49%;
+  height: 21%;
   color: var(--certificate-paper);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--certificate-dark-soft) 68%, var(--certificate-dark)), var(--certificate-dark));
-  border: 2px solid var(--certificate-accent);
-  box-shadow: inset 0 0 0 3px var(--certificate-dark);
+  border: 1px solid var(--certificate-dark);
+  border-left: 6px solid var(--certificate-accent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--certificate-accent) 42%, transparent);
 }
 
 .certificate-preview--museum-ledger .certificate-preview__weight span,
@@ -1595,11 +1822,12 @@ a {
 .certificate-preview--museum-ledger .certificate-preview__seal {
   color: var(--certificate-dark);
   background: color-mix(in srgb, var(--certificate-paper) 78%, white);
-  border: 2px solid var(--certificate-dark);
+  border: 3px double var(--certificate-dark);
   border-radius: 50%;
   box-shadow:
     0 0 0 2px var(--certificate-paper),
     0 0 0 3px var(--certificate-accent);
+  transform: rotate(-3deg);
 }
 
 .certificate-preview--museum-ledger .certificate-preview__body::after {
@@ -1607,32 +1835,34 @@ a {
   top: 6%;
   bottom: 5%;
   left: 2.3%;
-  width: 2px;
+  width: 8px;
   content: "";
-  background: linear-gradient(var(--certificate-accent) 0 18%, var(--certificate-dark) 18% 82%, var(--certificate-accent) 82%);
+  background:
+    linear-gradient(90deg, var(--certificate-accent) 0 2px, transparent 2px 5px, var(--certificate-dark) 5px 7px, transparent 7px),
+    repeating-linear-gradient(0deg, var(--certificate-dark) 0 1px, transparent 1px 11%);
   opacity: 0.72;
   pointer-events: none;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__body::before {
   position: absolute;
-  right: -4%;
-  bottom: -9%;
-  width: 35%;
-  aspect-ratio: 1;
+  inset: 0;
   content: "";
   background:
-    repeating-radial-gradient(circle, transparent 0 7%, color-mix(in srgb, var(--certificate-accent) 11%, transparent) 7.3% 7.8%, transparent 8.1% 13%),
-    repeating-conic-gradient(from 18deg, color-mix(in srgb, var(--certificate-dark) 5%, transparent) 0 2deg, transparent 2deg 11deg);
-  border: 1px solid color-mix(in srgb, var(--certificate-dark) 8%, transparent);
-  border-radius: 50%;
+    linear-gradient(color-mix(in srgb, var(--certificate-dark) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--certificate-dark) 7%, transparent) 1px, transparent 1px);
+  background-position: 2.3% 6%;
+  background-size: 9% 12%;
+  mask-image: linear-gradient(135deg, transparent 0 42%, black 68% 100%);
   pointer-events: none;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__signoff {
   left: 5.6%;
   width: 57.4%;
-  border-top-color: var(--certificate-dark);
+  padding-top: 1.8%;
+  border-top: 2px solid var(--certificate-dark);
+  border-bottom: 1px solid color-mix(in srgb, var(--certificate-accent) 52%, transparent);
 }
 
 .certificate-preview--celestial-formal {
@@ -1972,20 +2202,32 @@ a {
 
 .certificate-preview__weight--empty {
   gap: clamp(2px, 0.5cqw, 4px);
-  padding: 2%;
+  justify-items: stretch;
+  overflow: hidden;
+  padding: 1.5%;
 }
 
 .certificate-preview__weight--empty span {
-  font-size: clamp(3.25px, 0.8cqw, 5px);
-  letter-spacing: 0.06em;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: clamp(2.5px, 0.55cqw, 3.5px);
+  letter-spacing: 0.04em;
   line-height: 1;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 .certificate-preview__weight--empty strong {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   overflow-wrap: normal;
-  font-size: clamp(5px, 1cqw, 9px);
+  font-size: clamp(3.5px, 0.68cqw, 5px);
   line-height: 1.1;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
