@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import type { FormValues } from "../types";
 import { certificateFooterLayout, getCertificateTheme } from "../certificateThemes";
+import type { CertificateStyleId } from "../certificateStyles";
 import { displayDate } from "./core";
 
 const WIDTH = 2200;
@@ -177,6 +178,97 @@ function drawOrbitMark(context: CanvasRenderingContext2D, x: number, y: number, 
   context.restore();
 }
 
+function drawLedgerMark(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.save();
+  context.strokeStyle = color;
+  context.lineWidth = 4;
+  context.strokeRect(x - 35, y - 35, 70, 70);
+  context.beginPath();
+  context.moveTo(x - 22, y - 12);
+  context.lineTo(x + 22, y - 12);
+  context.moveTo(x - 22, y + 4);
+  context.lineTo(x + 22, y + 4);
+  context.moveTo(x - 22, y + 20);
+  context.lineTo(x + 8, y + 20);
+  context.stroke();
+  context.restore();
+}
+
+function drawStyleFoundation(
+  context: CanvasRenderingContext2D,
+  style: CertificateStyleId,
+  dark: string,
+  accent: string,
+) {
+  if (style !== "celestial-formal") return;
+
+  context.save();
+  context.strokeStyle = `${accent}24`;
+  context.fillStyle = `${dark}16`;
+  context.lineWidth = 4;
+  context.beginPath();
+  context.ellipse(1710, 1040, 570, 310, -0.34, 0, Math.PI * 2);
+  context.stroke();
+  context.beginPath();
+  context.ellipse(1710, 1040, 420, 225, 0.28, 0, Math.PI * 2);
+  context.stroke();
+  context.beginPath();
+  context.arc(1315, 1198, 11, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.arc(2015, 858, 7, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawStyleFrame(
+  context: CanvasRenderingContext2D,
+  style: CertificateStyleId,
+  dark: string,
+  accent: string,
+) {
+  context.save();
+  if (style === "museum-ledger") {
+    context.strokeStyle = dark;
+    context.lineWidth = 10;
+    context.strokeRect(28, 28, WIDTH - 56, HEIGHT - 56);
+    context.strokeStyle = accent;
+    context.lineWidth = 2;
+    context.strokeRect(48, 48, WIDTH - 96, HEIGHT - 96);
+    context.beginPath();
+    context.moveTo(48, 390);
+    context.lineTo(WIDTH - 48, 390);
+    context.stroke();
+  } else if (style === "celestial-formal") {
+    context.strokeStyle = accent;
+    context.lineWidth = 5;
+    context.strokeRect(27, 27, WIDTH - 54, HEIGHT - 54);
+    context.strokeStyle = dark;
+    context.lineWidth = 2;
+    context.strokeRect(43, 43, WIDTH - 86, HEIGHT - 86);
+  } else {
+    context.strokeStyle = accent;
+    context.lineWidth = 8;
+    context.strokeRect(25, 25, WIDTH - 50, HEIGHT - 50);
+    context.lineWidth = 2;
+    context.strokeRect(42, 42, WIDTH - 84, HEIGHT - 84);
+    const cornerLength = 76;
+    for (const [x, y, xDirection, yDirection] of [
+      [62, 62, 1, 1],
+      [WIDTH - 62, 62, -1, 1],
+      [62, HEIGHT - 62, 1, -1],
+      [WIDTH - 62, HEIGHT - 62, -1, -1],
+    ] as const) {
+      context.beginPath();
+      context.moveTo(x + xDirection * cornerLength, y);
+      context.lineTo(x, y);
+      context.lineTo(x, y + yDirection * cornerLength);
+      context.stroke();
+    }
+  }
+  context.restore();
+}
+
 export async function renderCertificate(input: CertificateRenderInput): Promise<{
   png: Uint8Array;
   pdf: Uint8Array;
@@ -188,6 +280,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   if (!context) throw new Error("This browser cannot create a certificate canvas.");
 
   const theme = getCertificateTheme(input.values.certificateTheme);
+  const certificateStyle = input.values.certificateStyle;
   const NAVY = theme.dark;
   const NAVY_SOFT = theme.darkSoft;
   const GOLD = theme.accent;
@@ -210,14 +303,12 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.fillRect(x, y, 1 + (seed % 3), 1 + ((seed >>> 2) % 2));
   }
 
+  drawStyleFoundation(context, certificateStyle, NAVY, GOLD);
+
   context.fillStyle = NAVY;
   context.fillRect(0, 0, WIDTH, 372);
 
-  context.strokeStyle = GOLD;
-  context.lineWidth = 8;
-  context.strokeRect(25, 25, WIDTH - 50, HEIGHT - 50);
-  context.lineWidth = 2;
-  context.strokeRect(42, 42, WIDTH - 84, HEIGHT - 84);
+  drawStyleFrame(context, certificateStyle, NAVY, GOLD);
 
   let logo: HTMLImageElement | undefined;
   if (input.logo) {
@@ -229,6 +320,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   }
 
   if (logo) drawContainedImage(context, logo, 105, 70, 120, 105);
+  else if (certificateStyle === "museum-ledger") drawLedgerMark(context, 162, 122, GOLD_LIGHT);
   else drawOrbitMark(context, 162, 122, GOLD_LIGHT);
 
   context.fillStyle = GOLD_LIGHT;
@@ -259,18 +351,19 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.font = "600 37px Arial, sans-serif";
   context.fillText(input.values.classification.toUpperCase(), 116, 590);
   context.strokeStyle = GOLD;
-  context.lineWidth = 3;
+  context.lineWidth = certificateStyle === "museum-ledger" ? 6 : 3;
   context.beginPath();
   context.moveTo(116, 625);
   context.lineTo(1420, 625);
   context.stroke();
 
   const photoFrame = { x: 1510, y: 426, width: 560, height: 455 };
+  const detailRadius = certificateStyle === "museum-ledger" ? 0 : certificateStyle === "celestial-formal" ? 12 : 25;
   context.fillStyle = NAVY;
-  roundedRect(context, photoFrame.x - 10, photoFrame.y - 10, photoFrame.width + 20, photoFrame.height + 20, 25);
+  roundedRect(context, photoFrame.x - 10, photoFrame.y - 10, photoFrame.width + 20, photoFrame.height + 20, detailRadius);
   context.fill();
   context.save();
-  roundedRect(context, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height, 17);
+  roundedRect(context, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height, Math.max(0, detailRadius - 8));
   context.clip();
   try {
     const photo = await fileToImage(input.mainPhoto);
@@ -304,7 +397,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const rowHeight = 82;
   context.strokeStyle = `${GOLD}8c`;
   context.lineWidth = 2;
-  roundedRect(context, tableX, tableY, tableWidth, rows.length * rowHeight, 18);
+  roundedRect(context, tableX, tableY, tableWidth, rows.length * rowHeight, certificateStyle === "museum-ledger" ? 0 : 18);
   context.stroke();
   context.beginPath();
   context.moveTo(tableX + 395, tableY);
@@ -326,17 +419,17 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.fillText(displayed, tableX + 440, y + 53);
   });
 
-  roundedRect(context, 1510, 960, 560, 212, 25);
+  roundedRect(context, 1510, 960, 560, 212, detailRadius);
   context.fillStyle = NAVY;
   context.fill();
   context.strokeStyle = GOLD_LIGHT;
   context.lineWidth = 4;
-  roundedRect(context, 1526, 976, 528, 180, 18);
+  roundedRect(context, 1526, 976, 528, 180, Math.max(0, detailRadius - 7));
   context.stroke();
   context.fillStyle = GOLD_LIGHT;
   context.textAlign = "center";
   context.font = "600 23px Arial, sans-serif";
-  context.fillText("RECORDED WEIGHT", 1790, 1018);
+  context.fillText("SPECIMEN DETAILS", 1790, 1018);
   context.fillStyle = "#ffffff";
   context.font = "400 72px Georgia, serif";
   context.fillText(`${input.values.weightGrams} g`, 1790, 1092);

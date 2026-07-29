@@ -53,7 +53,12 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   await expect(page.getByRole("heading", { name: /certificate is only as enduring/i })).toBeVisible();
   await expect(page.getByLabel("Weight (grams)")).toHaveValue("44.7");
   await expect(page.getByLabel("Specimen form")).toHaveValue("Half stone / end cut");
-  await expect(page.getByRole("radio")).toHaveCount(9);
+  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+  const themePicker = page.getByRole("group", { name: "Certificate color scheme" });
+  await expect(stylePicker.getByRole("radio")).toHaveCount(3);
+  await expect(themePicker.getByRole("radio")).toHaveCount(9);
+  await expect(stylePicker.getByRole("radio", { name: /Regal Archive/ })).toBeChecked();
+  await expect(themePicker.getByRole("radio", { name: /Observatory Navy/ })).toBeChecked();
 
   const proofChain = page.locator(".hero__ledger");
   const proofChainBox = await proofChain.boundingBox();
@@ -61,11 +66,38 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   expect(Number.parseFloat(await proofChain.locator("li strong").first().evaluate((element) => getComputedStyle(element).fontSize)))
     .toBeGreaterThanOrEqual(22);
 
-  await page.getByRole("radio", { name: /Museum Burgundy/ }).check();
   const certificatePreview = page.locator(".certificate-preview");
+  const styleSignatures = new Set<string>();
+  for (const [name, id] of [
+    ["Regal Archive", "regal-archive"],
+    ["Museum Ledger", "museum-ledger"],
+    ["Celestial Formal", "celestial-formal"],
+  ] as const) {
+    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+    await expect(certificatePreview).toHaveAttribute("data-certificate-style", id);
+    styleSignatures.add(await certificatePreview.evaluate((element) => {
+      const previewStyle = getComputedStyle(element);
+      const headerStyle = getComputedStyle(element.querySelector(".certificate-preview__header")!);
+      return [previewStyle.borderTopWidth, headerStyle.backgroundColor, headerStyle.backgroundImage].join("|");
+    }));
+  }
+  expect(styleSignatures.size).toBe(3);
+  await expect(themePicker.getByRole("radio", { name: /Observatory Navy/ })).toBeChecked();
+
+  await themePicker.getByRole("radio", { name: /Museum Burgundy/ }).check();
   await expect(certificatePreview).toHaveAttribute("data-certificate-theme", "museum-burgundy");
+  await expect(certificatePreview).toHaveAttribute("data-certificate-style", "celestial-formal");
   expect(await certificatePreview.evaluate((element) => getComputedStyle(element).getPropertyValue("--certificate-dark").trim()))
     .toBe("#3b0d18");
+
+  const photoBox = await certificatePreview.locator(".certificate-preview__photo").boundingBox();
+  const detailsBox = await certificatePreview.locator(".certificate-preview__weight").boundingBox();
+  const sealBox = await certificatePreview.locator(".certificate-preview__seal").boundingBox();
+  expect(photoBox && detailsBox && sealBox).toBeTruthy();
+  expect(detailsBox!.y).toBeGreaterThanOrEqual(photoBox!.y + photoBox!.height);
+  expect(sealBox!.y).toBeGreaterThanOrEqual(detailsBox!.y + detailsBox!.height);
+  expect(sealBox!.width).toBeLessThan(detailsBox!.width / 2);
+  await expect(certificatePreview.getByText("Specimen details")).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".site-header")).toBeVisible();
@@ -78,6 +110,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.goto("/#builder");
 
   await page.getByRole("radio", { name: /Royal Amethyst/ }).check();
+  await page.getByRole("radio", { name: /Museum Ledger/ }).check();
 
   const createKey = page.locator(".key-option").first();
   await createKey.getByLabel("Passphrase", { exact: true }).fill("correct horse battery staple");
@@ -121,9 +154,10 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(manifestName).toBeTruthy();
   const root = manifestName!.slice(0, -"manifest.json".length);
   const manifest = JSON.parse(await archive.file(manifestName!)!.async("text")) as {
-    certificate: { visualTheme?: string };
+    certificate: { visualStyle?: string; visualTheme?: string };
     files: Array<{ path: string }>;
   };
+  expect(manifest.certificate.visualStyle).toBe("museum-ledger");
   expect(manifest.certificate.visualTheme).toBe("royal-amethyst");
   const signedPaths = manifest.files.map((entry) => entry.path);
   expect(signedPaths).toEqual(expect.arrayContaining([
@@ -137,8 +171,28 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     testInfo.outputPath("generated-certificate.png"),
     await archive.file(`${root}certificate.png`)!.async("nodebuffer"),
   );
-  await expect(archive.file(`${root}certificate.txt`)!.async("text"))
-    .resolves.toContain("Certificate color scheme: Royal Amethyst");
+  const certificateRecord = JSON.parse(await archive.file(`${root}certificate-record.json`)!.async("text")) as {
+    certificate: { visualStyle?: string; visualTheme?: string };
+  };
+  expect(certificateRecord.certificate.visualStyle).toBe("museum-ledger");
+  expect(certificateRecord.certificate.visualTheme).toBe("royal-amethyst");
+  const certificateText = await archive.file(`${root}certificate.txt`)!.async("text");
+  expect(certificateText).toContain("Certificate layout style: Museum Ledger");
+  expect(certificateText).toContain("Certificate color scheme: Royal Amethyst");
+  const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v1.schema.json`)!.async("text")) as {
+    properties: {
+      certificate: {
+        required: string[];
+        properties: { visualStyle: { enum: string[] } };
+      };
+    };
+  };
+  expect(packagedSchema.properties.certificate.required).not.toContain("visualStyle");
+  expect(packagedSchema.properties.certificate.properties.visualStyle.enum).toEqual([
+    "regal-archive",
+    "museum-ledger",
+    "celestial-formal",
+  ]);
   const verifySource = await archive.file(`${root}verify.py`)!.async("text");
   const verifyPath = testInfo.outputPath("verify.py");
   await writeFile(verifyPath, verifySource, "utf8");

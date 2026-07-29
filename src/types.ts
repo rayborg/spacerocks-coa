@@ -1,4 +1,5 @@
 import type { CertificateThemeId } from "./certificateThemes";
+import type { CertificateStyleId } from "./certificateStyles";
 
 export type CertificateStatus = "active" | "superseded" | "revoked" | "transferred";
 
@@ -13,6 +14,7 @@ export interface FormValues {
   issueDate: string;
   certificateVersion: string;
   certificateStatus: CertificateStatus;
+  certificateStyle: CertificateStyleId;
   certificateTheme: CertificateThemeId;
   supersededCertificateId: string;
   certificateNotes: string;

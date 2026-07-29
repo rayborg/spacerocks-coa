@@ -34,6 +34,9 @@
         "issueDate": { "type": "string", "format": "date" },
         "version": { "type": "string", "minLength": 1 },
         "status": { "enum": ["active", "superseded", "revoked", "transferred"] },
+        "visualStyle": {
+          "enum": ["regal-archive", "museum-ledger", "celestial-formal"]
+        },
         "visualTheme": {
           "enum": [
             "observatory-navy",

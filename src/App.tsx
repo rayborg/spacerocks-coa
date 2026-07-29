@@ -15,6 +15,11 @@ import {
   certificateThemes,
   getCertificateTheme,
 } from "./certificateThemes";
+import {
+  certificateStyleIds,
+  certificateStyles,
+  getCertificateStyle,
+} from "./certificateStyles";
 
 const requiredText = (label: string) => z.string().trim().min(1, `${label} is required.`);
 const optionalEmail = z
@@ -53,6 +58,7 @@ const formSchema = z
     issueDate: requiredText("Issue date"),
     certificateVersion: requiredText("Certificate version"),
     certificateStatus: z.enum(["active", "superseded", "revoked", "transferred"]),
+    certificateStyle: z.enum(certificateStyleIds),
     certificateTheme: z.enum(certificateThemeIds),
     supersededCertificateId: z.string(),
     certificateNotes: z.string(),
@@ -104,6 +110,7 @@ const defaultValues: FormValues = {
   issueDate: "2026-07-25",
   certificateVersion: "1.0",
   certificateStatus: "active",
+  certificateStyle: "regal-archive",
   certificateTheme: "observatory-navy",
   supersededCertificateId: "",
   certificateNotes: "",
@@ -169,6 +176,7 @@ function CertificatePreview({
 }) {
   const statusClass = values.certificateStatus === "active" ? "" : " certificate-preview--flagged";
   const theme = getCertificateTheme(values.certificateTheme);
+  const certificateStyle = getCertificateStyle(values.certificateStyle);
   const themeStyle = {
     "--certificate-dark": theme.dark,
     "--certificate-dark-soft": theme.darkSoft,
@@ -181,10 +189,11 @@ function CertificatePreview({
   } as React.CSSProperties;
   return (
     <div
-      className={`certificate-preview${statusClass}`}
+      className={`certificate-preview certificate-preview--${certificateStyle.id}${statusClass}`}
       style={themeStyle}
+      data-certificate-style={certificateStyle.id}
       data-certificate-theme={theme.id}
-      aria-label={`Live certificate preview in ${theme.name}`}
+      aria-label={`Live certificate preview in ${certificateStyle.name} style and ${theme.name} colors`}
     >
       <div className="certificate-preview__frame">
         <header className="certificate-preview__header">
@@ -213,7 +222,7 @@ function CertificatePreview({
             <div><dt>Recorded owner</dt><dd>{values.recordedOwner}</dd></div>
           </dl>
           <div className="certificate-preview__weight">
-            <span>Recorded weight</span>
+            <span>Specimen details</span>
             <strong>{values.weightGrams || "0"}<small> g</small></strong>
             <em>{values.specimenForm}</em>
           </div>
@@ -588,6 +597,22 @@ export default function App() {
                   <Field label="Certificate notes">
                     <input {...register("certificateNotes")} />
                   </Field>
+                  <fieldset className="theme-field field--wide">
+                    <legend>Certificate layout style</legend>
+                    <span className="theme-field__hint">Layout and ornament are selected independently from the color scheme.</span>
+                    <div className="style-picker">
+                      {certificateStyles.map((style) => (
+                        <label className="style-option" key={style.id}>
+                          <input type="radio" value={style.id} {...register("certificateStyle")} />
+                          <span className={`style-option__body style-option__body--${style.id}`}>
+                            <span className="style-option__sample" aria-hidden="true"><i /><i /></span>
+                            <strong>{style.name}</strong>
+                            <small>{style.description}</small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                   <fieldset className="theme-field field--wide">
                     <legend>Certificate color scheme</legend>
                     <span className="theme-field__hint">The selected palette is applied to the live preview, PNG, and PDF.</span>
