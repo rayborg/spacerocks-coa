@@ -231,7 +231,7 @@ function CertificatePreview({
             <span className="certificate-preview__record-type">{isMuseumLedger ? "Signed specimen catalog" : "Archival specimen record"}</span>
             <strong>Certificate of Authenticity</strong>
             <div className="certificate-preview__id">
-              <span>{isMuseumLedger ? "Catalog record / COA ID" : "Certificate ID"}</span>
+              <span>{isMuseumLedger ? "COA catalog ID" : "Certificate ID"}</span>
               <strong>{values.certificateId || "Pending"}</strong>
             </div>
           </header>
@@ -242,6 +242,7 @@ function CertificatePreview({
             </div>
             <div className="certificate-preview__photo">
               {photo ? <img src={photo.previewUrl} alt={photo.caption || "Uploaded specimen"} /> : <span>Exact specimen photo required</span>}
+              {isMuseumLedger ? <small className="certificate-preview__photo-caption">Photo record 01</small> : null}
             </div>
             <dl className="certificate-preview__facts">
               <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>

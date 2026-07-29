@@ -1671,7 +1671,7 @@ a {
 .certificate-preview--museum-ledger .certificate-preview__header {
   color: var(--certificate-dark);
   background:
-    linear-gradient(90deg, var(--certificate-accent) 0 1.2%, transparent 1.2% 70%, var(--certificate-dark) 70%),
+    linear-gradient(90deg, var(--certificate-accent) 0 1.2%, transparent 1.2% 62%, var(--certificate-dark) 62%),
     color-mix(in srgb, var(--certificate-paper) 88%, white);
   border-bottom: 4px double var(--certificate-accent);
 }
@@ -1680,31 +1680,33 @@ a {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 68.8%;
+  left: 61.8%;
   width: 1px;
   content: "";
   background: color-mix(in srgb, var(--certificate-accent) 66%, transparent);
 }
 
 .certificate-preview--museum-ledger .certificate-preview__collection {
-  max-width: 65%;
+  max-width: 55%;
   overflow: hidden;
   color: var(--certificate-accent-text);
+  font-size: 20px;
   letter-spacing: 0.07em;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__header > strong {
-  max-width: 59%;
+  max-width: 52%;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__id {
   top: 0;
   right: 0;
-  width: 30%;
+  width: 38%;
   height: 100%;
   align-content: center;
-  padding: 0 4%;
+  padding: 0 5%;
   overflow: hidden;
   color: var(--certificate-paper);
   background: var(--certificate-dark);
@@ -1713,6 +1715,8 @@ a {
 
 .certificate-preview--museum-ledger .certificate-preview__id span {
   color: var(--certificate-accent-light);
+  font-size: 20px;
+  line-height: 1.1;
 }
 
 .certificate-preview--museum-ledger .orbit-mark {
@@ -1747,13 +1751,14 @@ a {
   box-shadow: 4px 4px 0 color-mix(in srgb, var(--certificate-accent) 42%, transparent);
 }
 
-.certificate-preview--museum-ledger .certificate-preview__photo::after {
+.certificate-preview--museum-ledger .certificate-preview__photo-caption {
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
+  display: block;
+  overflow: hidden;
   padding: 2.5% 4%;
-  content: "Documentation plate / 01";
   color: var(--certificate-accent-light);
   background: var(--certificate-dark);
   border-top: 1px solid var(--certificate-accent);
@@ -1762,7 +1767,9 @@ a {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-align: left;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .certificate-preview--museum-ledger .certificate-preview__facts,
@@ -1977,6 +1984,13 @@ a {
   text-transform: uppercase;
 }
 
+.certificate-preview__collection > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .certificate-preview__logo {
   display: block;
   width: 72px;
@@ -2009,6 +2023,7 @@ a {
   display: block;
   width: 36px;
   height: 16px;
+  flex: 0 0 auto;
   border: 2px solid var(--certificate-accent-light);
   border-radius: 50%;
   transform: rotate(-15deg);
@@ -2051,8 +2066,10 @@ a {
 }
 
 .certificate-preview--museum-ledger .certificate-preview__record-type {
-  max-width: 59%;
+  max-width: 52%;
   color: var(--certificate-accent-text);
+  font-size: 20px;
+  white-space: nowrap;
 }
 
 .certificate-preview__id {

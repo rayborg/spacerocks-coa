@@ -48,12 +48,26 @@ function fitFontSize(
   weight = "400",
 ) {
   let size = startingSize;
-  while (size > 38) {
+  while (size > 12) {
     context.font = `${weight} ${size}px ${family}`;
     if (context.measureText(text).width <= maximumWidth) return size;
     size -= 2;
   }
   return size;
+}
+
+function fitTextWithEllipsis(context: CanvasRenderingContext2D, text: string, maximumWidth: number) {
+  if (context.measureText(text).width <= maximumWidth) return text;
+  const suffix = "...";
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const candidate = `${text.slice(0, middle).trimEnd()}${suffix}`;
+    if (context.measureText(candidate).width <= maximumWidth) low = middle;
+    else high = middle - 1;
+  }
+  return `${text.slice(0, low).trimEnd()}${suffix}`;
 }
 
 function wrapText(
@@ -434,10 +448,10 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.fillRect(0, 0, WIDTH, 372);
     context.fillStyle = NAVY;
     context.fillRect(0, 0, WIDTH, 24);
-    context.fillRect(1540, 48, 612, 302);
+    context.fillRect(1364, 48, 788, 302);
     context.fillStyle = GOLD;
     context.fillRect(72, 48, 10, 302);
-    context.fillRect(1527, 48, 5, 302);
+    context.fillRect(1351, 48, 5, 302);
   } else if (certificateStyle === "celestial-formal") {
     const headerGradient = context.createLinearGradient(0, 0, WIDTH, 372);
     headerGradient.addColorStop(0, NAVY);
@@ -511,8 +525,16 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const headerAccent = certificateStyle === "celestial-formal" ? GOLD_LIGHT : theme.accentText;
   const headerInk = certificateStyle === "celestial-formal" ? "#fbf8ef" : NAVY;
   context.fillStyle = headerAccent;
-  context.font = "600 28px Arial, sans-serif";
-  context.fillText(input.values.collectionName.toUpperCase(), 255, 134);
+  const collectionFontSize = fitFontSize(
+    context,
+    input.values.collectionName.toUpperCase(),
+    certificateStyle === "museum-ledger" ? 1050 : 1500,
+    28,
+    "Arial, sans-serif",
+    "600",
+  );
+  context.font = `600 ${collectionFontSize}px Arial, sans-serif`;
+  context.fillText(fitTextWithEllipsis(context, input.values.collectionName.toUpperCase(), certificateStyle === "museum-ledger" ? 1050 : 1500), 255, 134);
 
   context.fillStyle = headerAccent;
   context.font = "700 18px Arial, sans-serif";
@@ -523,7 +545,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const certificateTitleSize = fitFontSize(
     context,
     certificateTitle,
-    certificateStyle === "museum-ledger" ? 1370 : 1450,
+    certificateStyle === "museum-ledger" ? 1200 : 1450,
     72,
     "Georgia, serif",
   );
@@ -537,7 +559,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.textAlign = "right";
   context.fillStyle = certificateStyle === "museum-ledger" ? GOLD_LIGHT : headerAccent;
   context.font = "600 21px Arial, sans-serif";
-  context.fillText(certificateStyle === "museum-ledger" ? "CATALOG RECORD / COA ID" : "CERTIFICATE ID", 2080, 105);
+  context.fillText(certificateStyle === "museum-ledger" ? "COA CATALOG ID" : "CERTIFICATE ID", 2080, 105);
   context.fillStyle = certificateStyle === "museum-ledger" ? IVORY : headerInk;
   context.font = "600 36px Georgia, serif";
   context.fillText(input.values.certificateId, 2080, 166);
@@ -614,7 +636,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.fillRect(photoFrame.x, photoFrame.y + photoFrame.height - 54, photoFrame.width, 54);
     context.fillStyle = GOLD_LIGHT;
     context.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
-    context.fillText("DOCUMENTATION PLATE / 01", photoFrame.x + 22, photoFrame.y + photoFrame.height - 20);
+    context.fillText("PHOTO RECORD 01", photoFrame.x + 22, photoFrame.y + photoFrame.height - 20);
   }
   context.fillStyle = NAVY;
   context.font = "600 18px Arial, sans-serif";

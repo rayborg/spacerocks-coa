@@ -377,6 +377,7 @@ test("renders coherent specimen states and complete responsive certificate headi
         const meteoriteName = element.querySelector<HTMLElement>(".certificate-preview__title h3")!;
         const recordType = element.querySelector<HTMLElement>(".certificate-preview__record-type")!;
         const collection = element.querySelector<HTMLElement>(".certificate-preview__collection")!;
+        const collectionText = element.querySelector<HTMLElement>(".certificate-preview__collection > span:last-child")!;
         const idLabel = element.querySelector<HTMLElement>(".certificate-preview__id span")!;
         const idValue = element.querySelector<HTMLElement>(".certificate-preview__id > strong")!;
         const factLabels = Array.from(element.querySelectorAll<HTMLElement>(".certificate-preview__facts dt"));
@@ -384,7 +385,7 @@ test("renders coherent specimen states and complete responsive certificate headi
         const frame = element.querySelector<HTMLElement>(".certificate-preview__frame")!;
         const canvas = element.querySelector<HTMLElement>(".certificate-preview__canvas")!;
         const certificateText = Array.from(frame.querySelectorAll<HTMLElement>(
-          ".certificate-preview__collection, .certificate-preview__record-type, .certificate-preview__header > strong, .certificate-preview__id, .certificate-preview__id span, .certificate-preview__id > strong, .certificate-preview__title h3, .certificate-preview__title p, .certificate-preview__photo, .certificate-preview__facts dt, .certificate-preview__facts dd, .certificate-preview__weight span, .certificate-preview__weight strong, .certificate-preview__weight em, .certificate-preview__weight small, .certificate-preview__signoff span, .certificate-preview__signoff strong, .certificate-preview__signoff small, .certificate-preview__seal, .certificate-preview__seal small",
+          ".certificate-preview__collection, .certificate-preview__record-type, .certificate-preview__header > strong, .certificate-preview__id, .certificate-preview__id span, .certificate-preview__id > strong, .certificate-preview__title h3, .certificate-preview__title p, .certificate-preview__photo, .certificate-preview__photo-caption, .certificate-preview__facts dt, .certificate-preview__facts dd, .certificate-preview__weight span, .certificate-preview__weight strong, .certificate-preview__weight em, .certificate-preview__weight small, .certificate-preview__signoff span, .certificate-preview__signoff strong, .certificate-preview__signoff small, .certificate-preview__seal, .certificate-preview__seal small",
         ));
         return {
           headingText: heading.textContent,
@@ -394,6 +395,8 @@ test("renders coherent specimen states and complete responsive certificate headi
           headingFits: heading.scrollWidth <= heading.clientWidth,
           meteoriteNameFits: meteoriteName.scrollWidth <= meteoriteName.clientWidth,
           collectionFits: collection.scrollWidth <= collection.clientWidth,
+          collectionTextHandled: collectionText.scrollWidth <= collectionText.clientWidth
+            || getComputedStyle(collectionText).textOverflow === "ellipsis",
           idLabelFits: idLabel.scrollWidth <= idLabel.clientWidth,
           idValueFits: idValue.scrollWidth <= idValue.clientWidth,
           factLabelsFit: factLabels.every((node) => node.scrollWidth <= node.clientWidth),
@@ -426,10 +429,11 @@ test("renders coherent specimen states and complete responsive certificate headi
       });
       expect(geometry.headingText).toBe("Certificate of Authenticity");
       expect(geometry.recordTypeText).toBe(id === "museum-ledger" ? "Signed specimen catalog" : "Archival specimen record");
-      expect(geometry.idLabelText).toBe(id === "museum-ledger" ? "Catalog record / COA ID" : "Certificate ID");
+      expect(geometry.idLabelText).toBe(id === "museum-ledger" ? "COA catalog ID" : "Certificate ID");
       expect(geometry.headingFits, `${id} title clipping at ${width}px`).toBe(true);
       expect(geometry.meteoriteNameFits, `${id} representative meteorite name clipping at ${width}px`).toBe(true);
       expect(geometry.collectionFits, `${id} representative collection clipping at ${width}px`).toBe(true);
+      expect(geometry.collectionTextHandled, `${id} representative collection text handling at ${width}px`).toBe(true);
       expect(geometry.idLabelFits, `${id} representative ID label clipping at ${width}px`).toBe(true);
       expect(geometry.idValueFits, `${id} representative ID clipping at ${width}px`).toBe(true);
       expect(geometry.factLabelsFit, `${id} representative fact label clipping at ${width}px`).toBe(true);
@@ -440,7 +444,7 @@ test("renders coherent specimen states and complete responsive certificate headi
       expect(geometry.canonicalFrame.scale, `${id} scale at ${width}px`).toBeLessThanOrEqual(1);
       expect(geometry.canonicalFrame.minimumFontSize, `${id} canonical font floor at ${width}px`).toBeGreaterThanOrEqual(16);
       for (const [level, size, minimum, maximum] of [
-        ["record type", geometry.fontSizes.recordType, 16, 16],
+        ["record type", geometry.fontSizes.recordType, id === "museum-ledger" ? 20 : 16, id === "museum-ledger" ? 20 : 16],
         ["certificate heading", geometry.fontSizes.heading, 30, 30],
         ["certificate ID", geometry.fontSizes.certificateId, 24, 24],
         ["meteorite name", geometry.fontSizes.meteoriteName, 40, 40],
@@ -465,6 +469,69 @@ test("renders coherent specimen states and complete responsive certificate headi
       }
     }
   }
+
+  await page.setViewportSize({ width: 2048, height: 1150 });
+  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check();
+  const fontInflationStyle = await page.addStyleTag({
+    content: `
+      .certificate-preview--museum-ledger .certificate-preview__collection,
+      .certificate-preview--museum-ledger .certificate-preview__record-type,
+      .certificate-preview--museum-ledger .certificate-preview__id span,
+      .certificate-preview--museum-ledger .certificate-preview__id > strong,
+      .certificate-preview--museum-ledger .certificate-preview__photo-caption {
+        font-size: 24px !important;
+      }
+    `,
+  });
+  const inflatedMuseumHeader = await preview.evaluate((element) => {
+    const header = element.querySelector<HTMLElement>(".certificate-preview__header")!.getBoundingClientRect();
+    const title = element.querySelector<HTMLElement>(".certificate-preview__header > strong")!.getBoundingClientRect();
+    const id = element.querySelector<HTMLElement>(".certificate-preview__id")!.getBoundingClientRect();
+    const collection = element.querySelector<HTMLElement>(".certificate-preview__collection > span:last-child")!;
+    const mark = element.querySelector<HTMLElement>(".certificate-preview__collection .orbit-mark")!;
+    const markStyle = getComputedStyle(mark);
+    const caption = element.querySelector<HTMLElement>(".certificate-preview__photo-caption")!;
+    const textNodes = [
+      element.querySelector<HTMLElement>(".certificate-preview__record-type")!,
+      element.querySelector<HTMLElement>(".certificate-preview__id span")!,
+      element.querySelector<HTMLElement>(".certificate-preview__id > strong")!,
+      caption,
+    ];
+    return {
+      overflowingText: textNodes.filter((node) => node.scrollWidth > node.clientWidth).map((node) => ({
+        className: node.className,
+        text: node.textContent,
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+      })),
+      textStaysSingleLine: textNodes.every((node) => getComputedStyle(node).whiteSpace === "nowrap"),
+      collectionOverflows: collection.scrollWidth > collection.clientWidth,
+      collectionEllipsis: getComputedStyle(collection).textOverflow,
+      markWidth: Number.parseFloat(markStyle.width),
+      markHeight: Number.parseFloat(markStyle.height),
+      markFlexShrink: markStyle.flexShrink,
+      captionFits: caption.scrollWidth <= caption.clientWidth && caption.scrollHeight <= caption.clientHeight,
+      captionWhiteSpace: getComputedStyle(caption).whiteSpace,
+      idContained: id.left >= header.left - 1 && id.right <= header.right + 1
+        && id.top >= header.top - 1 && id.bottom <= header.bottom + 1,
+      titleAndIdDisjoint: !(title.left < id.right && title.right > id.left && title.top < id.bottom && title.bottom > id.top),
+    };
+  });
+  expect(inflatedMuseumHeader.overflowingText).toEqual([]);
+  expect(inflatedMuseumHeader.textStaysSingleLine).toBe(true);
+  expect(inflatedMuseumHeader.collectionOverflows).toBe(true);
+  expect(inflatedMuseumHeader.collectionEllipsis).toBe("ellipsis");
+  expect(inflatedMuseumHeader.markWidth).toBe(17);
+  expect(inflatedMuseumHeader.markHeight).toBe(17);
+  expect(inflatedMuseumHeader.markFlexShrink).toBe("0");
+  expect(inflatedMuseumHeader.captionFits).toBe(true);
+  expect(inflatedMuseumHeader.captionWhiteSpace).toBe("nowrap");
+  expect(inflatedMuseumHeader.idContained).toBe(true);
+  expect(inflatedMuseumHeader.titleAndIdDisjoint).toBe(true);
+  if (artifactDirectory) {
+    await preview.screenshot({ path: join(artifactDirectory, "inflated-museum-header-2048.png") });
+  }
+  await fontInflationStyle.evaluate((element) => element.remove());
 
   const longCertificateId = `COA-${"X".repeat(116)}`;
   const longOwner = "Long-form collection owner name ".repeat(8).trim();
@@ -504,7 +571,7 @@ test("renders coherent specimen states and complete responsive certificate headi
     const id = getComputedStyle(element.querySelector(".certificate-preview__id")!);
     const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
     const factLabel = getComputedStyle(element.querySelector(".certificate-preview__facts dt")!);
-    const photoCaption = getComputedStyle(element.querySelector(".certificate-preview__photo")!, "::after");
+    const photoCaption = element.querySelector<HTMLElement>(".certificate-preview__photo-caption")!;
     const weight = getComputedStyle(element.querySelector(".certificate-preview__weight")!);
     const seal = getComputedStyle(element.querySelector(".certificate-preview__seal")!);
     const watermark = getComputedStyle(element.querySelector(".certificate-preview__body")!, "::before");
@@ -512,7 +579,9 @@ test("renders coherent specimen states and complete responsive certificate headi
       accessionBackground: id.backgroundColor,
       factsBorder: facts.borderTopWidth,
       factLabelBackground: factLabel.backgroundColor,
-      photoCaption: photoCaption.content,
+      photoCaption: photoCaption.textContent,
+      photoCaptionFits: photoCaption.scrollWidth <= photoCaption.clientWidth && photoCaption.scrollHeight <= photoCaption.clientHeight,
+      photoCaptionWhiteSpace: getComputedStyle(photoCaption).whiteSpace,
       measurementRail: weight.borderLeftWidth,
       sealRadius: seal.borderRadius,
       sealBorder: seal.borderTopWidth,
@@ -522,7 +591,9 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
   expect(museumSignature.factLabelBackground).not.toBe("rgba(0, 0, 0, 0)");
-  expect(museumSignature.photoCaption).toContain("Documentation plate / 01");
+  expect(museumSignature.photoCaption).toContain("Photo record 01");
+  expect(museumSignature.photoCaptionFits).toBe(true);
+  expect(museumSignature.photoCaptionWhiteSpace).toBe("nowrap");
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);
   expect(museumSignature.sealRadius).toBe("50%");
   expect(Number.parseFloat(museumSignature.sealBorder)).toBeGreaterThanOrEqual(2);
@@ -874,6 +945,23 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   );
   expect(overlaps).toBe(false);
 
+  const longExportCollection = "Natural History Research Collection ".repeat(12).trim();
+  await page.locator('input[name="collectionName"]').fill(longExportCollection);
+  await page.evaluate(() => {
+    const captureWindow = window as typeof window & {
+      __coaHeaderDraws?: Array<{ text: string; width: number }>;
+    };
+    captureWindow.__coaHeaderDraws = [];
+    const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (...args) {
+      const [text, x, y] = args;
+      if (x === 255 && y === 134) {
+        captureWindow.__coaHeaderDraws!.push({ text: String(text), width: this.measureText(String(text)).width });
+      }
+      return originalFillText.apply(this, args);
+    };
+  });
+
   const packageDownload = page.waitForEvent("download", { timeout: 90_000 });
   await page.getByRole("button", { name: "Issue signed COA package" }).click();
   const download = await packageDownload;
@@ -881,6 +969,15 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(packagePath).toBeTruthy();
   expect(download.suggestedFilename()).toContain("TEST-COA-0001");
   await expect(page.getByText("Release created")).toBeVisible();
+  const collectionHeaderDraw = await page.evaluate(() => {
+    const captureWindow = window as typeof window & {
+      __coaHeaderDraws?: Array<{ text: string; width: number }>;
+    };
+    return captureWindow.__coaHeaderDraws?.at(-1);
+  });
+  expect(collectionHeaderDraw).toBeTruthy();
+  expect(collectionHeaderDraw!.text).toMatch(/\.\.\.$/);
+  expect(collectionHeaderDraw!.width).toBeLessThanOrEqual(1050);
 
   const packageBuffer = await readFile(packagePath!);
   const archive = await JSZip.loadAsync(packageBuffer);
