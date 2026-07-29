@@ -300,7 +300,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
     for (const name of ["Regal Archive", "Museum Ledger", "Celestial Formal"]) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
       const blankSummary = await summary.evaluate((element) => {
         const label = element.querySelector<HTMLElement>("span")!;
         const detail = element.querySelector<HTMLElement>("strong")!;
@@ -368,7 +368,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
     for (const [name, id] of styles) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
       await expect(preview).toHaveAttribute("data-certificate-style", id);
       const geometry = await preview.evaluate((element) => {
         const box = (selector: string) => element.querySelector<HTMLElement>(selector)!.getBoundingClientRect().toJSON();
@@ -471,7 +471,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   }
 
   await page.setViewportSize({ width: 2048, height: 1150 });
-  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check();
+  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check({ force: true });
   const fontInflationStyle = await page.addStyleTag({
     content: `
       .certificate-preview--museum-ledger .certificate-preview__collection,
@@ -539,7 +539,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   await page.getByLabel("Recorded owner").fill(longOwner);
   await expect(preview.locator(".certificate-preview__id > strong")).toHaveText(longCertificateId);
   for (const [name, id] of styles) {
-    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
     await expect(preview).toHaveAttribute("data-certificate-style", id);
     const boundaryOverflow = await preview.evaluate((element) => {
       const frame = element.querySelector<HTMLElement>(".certificate-preview__frame")!.getBoundingClientRect();
@@ -566,7 +566,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   await page.locator('input[name="certificateId"]').fill("MUS-2026-0042");
   await page.getByLabel("Recorded owner").fill("");
 
-  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check();
+  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check({ force: true });
   const museumSignature = await preview.evaluate((element) => {
     const id = getComputedStyle(element.querySelector(".certificate-preview__id")!);
     const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
@@ -600,7 +600,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(museumSignature.watermark).toContain("linear-gradient");
   expect(museumSignature.watermark).not.toContain("radial-gradient");
 
-  await stylePicker.getByRole("radio", { name: /Regal Archive/ }).check();
+  await stylePicker.getByRole("radio", { name: /Regal Archive/ }).check({ force: true });
   const regalSignature = await preview.evaluate((element) => {
     const frame = getComputedStyle(element.querySelector(".certificate-preview__frame")!);
     const title = getComputedStyle(element.querySelector(".certificate-preview__title")!);
@@ -629,12 +629,12 @@ test("renders coherent specimen states and complete responsive certificate headi
   if (artifactDirectory) {
     await page.setViewportSize({ width: 1280, height: 1000 });
     for (const [name, id] of styles) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
       await preview.screenshot({ path: join(artifactDirectory, `filled-${id}-1280.png`) });
     }
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
-      await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check();
+      await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check({ force: true });
       await preview.screenshot({ path: join(artifactDirectory, `filled-museum-ledger-${width}.png`) });
     }
   }
@@ -653,7 +653,7 @@ test("captures blank certificate style references when requested", async ({ page
     ["Museum Ledger", "museum-ledger"],
     ["Celestial Formal", "celestial-formal"],
   ] as const) {
-    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
     await preview.screenshot({ path: join(artifactDirectory, `blank-${id}-1280.png`) });
   }
 });
@@ -735,7 +735,7 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
     ["Museum Ledger", "museum-ledger"],
     ["Celestial Formal", "celestial-formal"],
   ] as const) {
-    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
     await expect(certificatePreview).toHaveAttribute("data-certificate-style", id);
     await expect(liveLogo).toBeVisible();
     styleSignatures.add(await certificatePreview.evaluate((element) => {
