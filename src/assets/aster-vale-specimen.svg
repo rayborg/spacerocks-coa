@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1050" viewBox="0 0 1400 1050" role="img" aria-labelledby="title desc">
+  <title id="title">Synthetic Aster Vale meteorite specimen visual</title>
+  <desc id="desc">An AI-authored vector illustration of a dark fusion-crusted meteorite on a measured archival photography surface.</desc>
+  <defs>
+    <radialGradient id="surface" cx="45%" cy="42%" r="72%">
+      <stop offset="0" stop-color="#59626a"/>
+      <stop offset=".58" stop-color="#26323a"/>
+      <stop offset="1" stop-color="#101820"/>
+    </radialGradient>
+    <radialGradient id="stone" cx="34%" cy="26%" r="78%">
+      <stop offset="0" stop-color="#6b5848"/>
+      <stop offset=".3" stop-color="#40352e"/>
+      <stop offset=".72" stop-color="#211e1c"/>
+      <stop offset="1" stop-color="#0b0c0d"/>
+    </radialGradient>
+    <linearGradient id="scale" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f0aa69" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#f0aa69"/>
+      <stop offset="1" stop-color="#f0aa69" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="rock" x="-20%" y="-20%" width="140%" height="150%">
+      <feTurbulence type="fractalNoise" baseFrequency=".018 .032" numOctaves="4" seed="17" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="34" xChannelSelector="R" yChannelSelector="G" result="shape"/>
+      <feGaussianBlur in="noise" stdDeviation="4" result="softNoise"/>
+      <feDiffuseLighting in="softNoise" surfaceScale="6" diffuseConstant=".72" lighting-color="#735c49" result="light">
+        <feDistantLight azimuth="224" elevation="48"/>
+      </feDiffuseLighting>
+      <feComposite in="light" in2="shape" operator="in" result="lit"/>
+      <feBlend in="shape" in2="lit" mode="soft-light"/>
+      <feDropShadow dx="28" dy="38" stdDeviation="30" flood-color="#000000" flood-opacity=".72"/>
+    </filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".7" numOctaves="2" seed="8"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="table" tableValues="0 .12"/></feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="1400" height="1050" fill="url(#surface)"/>
+  <g opacity=".22" stroke="#bac4ca" stroke-width="2">
+    <path d="M0 150h1400M0 300h1400M0 450h1400M0 600h1400M0 750h1400M0 900h1400"/>
+    <path d="M175 0v1050M350 0v1050M525 0v1050M700 0v1050M875 0v1050M1050 0v1050M1225 0v1050"/>
+  </g>
+  <rect width="1400" height="1050" filter="url(#grain)" opacity=".55"/>
+  <path d="M364 255c82-116 246-169 403-127 154 41 286 160 302 308 16 151-70 310-215 388-140 75-341 58-462-41-116-95-150-263-88-394 16-35 36-92 60-134Z" fill="url(#stone)" stroke="#a4774f" stroke-width="8" filter="url(#rock)"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M407 354c81-72 213-103 329-75M378 521c108-48 238-55 354-24M488 718c102 28 217 19 307-26" stroke="#b18d69" stroke-width="11" opacity=".2"/>
+    <path d="M483 299c-25 74-22 147 10 215M672 237c-14 53-5 111 24 158M916 376c-52 66-66 138-42 217M599 577c41 30 82 41 125 34" stroke="#171615" stroke-width="19" opacity=".48"/>
+    <path d="M446 622c69 22 134 20 195-7M744 700c55-34 99-77 129-130" stroke="#8f735b" stroke-width="8" opacity=".24"/>
+  </g>
+  <g fill="#181716" stroke="#a08167" stroke-width="6" opacity=".72">
+    <ellipse cx="451" cy="431" rx="47" ry="29" transform="rotate(-31 451 431)"/>
+    <ellipse cx="574" cy="339" rx="27" ry="20" transform="rotate(12 574 339)"/>
+    <ellipse cx="781" cy="355" rx="58" ry="31" transform="rotate(24 781 355)"/>
+    <ellipse cx="924" cy="482" rx="31" ry="49" transform="rotate(31 924 482)"/>
+    <ellipse cx="533" cy="583" rx="34" ry="24" transform="rotate(-16 533 583)"/>
+    <ellipse cx="727" cy="538" rx="22" ry="17" transform="rotate(9 727 538)"/>
+    <ellipse cx="833" cy="664" rx="43" ry="27" transform="rotate(-22 833 664)"/>
+    <ellipse cx="596" cy="742" rx="25" ry="16" transform="rotate(18 596 742)"/>
+  </g>
+  <path d="M170 918h1060" stroke="url(#scale)" stroke-width="5"/>
+  <g fill="#f0aa69" font-family="Arial,sans-serif">
+    <text x="700" y="973" font-size="28" font-weight="700" text-anchor="middle" letter-spacing="7">SYNTHETIC DEMONSTRATION VISUAL</text>
+    <text x="700" y="1011" font-size="18" text-anchor="middle" letter-spacing="4" opacity=".82">NOT A PHOTOGRAPH OF A REAL SPECIMEN</text>
+  </g>
+  <g fill="#f8e5cc" font-family="Arial,sans-serif" opacity=".72">
+    <text x="55" y="70" font-size="22" letter-spacing="4">ASTER VALE / DEMO FRAME 01</text>
+    <text x="1345" y="70" font-size="22" text-anchor="end" letter-spacing="3">SCALE REFERENCE: 50 MM</text>
+  </g>
+</svg>

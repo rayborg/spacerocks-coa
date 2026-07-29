@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import JSZip from "jszip";
+import { exampleCertificateValues } from "../../src/exampleCertificate";
 
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -129,6 +130,53 @@ function duplicateCentralDirectoryEntry(zip: Buffer, targetSuffix: string): Buff
   result.writeUInt32LE(centralSize + duplicate.length, nextEocdOffset + 12);
   return result;
 }
+
+test("showcases and loads a complete synthetic certificate", async ({ page }) => {
+  await page.goto("/#example");
+
+  await expect(page.getByRole("heading", { name: "See every layer come together." })).toBeVisible();
+  await expect(page.getByText("Fully synthetic demonstration", { exact: true })).toBeVisible();
+  const finalCertificate = page.getByRole("img", { name: /Synthetic John Doe certificate/ });
+  await expect(finalCertificate).toBeVisible();
+  const imageDimensions = await finalCertificate.evaluate((element: HTMLImageElement) => ({
+    complete: element.complete,
+    height: element.naturalHeight,
+    width: element.naturalWidth,
+  }));
+  expect(imageDimensions).toEqual({ complete: true, height: 1700, width: 2200 });
+
+  const fullRecord = page.locator(".example-record");
+  await fullRecord.locator("summary").click();
+  await expect(fullRecord.locator("dt")).toHaveCount(40);
+  await expect(fullRecord.locator("dd")).toHaveCount(40);
+  expect(await fullRecord.locator("dd").allTextContents()).not.toContain("");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileWidth = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: window.innerWidth }));
+  expect(mobileWidth.document).toBeLessThanOrEqual(mobileWidth.viewport);
+
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.getByRole("button", { name: "Load in workbench" }).click();
+  await expect(page.getByText(/Complete John Doe example loaded/).first()).toBeVisible();
+
+  for (const [name, value] of Object.entries(exampleCertificateValues)) {
+    if (name === "certificateStyle" || name === "certificateTheme") {
+      await expect(page.locator(`input[name="${name}"][value="${value}"]`), `${name} example selection`).toBeChecked();
+    } else {
+      await expect(page.locator(`[name="${name}"]`), `${name} example value`).toHaveValue(value);
+    }
+  }
+
+  await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-style", "museum-ledger");
+  await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-theme", "desert-copper");
+  await expect(page.locator(".certificate-preview__logo")).toHaveAttribute("src", /^blob:/);
+  await expect(page.locator(".certificate-preview__photo img")).toHaveAttribute("src", /^blob:/);
+  await expect(page.locator(".photo-item")).toContainText("aster-vale-001-demo-specimen.svg");
+  await expect(page.locator(".photo-item").getByLabel("Caption")).toHaveValue(/synthetic specimen visual/i);
+  await expect(page.locator(".photo-item").getByLabel("Capture date")).toHaveValue("2026-07-29");
+  await expect(page.getByLabel(/I attest this is an exact/)).not.toBeChecked();
+  await expect(page.getByText("No key", { exact: true })).toBeVisible();
+});
 
 test("starts with blank content, provisional preview labels, and readable responsive controls", async ({ page }) => {
   await page.goto("/#builder");
@@ -930,7 +978,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('select[name="specimenForm"]').selectOption({ label: "Fragment" });
   await page.locator('input[name="numberOfPieces"]').fill("1");
   await page.locator('input[name="recordedOwner"]').fill("Test Owner");
-  await page.locator("details", { hasText: "Fall, find, and provenance" }).locator("summary").click();
+  await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
   await page.locator('input[name="fallStatus"]').fill("Find");
   await page.locator('input[name="fallDate"]').fill("2024-01-15");
   await page.locator('input[name="country"]').fill("Canada");

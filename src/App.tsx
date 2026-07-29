@@ -20,6 +20,10 @@ import {
   certificateStyles,
   getCertificateStyle,
 } from "./certificateStyles";
+import { exampleCertificateFieldGroups, exampleCertificateValues } from "./exampleCertificate";
+import exampleLogoUrl from "./assets/aster-vale-logo.svg";
+import exampleSpecimenUrl from "./assets/aster-vale-specimen.svg";
+import exampleCertificateUrl from "./assets/john-doe-example-coa.png";
 
 const requiredText = (label: string) => z.string().trim().min(1, `${label} is required.`);
 const optionalEmail = z
@@ -141,6 +145,14 @@ const defaultValues: FormValues = {
   invoiceReference: "",
   transferNotes: "",
 };
+
+function getExampleFieldValue(key: keyof FormValues): string {
+  const value = exampleCertificateValues[key];
+  if (key === "certificateStyle") return getCertificateStyle(exampleCertificateValues.certificateStyle).name;
+  if (key === "certificateTheme") return getCertificateTheme(exampleCertificateValues.certificateTheme).name;
+  if (key === "certificateStatus") return value.charAt(0).toUpperCase() + value.slice(1);
+  return value;
+}
 
 function Field({
   label,
@@ -358,6 +370,7 @@ export default function App() {
     control,
     handleSubmit,
     getValues,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -382,6 +395,8 @@ export default function App() {
   const [photoStatus, setPhotoStatus] = useState("");
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationBusy, setGenerationBusy] = useState(false);
+  const [exampleBusy, setExampleBusy] = useState(false);
+  const [exampleStatus, setExampleStatus] = useState("");
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string }>();
   useEffect(() => {
     if (!logo) {
@@ -502,6 +517,51 @@ export default function App() {
     });
   };
 
+  const loadCompleteExample = async () => {
+    setExampleBusy(true);
+    setExampleStatus("Loading the complete synthetic record and its generated assets...");
+    try {
+      const [logoResponse, specimenResponse] = await Promise.all([
+        fetch(exampleLogoUrl),
+        fetch(exampleSpecimenUrl),
+      ]);
+      if (!logoResponse.ok || !specimenResponse.ok) throw new Error("The demonstration assets could not be loaded.");
+
+      const lastModified = Date.parse("2026-07-29T00:00:00Z");
+      const logoFile = new File([await logoResponse.blob()], "aster-vale-demo-logo.svg", {
+        type: "image/svg+xml",
+        lastModified,
+      });
+      const specimenFile = new File([await specimenResponse.blob()], "aster-vale-001-demo-specimen.svg", {
+        type: "image/svg+xml",
+        lastModified,
+      });
+      const specimenPreviewUrl = URL.createObjectURL(specimenFile);
+
+      reset(exampleCertificateValues);
+      setLogo(logoFile);
+      setPhotos((current) => {
+        current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+        return [{
+          id: "synthetic-example-specimen",
+          file: specimenFile,
+          previewUrl: specimenPreviewUrl,
+          caption: "AI-generated synthetic specimen visual - demonstration only",
+          captureDate: "2026-07-29",
+          isUnmodifiedOriginal: false,
+        }];
+      });
+      setPhotoStatus("");
+      setGenerationStatus("");
+      setReceipt(undefined);
+      setExampleStatus("Complete John Doe example loaded. Replace the synthetic visual and create your own signing identity before issuing a real certificate.");
+    } catch (error) {
+      setExampleStatus(error instanceof Error ? error.message : "The complete example could not be loaded.");
+    } finally {
+      setExampleBusy(false);
+    }
+  };
+
   const generatePackage = async (values: FormValues) => {
     setReceipt(undefined);
     if (!identity) {
@@ -545,6 +605,7 @@ export default function App() {
           <span><strong>Spacerocks</strong><small>COA Studio</small></span>
         </a>
         <nav aria-label="Primary navigation">
+          <a href="#example">Example</a>
           <a href="#builder">Create</a>
           <a href="#verify">Verify</a>
           <a href="#method">Method</a>
@@ -586,11 +647,84 @@ export default function App() {
           <div><strong>03</strong><span><b>Open and portable</b>JSON, PEM, text, PNG, PDF, and a plain Python verifier.</span></div>
         </section>
 
+        <section className="example-section" id="example">
+          <div className="section-heading section-heading--light">
+            <p className="eyebrow"><span>02</span> A complete synthetic release</p>
+            <h2>See every layer come together.</h2>
+            <p>This fictional John Doe certificate was filled, signed, rendered, and packaged with the tools on this site. The logo, specimen visual, identity, contact details, provenance, and meteorite record are artificial and exist only as a transparent demonstration.</p>
+          </div>
+
+          <div className="example-showcase">
+            <div className="example-certificate">
+              <div className="example-certificate__head">
+                <span>Final site-generated COA</span>
+                <small>2200 x 1700 PNG / Museum Ledger</small>
+              </div>
+              <a className="example-certificate__image" href={exampleCertificateUrl} target="_blank" rel="noreferrer" aria-label="Open the full-resolution synthetic John Doe certificate">
+                <img src={exampleCertificateUrl} alt="Synthetic John Doe certificate for the fictional Aster Vale 001 demonstration meteorite" />
+              </a>
+            </div>
+
+            <aside className="example-summary" aria-label="Synthetic example summary">
+              <span className="example-summary__badge">Fully synthetic demonstration</span>
+              <img src={exampleLogoUrl} alt="Fictional Aster Vale Meteorite Archive logo" />
+              <h3>Aster Vale 001 - DEMO</h3>
+              <p>A complete fictional L5 record issued to John Doe with generated evidence, a disposable demonstration signature, and no real-world ownership claim.</p>
+              <dl>
+                <div><dt>Issuer</dt><dd>John Doe</dd></div>
+                <div><dt>Address</dt><dd>100 Example Observatory Road, Flagstaff, AZ</dd></div>
+                <div><dt>Phone</dt><dd>+1 202 555 0147</dd></div>
+                <div><dt>Certificate</dt><dd>DEMO-AV-2026-0042</dd></div>
+                <div><dt>Specimen</dt><dd>42.73 g complete individual</dd></div>
+                <div><dt>Visual</dt><dd>AI-authored SVG, not a real photograph</dd></div>
+              </dl>
+              <div className="example-summary__actions">
+                <a className="button button--gold" href={exampleCertificateUrl} target="_blank" rel="noreferrer">Open full-size COA</a>
+                <button className="button button--outline" type="button" disabled={exampleBusy} onClick={() => void loadCompleteExample()}>
+                  {exampleBusy ? "Loading example..." : "Load in workbench"}
+                </button>
+              </div>
+              <small aria-live="polite">{exampleStatus}</small>
+            </aside>
+          </div>
+
+          <details className="example-record">
+            <summary><span>Complete source record</span><strong>Review all 40 populated fields</strong></summary>
+            <div className="example-record__groups">
+              {exampleCertificateFieldGroups.map((group) => (
+                <section key={group.title}>
+                  <h3>{group.title}</h3>
+                  <dl>
+                    {group.fields.map((field) => (
+                      <div key={field.key}>
+                        <dt>{field.label}</dt>
+                        <dd>{getExampleFieldValue(field.key)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+            </div>
+          </details>
+        </section>
+
         <section className="builder-section" id="builder">
           <div className="section-heading">
-            <p className="eyebrow eyebrow--dark"><span>02</span> Issue a self-contained record</p>
+            <p className="eyebrow eyebrow--dark"><span>03</span> Issue a self-contained record</p>
             <h2>Certificate workbench</h2>
             <p>Complete the record, attach exact source photographs, unlock your issuer identity, then export one signed verification package.</p>
+          </div>
+
+          <div className="example-loader">
+            <div>
+              <span>Synthetic demonstration</span>
+              <strong>Start with the complete John Doe example</strong>
+              <p>Fills every record field and adds an original fictional logo and AI-authored specimen visual, replacing the current unsaved draft. No real person, specimen, ownership, or Meteoritical Bulletin entry is represented.</p>
+            </div>
+            <button className="button button--outline" type="button" disabled={exampleBusy} onClick={() => void loadCompleteExample()}>
+              {exampleBusy ? "Loading example..." : "Load complete example"}
+            </button>
+            <small aria-live="polite">{exampleStatus}</small>
           </div>
 
           <form className="builder-grid" onSubmit={handleSubmit(generatePackage, () => setGenerationStatus("Review the highlighted required fields."))}>
@@ -907,7 +1041,7 @@ export default function App() {
 
         <section className="verify-section" id="verify">
           <div className="section-heading section-heading--light">
-            <p className="eyebrow"><span>03</span> Trust, but verify</p>
+            <p className="eyebrow"><span>04</span> Trust, but verify</p>
             <h2>Check the proof in your browser.</h2>
             <p>Verification recalculates the cryptography from the package itself. A green report means the files are internally intact; independently confirm that the fingerprint belongs to the named issuer.</p>
           </div>
@@ -916,7 +1050,7 @@ export default function App() {
 
         <section className="method-section" id="method">
           <div className="section-heading">
-            <p className="eyebrow eyebrow--dark"><span>04</span> The method</p>
+            <p className="eyebrow eyebrow--dark"><span>05</span> The method</p>
             <h2>Four open checks. No permanent middleman.</h2>
           </div>
           <div className="method-grid">
@@ -935,7 +1069,7 @@ export default function App() {
       <footer>
         <div className="brand brand--footer"><span className="brand__mark"><i /></span><span><strong>Spacerocks</strong><small>COA Studio</small></span></div>
         <p>Self-contained meteorite records built with open formats and issuer-controlled cryptography.</p>
-        <div><a href="#builder">Create</a><a href="#verify">Verify</a><a href="https://www.lpi.usra.edu/meteor/" target="_blank" rel="noreferrer">Meteoritical Bulletin</a></div>
+        <div><a href="#example">Example</a><a href="#builder">Create</a><a href="#verify">Verify</a><a href="https://www.lpi.usra.edu/meteor/" target="_blank" rel="noreferrer">Meteoritical Bulletin</a></div>
       </footer>
     </>
   );
