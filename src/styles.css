@@ -1970,6 +1970,25 @@ a {
   line-height: 1.08;
 }
 
+.certificate-preview__weight--empty {
+  gap: clamp(2px, 0.5cqw, 4px);
+  padding: 2%;
+}
+
+.certificate-preview__weight--empty span {
+  font-size: clamp(3.25px, 0.8cqw, 5px);
+  letter-spacing: 0.06em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.certificate-preview__weight--empty strong {
+  overflow-wrap: normal;
+  font-size: clamp(5px, 1cqw, 9px);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
 .certificate-preview__weight small {
   font-size: 0.52em;
 }

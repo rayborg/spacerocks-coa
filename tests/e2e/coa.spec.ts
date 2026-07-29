@@ -291,6 +291,31 @@ test("renders coherent specimen states and complete responsive certificate headi
   const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
 
   await expect(summary).toHaveClass(/certificate-preview__weight--empty/);
+  for (const width of [1280, 760, 390, 320]) {
+    await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+    for (const name of ["Regal Archive", "Museum Ledger", "Celestial Formal"]) {
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      const blankSummary = await summary.evaluate((element) => {
+        const label = element.querySelector<HTMLElement>("span")!;
+        const detail = element.querySelector<HTMLElement>("strong")!;
+        return {
+          labelSize: Number.parseFloat(getComputedStyle(label).fontSize),
+          detailSize: Number.parseFloat(getComputedStyle(detail).fontSize),
+          labelFits: label.scrollWidth <= label.clientWidth,
+          detailFits: detail.scrollWidth <= detail.clientWidth,
+          labelWhiteSpace: getComputedStyle(label).whiteSpace,
+          detailWhiteSpace: getComputedStyle(detail).whiteSpace,
+        };
+      });
+      expect(blankSummary.labelSize, `${name} blank label at ${width}px`).toBeLessThanOrEqual(5);
+      expect(blankSummary.detailSize, `${name} blank detail at ${width}px`).toBeLessThanOrEqual(9);
+      expect(blankSummary.labelFits, `${name} blank label clipping at ${width}px`).toBe(true);
+      expect(blankSummary.detailFits, `${name} blank detail clipping at ${width}px`).toBe(true);
+      expect(blankSummary.labelWhiteSpace).toBe("nowrap");
+      expect(blankSummary.detailWhiteSpace).toBe("nowrap");
+    }
+  }
+
   await page.getByLabel("Weight (grams)").fill("18.25");
   await expect(summary).toHaveAttribute("data-specimen-state", "partial");
   await expect(summary.locator("span")).toHaveText("Recorded weight");
