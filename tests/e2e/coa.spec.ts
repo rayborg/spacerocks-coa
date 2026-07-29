@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import JSZip from "jszip";
 import { exampleCertificateValues } from "../../src/exampleCertificate";
+import { CERTIFICATE_EXPORT_FONT_FLOOR } from "../../src/lib/certificate";
 
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -144,6 +145,15 @@ test("showcases and loads a complete synthetic certificate", async ({ page }) =>
     width: element.naturalWidth,
   }));
   expect(imageDimensions).toEqual({ complete: true, height: 1700, width: 2200 });
+  const displayedType = await finalCertificate.evaluate((element: HTMLImageElement, exportFontFloor) => {
+    const scale = element.getBoundingClientRect().width / element.naturalWidth;
+    return {
+      commonMinimum: 18 * scale,
+      smallest: exportFontFloor * scale,
+    };
+  }, CERTIFICATE_EXPORT_FONT_FLOOR);
+  expect(displayedType.smallest).toBeGreaterThanOrEqual(10);
+  expect(displayedType.commonMinimum).toBeGreaterThanOrEqual(11);
 
   const fullRecord = page.locator(".example-record");
   await fullRecord.locator("summary").click();
@@ -152,6 +162,18 @@ test("showcases and loads a complete synthetic certificate", async ({ page }) =>
   expect(await fullRecord.locator("dd").allTextContents()).not.toContain("");
 
   await page.setViewportSize({ width: 390, height: 844 });
+  const exampleViewport = page.getByLabel("Scrollable final synthetic certificate");
+  const exampleScroll = await exampleViewport.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    overflowX: getComputedStyle(element).overflowX,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(exampleScroll.overflowX).toBe("auto");
+  expect(exampleScroll.scrollWidth).toBeGreaterThan(exampleScroll.clientWidth);
+  await exampleViewport.evaluate((element) => { element.scrollLeft = 0; });
+  await exampleViewport.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => exampleViewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   const mobileWidth = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   expect(mobileWidth.document).toBeLessThanOrEqual(mobileWidth.viewport);
 
@@ -171,8 +193,8 @@ test("showcases and loads a complete synthetic certificate", async ({ page }) =>
   await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-theme", "desert-copper");
   await expect(page.locator(".certificate-preview__logo")).toHaveAttribute("src", /^blob:/);
   await expect(page.locator(".certificate-preview__photo img")).toHaveAttribute("src", /^blob:/);
-  await expect(page.locator(".photo-item")).toContainText("aster-vale-001-demo-specimen.svg");
-  await expect(page.locator(".photo-item").getByLabel("Caption")).toHaveValue(/synthetic specimen visual/i);
+  await expect(page.locator(".photo-item")).toContainText("aster-vale-001-demo-specimen.jpg");
+  await expect(page.locator(".photo-item").getByLabel("Caption")).toHaveValue(/synthetic specimen image/i);
   await expect(page.locator(".photo-item").getByLabel("Capture date")).toHaveValue("2026-07-29");
   await expect(page.getByLabel(/I attest this is an exact/)).not.toBeChecked();
   await expect(page.getByText("No key", { exact: true })).toBeVisible();
@@ -1026,11 +1048,20 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.evaluate(() => {
     const captureWindow = window as typeof window & {
       __coaHeaderDraws?: Array<{ text: string; width: number }>;
+      __coaMinimumDrawnFontSize?: number;
     };
     captureWindow.__coaHeaderDraws = [];
+    captureWindow.__coaMinimumDrawnFontSize = Number.POSITIVE_INFINITY;
     const originalFillText = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (...args) {
       const [text, x, y] = args;
+      const fontSize = this.font.match(/([0-9.]+)px/)?.[1];
+      if (fontSize) {
+        captureWindow.__coaMinimumDrawnFontSize = Math.min(
+          captureWindow.__coaMinimumDrawnFontSize!,
+          Number.parseFloat(fontSize),
+        );
+      }
       if (x === 255 && y === 134) {
         captureWindow.__coaHeaderDraws!.push({ text: String(text), width: this.measureText(String(text)).width });
       }
@@ -1048,12 +1079,17 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   const collectionHeaderDraw = await page.evaluate(() => {
     const captureWindow = window as typeof window & {
       __coaHeaderDraws?: Array<{ text: string; width: number }>;
+      __coaMinimumDrawnFontSize?: number;
     };
-    return captureWindow.__coaHeaderDraws?.at(-1);
+    return {
+      collection: captureWindow.__coaHeaderDraws?.at(-1),
+      minimumFontSize: captureWindow.__coaMinimumDrawnFontSize,
+    };
   });
-  expect(collectionHeaderDraw).toBeTruthy();
-  expect(collectionHeaderDraw!.text).toMatch(/\.\.\.$/);
-  expect(collectionHeaderDraw!.width).toBeLessThanOrEqual(1050);
+  expect(collectionHeaderDraw.collection).toBeTruthy();
+  expect(collectionHeaderDraw.collection!.text).toMatch(/\.\.\.$/);
+  expect(collectionHeaderDraw.collection!.width).toBeLessThanOrEqual(1050);
+  expect(collectionHeaderDraw.minimumFontSize).toBeGreaterThanOrEqual(CERTIFICATE_EXPORT_FONT_FLOOR);
 
   const packageBuffer = await readFile(packagePath!);
   const archive = await JSZip.loadAsync(packageBuffer);

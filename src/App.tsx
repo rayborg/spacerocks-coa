@@ -22,7 +22,7 @@ import {
 } from "./certificateStyles";
 import { exampleCertificateFieldGroups, exampleCertificateValues } from "./exampleCertificate";
 import exampleLogoUrl from "./assets/aster-vale-logo.svg";
-import exampleSpecimenUrl from "./assets/aster-vale-specimen.svg";
+import exampleSpecimenUrl from "./assets/aster-vale-specimen.jpg";
 import exampleCertificateUrl from "./assets/john-doe-example-coa.png";
 
 const requiredText = (label: string) => z.string().trim().min(1, `${label} is required.`);
@@ -532,8 +532,8 @@ export default function App() {
         type: "image/svg+xml",
         lastModified,
       });
-      const specimenFile = new File([await specimenResponse.blob()], "aster-vale-001-demo-specimen.svg", {
-        type: "image/svg+xml",
+      const specimenFile = new File([await specimenResponse.blob()], "aster-vale-001-demo-specimen.jpg", {
+        type: "image/jpeg",
         lastModified,
       });
       const specimenPreviewUrl = URL.createObjectURL(specimenFile);
@@ -546,7 +546,7 @@ export default function App() {
           id: "synthetic-example-specimen",
           file: specimenFile,
           previewUrl: specimenPreviewUrl,
-          caption: "AI-generated synthetic specimen visual - demonstration only",
+          caption: "AI-generated synthetic specimen image - demonstration only",
           captureDate: "2026-07-29",
           isUnmodifiedOriginal: false,
         }];
@@ -658,11 +658,22 @@ export default function App() {
             <div className="example-certificate">
               <div className="example-certificate__head">
                 <span>Final site-generated COA</span>
-                <small>2200 x 1700 PNG / Museum Ledger</small>
+                <small>10px minimum / scroll if needed</small>
               </div>
-              <a className="example-certificate__image" href={exampleCertificateUrl} target="_blank" rel="noreferrer" aria-label="Open the full-resolution synthetic John Doe certificate">
-                <img src={exampleCertificateUrl} alt="Synthetic John Doe certificate for the fictional Aster Vale 001 demonstration meteorite" />
-              </a>
+              <div
+                className="example-certificate__viewport"
+                tabIndex={0}
+                aria-label="Scrollable final synthetic certificate"
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                  event.preventDefault();
+                  event.currentTarget.scrollLeft += event.key === "ArrowRight" ? 100 : -100;
+                }}
+              >
+                <a className="example-certificate__image" href={exampleCertificateUrl} target="_blank" rel="noreferrer" aria-label="Open the full-resolution synthetic John Doe certificate">
+                  <img src={exampleCertificateUrl} alt="Synthetic John Doe certificate for the fictional Aster Vale 001 demonstration meteorite" />
+                </a>
+              </div>
             </div>
 
             <aside className="example-summary" aria-label="Synthetic example summary">
@@ -676,7 +687,7 @@ export default function App() {
                 <div><dt>Phone</dt><dd>+1 202 555 0147</dd></div>
                 <div><dt>Certificate</dt><dd>DEMO-AV-2026-0042</dd></div>
                 <div><dt>Specimen</dt><dd>42.73 g complete individual</dd></div>
-                <div><dt>Visual</dt><dd>AI-authored SVG, not a real photograph</dd></div>
+                <div><dt>Visual</dt><dd>AI-generated JPEG, not a real photograph</dd></div>
               </dl>
               <div className="example-summary__actions">
                 <a className="button button--gold" href={exampleCertificateUrl} target="_blank" rel="noreferrer">Open full-size COA</a>

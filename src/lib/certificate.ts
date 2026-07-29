@@ -7,6 +7,7 @@ import { displayDate } from "./core";
 
 const WIDTH = 2200;
 const HEIGHT = 1700;
+export const CERTIFICATE_EXPORT_FONT_FLOOR = 16;
 
 export interface CertificateRenderInput {
   values: FormValues;
@@ -48,7 +49,7 @@ function fitFontSize(
   weight = "400",
 ) {
   let size = startingSize;
-  while (size > 12) {
+  while (size > CERTIFICATE_EXPORT_FONT_FLOOR) {
     context.font = `${weight} ${size}px ${family}`;
     if (context.measureText(text).width <= maximumWidth) return size;
     size -= 2;
@@ -583,7 +584,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const titleSize = fitFontSize(context, input.values.meteoriteName, 1260, 98, "Georgia, serif");
   context.font = `400 ${titleSize}px Georgia, serif`;
   context.fillStyle = NAVY;
-  context.fillText(input.values.meteoriteName, 112, 522);
+  context.fillText(fitTextWithEllipsis(context, input.values.meteoriteName, 1260), 112, 522);
   context.fillStyle = theme.accentText;
   context.font = "600 31px Arial, sans-serif";
   context.fillText(input.values.classification.toUpperCase(), 116, 590);
@@ -635,7 +636,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.fillStyle = NAVY;
     context.fillRect(photoFrame.x, photoFrame.y + photoFrame.height - 54, photoFrame.width, 54);
     context.fillStyle = GOLD_LIGHT;
-    context.font = "700 15px ui-monospace, SFMono-Regular, Menlo, monospace";
+    context.font = `700 ${CERTIFICATE_EXPORT_FONT_FLOOR}px ui-monospace, SFMono-Regular, Menlo, monospace`;
     context.fillText("PHOTO RECORD 01", photoFrame.x + 22, photoFrame.y + photoFrame.height - 20);
   }
   context.fillStyle = NAVY;
