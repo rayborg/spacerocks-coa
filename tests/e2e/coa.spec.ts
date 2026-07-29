@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -29,6 +29,20 @@ const themeCases = [
   ["Arctic Slate", "arctic-slate", ["#173549", "#315c70", "#89641d", "#dfc27c", "#eaf4f7"]],
   ["Monochrome Ink", "monochrome-ink", ["#101112", "#323538", "#5b6065", "#d6d8da", "#f6f6f3"]],
 ] as const;
+
+const certificateStyleCases = [
+  ["Regal Archive", "regal-archive"],
+  ["Museum Ledger", "museum-ledger"],
+  ["Celestial Formal", "celestial-formal"],
+] as const;
+
+async function selectCertificateStyle(stylePicker: Locator, preview: Locator, name: string, id: string): Promise<void> {
+  const radio = stylePicker.getByRole("radio", { name });
+  // Rendering tests bypass pointer hit-testing on the transparent, animated style cards.
+  await radio.evaluate((element: HTMLInputElement) => element.click());
+  await expect(radio).toBeChecked();
+  await expect(preview).toHaveAttribute("data-certificate-style", id);
+}
 
 interface BoundingBox {
   x: number;
@@ -299,8 +313,8 @@ test("renders coherent specimen states and complete responsive certificate headi
   await expect(summary).toHaveClass(/certificate-preview__weight--empty/);
   for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
-    for (const name of ["Regal Archive", "Museum Ledger", "Celestial Formal"]) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
+    for (const [name, id] of certificateStyleCases) {
+      await selectCertificateStyle(stylePicker, preview, name, id);
       const blankSummary = await summary.evaluate((element) => {
         const label = element.querySelector<HTMLElement>("span")!;
         const detail = element.querySelector<HTMLElement>("strong")!;
@@ -357,19 +371,13 @@ test("renders coherent specimen states and complete responsive certificate headi
   await page.getByLabel("Collection or business").fill("Natural History Research Collection");
   await page.getByLabel("Weight (grams)").fill("18.25");
 
-  const styles = [
-    ["Regal Archive", "regal-archive"],
-    ["Museum Ledger", "museum-ledger"],
-    ["Celestial Formal", "celestial-formal"],
-  ] as const;
   const artifactDirectory = process.env.COA_ARTIFACT_DIR;
   if (artifactDirectory) await mkdir(artifactDirectory, { recursive: true });
 
   for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
-    for (const [name, id] of styles) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
-      await expect(preview).toHaveAttribute("data-certificate-style", id);
+    for (const [name, id] of certificateStyleCases) {
+      await selectCertificateStyle(stylePicker, preview, name, id);
       const geometry = await preview.evaluate((element) => {
         const box = (selector: string) => element.querySelector<HTMLElement>(selector)!.getBoundingClientRect().toJSON();
         const fontSize = (selector: string) => Number.parseFloat(getComputedStyle(element.querySelector(selector)!).fontSize);
@@ -471,7 +479,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   }
 
   await page.setViewportSize({ width: 2048, height: 1150 });
-  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check({ force: true });
+  await selectCertificateStyle(stylePicker, preview, "Museum Ledger", "museum-ledger");
   const fontInflationStyle = await page.addStyleTag({
     content: `
       .certificate-preview--museum-ledger .certificate-preview__collection,
@@ -538,9 +546,8 @@ test("renders coherent specimen states and complete responsive certificate headi
   await page.locator('input[name="certificateId"]').fill(longCertificateId);
   await page.getByLabel("Recorded owner").fill(longOwner);
   await expect(preview.locator(".certificate-preview__id > strong")).toHaveText(longCertificateId);
-  for (const [name, id] of styles) {
-    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
-    await expect(preview).toHaveAttribute("data-certificate-style", id);
+  for (const [name, id] of certificateStyleCases) {
+    await selectCertificateStyle(stylePicker, preview, name, id);
     const boundaryOverflow = await preview.evaluate((element) => {
       const frame = element.querySelector<HTMLElement>(".certificate-preview__frame")!.getBoundingClientRect();
       const idValue = element.querySelector<HTMLElement>(".certificate-preview__id > strong")!;
@@ -566,7 +573,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   await page.locator('input[name="certificateId"]').fill("MUS-2026-0042");
   await page.getByLabel("Recorded owner").fill("");
 
-  await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check({ force: true });
+  await selectCertificateStyle(stylePicker, preview, "Museum Ledger", "museum-ledger");
   const museumSignature = await preview.evaluate((element) => {
     const id = getComputedStyle(element.querySelector(".certificate-preview__id")!);
     const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
@@ -600,7 +607,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(museumSignature.watermark).toContain("linear-gradient");
   expect(museumSignature.watermark).not.toContain("radial-gradient");
 
-  await stylePicker.getByRole("radio", { name: /Regal Archive/ }).check({ force: true });
+  await selectCertificateStyle(stylePicker, preview, "Regal Archive", "regal-archive");
   const regalSignature = await preview.evaluate((element) => {
     const frame = getComputedStyle(element.querySelector(".certificate-preview__frame")!);
     const title = getComputedStyle(element.querySelector(".certificate-preview__title")!);
@@ -628,13 +635,13 @@ test("renders coherent specimen states and complete responsive certificate headi
 
   if (artifactDirectory) {
     await page.setViewportSize({ width: 1280, height: 1000 });
-    for (const [name, id] of styles) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
+    for (const [name, id] of certificateStyleCases) {
+      await selectCertificateStyle(stylePicker, preview, name, id);
       await preview.screenshot({ path: join(artifactDirectory, `filled-${id}-1280.png`) });
     }
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
-      await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check({ force: true });
+      await selectCertificateStyle(stylePicker, preview, "Museum Ledger", "museum-ledger");
       await preview.screenshot({ path: join(artifactDirectory, `filled-museum-ledger-${width}.png`) });
     }
   }
@@ -648,12 +655,8 @@ test("captures blank certificate style references when requested", async ({ page
   await page.goto("/#builder");
   const preview = page.locator(".certificate-preview");
   const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
-  for (const [name, id] of [
-    ["Regal Archive", "regal-archive"],
-    ["Museum Ledger", "museum-ledger"],
-    ["Celestial Formal", "celestial-formal"],
-  ] as const) {
-    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
+  for (const [name, id] of certificateStyleCases) {
+    await selectCertificateStyle(stylePicker, preview, name, id);
     await preview.screenshot({ path: join(artifactDirectory, `blank-${id}-1280.png`) });
   }
 });
@@ -730,13 +733,8 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   await expect(fallbackMark).toHaveCount(0);
 
   const styleSignatures = new Set<string>();
-  for (const [name, id] of [
-    ["Regal Archive", "regal-archive"],
-    ["Museum Ledger", "museum-ledger"],
-    ["Celestial Formal", "celestial-formal"],
-  ] as const) {
-    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
-    await expect(certificatePreview).toHaveAttribute("data-certificate-style", id);
+  for (const [name, id] of certificateStyleCases) {
+    await selectCertificateStyle(stylePicker, certificatePreview, name, id);
     await expect(liveLogo).toBeVisible();
     styleSignatures.add(await certificatePreview.evaluate((element) => {
       const previewStyle = getComputedStyle(element);
@@ -820,18 +818,12 @@ test("keeps certificate facts, signoff, and non-active status treatments disjoin
   const certificatePreview = page.locator(".certificate-preview");
   const status = certificatePreview.locator(".certificate-preview__status");
   const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
-  const styles = [
-    ["Regal Archive", "regal-archive"],
-    ["Museum Ledger", "museum-ledger"],
-    ["Celestial Formal", "celestial-formal"],
-  ] as const;
 
   for (const width of [1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
 
-    for (const [name, id] of styles) {
-      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check({ force: true });
-      await expect(certificatePreview).toHaveAttribute("data-certificate-style", id);
+    for (const [name, id] of certificateStyleCases) {
+      await selectCertificateStyle(stylePicker, certificatePreview, name, id);
       await expect(status).toBeVisible();
       await expect(status).toHaveText("revoked");
 
