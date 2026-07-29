@@ -27,6 +27,16 @@ describe("certificate themes", () => {
     expect(getCertificateTheme("museum-burgundy").name).toBe("Museum Burgundy");
   });
 
+  it("keeps every major palette channel independently recognizable", () => {
+    for (const channel of ["dark", "darkSoft", "accent", "accentLight", "paper"] as const) {
+      expect(new Set(certificateThemes.map((theme) => theme[channel])).size, `${channel} values`).toBe(9);
+    }
+
+    const signatures = certificateThemes.map(({ dark, accent, paper }) => `${dark}|${accent}|${paper}`);
+    expect(new Set(signatures).size).toBe(certificateThemes.length);
+    expect(certificateThemes.every(({ dark, accent, paper }) => dark !== accent && accent !== paper)).toBe(true);
+  });
+
   it("keeps primary paper and header text combinations readable", () => {
     for (const theme of certificateThemes) {
       expect(contrastRatio(theme.ink, theme.paper), `${theme.name} paper contrast`).toBeGreaterThanOrEqual(7);

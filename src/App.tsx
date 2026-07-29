@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -169,10 +169,12 @@ function CertificatePreview({
   values,
   photo,
   identity,
+  logoPreviewUrl,
 }: {
   values: FormValues;
   photo?: PhotoInput;
   identity?: SigningIdentity;
+  logoPreviewUrl?: string;
 }) {
   const statusClass = values.certificateStatus === "active" ? "" : " certificate-preview--flagged";
   const theme = getCertificateTheme(values.certificateTheme);
@@ -198,7 +200,7 @@ function CertificatePreview({
       <div className="certificate-preview__frame">
         <header className="certificate-preview__header">
           <div className="certificate-preview__collection">
-            <span className="orbit-mark" aria-hidden="true"><i /></span>
+            {logoPreviewUrl ? <img className="certificate-preview__logo" src={logoPreviewUrl} alt={`${values.collectionName || "Collection"} logo`} /> : <span className="orbit-mark" aria-hidden="true"><i /></span>}
             <span>{values.collectionName || "Collection name"}</span>
           </div>
           <strong>Certificate of Authenticity</strong>
@@ -333,6 +335,7 @@ export default function App() {
 
   const [photos, setPhotos] = useState<PhotoInput[]>([]);
   const [logo, setLogo] = useState<File>();
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string>();
   const [identity, setIdentity] = useState<SigningIdentity>();
   const [encryptedBundle, setEncryptedBundle] = useState("");
   const [backupDownloaded, setBackupDownloaded] = useState(false);
@@ -346,6 +349,16 @@ export default function App() {
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationBusy, setGenerationBusy] = useState(false);
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string }>();
+  useEffect(() => {
+    if (!logo) {
+      setLogoPreviewUrl(undefined);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(logo);
+    setLogoPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [logo]);
 
   const generateKey = async () => {
     if (generatePassphrase.length < 12) {
@@ -830,7 +843,7 @@ export default function App() {
 
             <aside className="preview-column">
               <div className="preview-column__head"><span>Live preview</span><small>Final export is high resolution</small></div>
-              <CertificatePreview values={previewValues} photo={photos[0]} identity={identity} />
+              <CertificatePreview values={previewValues} photo={photos[0]} identity={identity} logoPreviewUrl={logoPreviewUrl} />
               <div className="preview-checks">
                 <span className={identity ? "complete" : ""}><i />Signing identity</span>
                 <span className={photos.length ? "complete" : ""}><i />Original evidence</span>

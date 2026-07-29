@@ -10,6 +10,40 @@ const onePixelPng = Buffer.from(
   "base64",
 );
 
+const wideTransparentLogoSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="36" viewBox="0 0 240 36"><path fill="#b87518" d="M0 16h240v4H0z"/><circle cx="120" cy="18" r="11" fill="#061a33"/></svg>',
+);
+
+const tallTransparentLogoSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="180" viewBox="0 0 30 180"><path fill="#b87518" d="M13 0h4v180h-4z"/><circle cx="15" cy="90" r="13" fill="#061a33"/></svg>',
+);
+
+const themeCases = [
+  ["Observatory Navy", "observatory-navy", ["#061a33", "#123a63", "#b87518", "#f2c66d", "#f7f0de"]],
+  ["Museum Burgundy", "museum-burgundy", ["#400817", "#731c32", "#a8501c", "#f2b96b", "#faeee4"]],
+  ["Field Archive", "field-archive", ["#123728", "#285d44", "#85751a", "#d9cf72", "#eef1df"]],
+  ["Charcoal Gold", "charcoal-gold", ["#17191d", "#363b44", "#c39a32", "#efd177", "#f2efe7"]],
+  ["Desert Copper", "desert-copper", ["#542011", "#82402a", "#bd5b23", "#f0aa69", "#f8e5cc"]],
+  ["Celestial Teal", "celestial-teal", ["#00383f", "#00606a", "#bf7a18", "#f2bd62", "#e7f4f1"]],
+  ["Royal Amethyst", "royal-amethyst", ["#2d0e52", "#57337b", "#a96919", "#e9bc67", "#f3eafa"]],
+  ["Arctic Slate", "arctic-slate", ["#173549", "#315c70", "#89641d", "#dfc27c", "#eaf4f7"]],
+  ["Monochrome Ink", "monochrome-ink", ["#101112", "#323538", "#5b6065", "#d6d8da", "#f6f6f3"]],
+] as const;
+
+interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function boxesIntersect(left: BoundingBox, right: BoundingBox): boolean {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
+}
+
 function duplicateCentralDirectoryEntry(zip: Buffer, targetSuffix: string): Buffer {
   let eocdOffset = -1;
   for (let offset = zip.length - 22; offset >= Math.max(0, zip.length - 65_557); offset -= 1) {
@@ -67,6 +101,53 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
     .toBeGreaterThanOrEqual(22);
 
   const certificatePreview = page.locator(".certificate-preview");
+  const fallbackMark = certificatePreview.locator(".certificate-preview__collection > .orbit-mark");
+  await expect(fallbackMark).toBeVisible();
+  await expect(certificatePreview.locator(".certificate-preview__logo")).toHaveCount(0);
+
+  const logoInput = page.getByLabel("Logo");
+  await logoInput.setInputFiles({ name: "tiny-collection-logo.png", mimeType: "image/png", buffer: onePixelPng });
+  const liveLogo = certificatePreview.locator(".certificate-preview__collection > img.certificate-preview__logo");
+  await expect(liveLogo).toBeVisible();
+  await expect(liveLogo).toHaveAttribute("src", /^blob:/);
+  await expect(liveLogo).toHaveAttribute("alt", "The Spacerocks Collection logo");
+  const firstLogoSource = await liveLogo.getAttribute("src");
+  const logoGeometry = await liveLogo.evaluate((element) => {
+    const image = element as HTMLImageElement;
+    const style = getComputedStyle(image);
+    const box = image.getBoundingClientRect();
+    const collectionBox = image.parentElement!.getBoundingClientRect();
+    return {
+      objectFit: style.objectFit,
+      objectPosition: style.objectPosition,
+      width: box.width,
+      height: box.height,
+      contained: box.left >= collectionBox.left && box.right <= collectionBox.right
+        && box.top >= collectionBox.top && box.bottom <= collectionBox.bottom,
+    };
+  });
+  expect(logoGeometry.objectFit).toBe("contain");
+  expect(logoGeometry.objectPosition).toBe("50% 50%");
+  expect(logoGeometry.width).toBeGreaterThan(0);
+  expect(logoGeometry.height).toBeGreaterThan(0);
+  expect(logoGeometry.contained).toBe(true);
+
+  await logoInput.setInputFiles({ name: "wide-transparent-logo.svg", mimeType: "image/svg+xml", buffer: wideTransparentLogoSvg });
+  await expect.poll(() => liveLogo.getAttribute("src")).not.toBe(firstLogoSource);
+  await expect.poll(() => liveLogo.evaluate((element) => {
+    const image = element as HTMLImageElement;
+    return image.complete && image.naturalWidth > image.naturalHeight;
+  })).toBe(true);
+
+  const wideLogoSource = await liveLogo.getAttribute("src");
+  await logoInput.setInputFiles({ name: "tall-transparent-logo.svg", mimeType: "image/svg+xml", buffer: tallTransparentLogoSvg });
+  await expect.poll(() => liveLogo.getAttribute("src")).not.toBe(wideLogoSource);
+  await expect.poll(() => liveLogo.evaluate((element) => {
+    const image = element as HTMLImageElement;
+    return image.complete && image.naturalHeight > image.naturalWidth;
+  })).toBe(true);
+  await expect(fallbackMark).toHaveCount(0);
+
   const styleSignatures = new Set<string>();
   for (const [name, id] of [
     ["Regal Archive", "regal-archive"],
@@ -75,20 +156,47 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   ] as const) {
     await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
     await expect(certificatePreview).toHaveAttribute("data-certificate-style", id);
+    await expect(liveLogo).toBeVisible();
     styleSignatures.add(await certificatePreview.evaluate((element) => {
       const previewStyle = getComputedStyle(element);
+      const frameStyle = getComputedStyle(element.querySelector(".certificate-preview__frame")!);
       const headerStyle = getComputedStyle(element.querySelector(".certificate-preview__header")!);
-      return [previewStyle.borderTopWidth, headerStyle.backgroundColor, headerStyle.backgroundImage].join("|");
+      const photoStyle = getComputedStyle(element.querySelector(".certificate-preview__photo")!);
+      const factsStyle = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
+      const weightStyle = getComputedStyle(element.querySelector(".certificate-preview__weight")!);
+      const logoStyle = getComputedStyle(element.querySelector(".certificate-preview__logo")!);
+      return [
+        previewStyle.padding, previewStyle.borderTopWidth, previewStyle.borderTopStyle, previewStyle.borderRadius,
+        previewStyle.backgroundImage, frameStyle.borderRadius, frameStyle.boxShadow,
+        headerStyle.color, headerStyle.backgroundColor, headerStyle.backgroundImage, headerStyle.borderBottomWidth,
+        photoStyle.backgroundColor, photoStyle.borderTopWidth, photoStyle.borderRadius,
+        factsStyle.borderTopWidth, factsStyle.borderRadius,
+        weightStyle.color, weightStyle.backgroundColor, weightStyle.backgroundImage, weightStyle.borderRadius,
+        logoStyle.backgroundColor, logoStyle.borderRadius,
+      ].join("|");
     }));
   }
   expect(styleSignatures.size).toBe(3);
-  await expect(themePicker.getByRole("radio", { name: /Observatory Navy/ })).toBeChecked();
 
-  await themePicker.getByRole("radio", { name: /Museum Burgundy/ }).check();
-  await expect(certificatePreview).toHaveAttribute("data-certificate-theme", "museum-burgundy");
+  const themeSignatures = new Set<string>();
+  for (const [name, id, expectedVariables] of themeCases) {
+    await themePicker.getByRole("radio", { name: new RegExp(name) }).check();
+    await expect(certificatePreview).toHaveAttribute("data-certificate-theme", id);
+    const variables = await certificatePreview.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [
+        "--certificate-dark",
+        "--certificate-dark-soft",
+        "--certificate-accent",
+        "--certificate-accent-light",
+        "--certificate-paper",
+      ].map((property) => style.getPropertyValue(property).trim());
+    });
+    expect(variables).toEqual(expectedVariables);
+    themeSignatures.add(variables.join("|"));
+  }
+  expect(themeSignatures.size).toBe(9);
   await expect(certificatePreview).toHaveAttribute("data-certificate-style", "celestial-formal");
-  expect(await certificatePreview.evaluate((element) => getComputedStyle(element).getPropertyValue("--certificate-dark").trim()))
-    .toBe("#3b0d18");
 
   const photoBox = await certificatePreview.locator(".certificate-preview__photo").boundingBox();
   const detailsBox = await certificatePreview.locator(".certificate-preview__weight").boundingBox();
@@ -99,11 +207,103 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   expect(sealBox!.width).toBeLessThan(detailsBox!.width / 2);
   await expect(certificatePreview.getByText("Specimen details")).toBeVisible();
 
+  const desktopDimensions = await page.evaluate(() => ({
+    pageWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+    frame: document.querySelector<HTMLElement>(".certificate-preview__frame")!.getBoundingClientRect().toJSON(),
+    body: document.querySelector<HTMLElement>(".certificate-preview__body")!.getBoundingClientRect().toJSON(),
+    frameOverflow: getComputedStyle(document.querySelector<HTMLElement>(".certificate-preview__frame")!).overflow,
+  }));
+  expect(desktopDimensions.pageWidth).toBeLessThanOrEqual(desktopDimensions.viewportWidth);
+  expect(desktopDimensions.frameOverflow).toBe("hidden");
+  expect(desktopDimensions.body.left).toBeGreaterThanOrEqual(desktopDimensions.frame.left);
+  expect(desktopDimensions.body.right).toBeLessThanOrEqual(desktopDimensions.frame.right);
+
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".site-header")).toBeVisible();
+  await expect(liveLogo).toBeVisible();
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport);
+
+  await logoInput.setInputFiles([]);
+  await expect(liveLogo).toHaveCount(0);
+  await expect(fallbackMark).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("keeps certificate facts, signoff, and non-active status treatments disjoint", async ({ page }) => {
+  await page.goto("/#builder");
+  const statusSelect = page.locator('select[name="certificateStatus"]');
+  await statusSelect.selectOption("revoked", { force: true });
+
+  const certificatePreview = page.locator(".certificate-preview");
+  const status = certificatePreview.locator(".certificate-preview__status");
+  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+  const styles = [
+    ["Regal Archive", "regal-archive"],
+    ["Museum Ledger", "museum-ledger"],
+    ["Celestial Formal", "celestial-formal"],
+  ] as const;
+
+  for (const width of [1280, 760, 390, 320]) {
+    await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+
+    for (const [name, id] of styles) {
+      await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await expect(certificatePreview).toHaveAttribute("data-certificate-style", id);
+      await expect(status).toBeVisible();
+      await expect(status).toHaveText("revoked");
+
+      const frameBox = await certificatePreview.locator(".certificate-preview__frame").boundingBox();
+      const factsBox = await certificatePreview.locator(".certificate-preview__facts").boundingBox();
+      const signoffBox = await certificatePreview.locator(".certificate-preview__signoff").boundingBox();
+      const statusBox = await status.boundingBox();
+      expect(frameBox && factsBox && signoffBox && statusBox, `${id} boxes at ${width}px`).toBeTruthy();
+      expect(
+        boxesIntersect(factsBox!, signoffBox!),
+        `${id} facts/signoff at ${width}px: ${JSON.stringify({ factsBox, signoffBox })}`,
+      ).toBe(false);
+
+      for (const selector of [
+        ".certificate-preview__title",
+        ".certificate-preview__facts",
+        ".certificate-preview__photo",
+        ".certificate-preview__weight",
+        ".certificate-preview__signoff",
+        ".certificate-preview__seal",
+      ]) {
+        const contentBox = await certificatePreview.locator(selector).boundingBox();
+        expect(contentBox, `${id} ${selector} box at ${width}px`).toBeTruthy();
+        expect(boxesIntersect(statusBox!, contentBox!), `${id} status/${selector} at ${width}px`).toBe(false);
+      }
+
+      expect(statusBox!.x).toBeGreaterThanOrEqual(frameBox!.x);
+      expect(statusBox!.y).toBeGreaterThanOrEqual(frameBox!.y);
+      expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(frameBox!.x + frameBox!.width);
+      expect(statusBox!.y + statusBox!.height).toBeLessThanOrEqual(frameBox!.y + frameBox!.height);
+      expect(statusBox!.width).toBeGreaterThan(30);
+      expect(Number.parseFloat(await status.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(6);
+
+      const dimensions = await page.evaluate(() => ({
+        width: document.documentElement.scrollWidth,
+        viewport: window.innerWidth,
+      }));
+      expect(dimensions.width, `${id} horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+    }
+  }
+
+  for (const value of ["revoked", "transferred", "superseded"]) {
+    await statusSelect.selectOption(value, { force: true });
+    await expect(status).toHaveText(value);
+    const textDimensions = await status.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(
+      textDimensions.scrollWidth <= textDimensions.clientWidth,
+      `${value} status text fit at 320px: ${JSON.stringify(textDimensions)}`,
+    ).toBe(true);
+  }
 });
 
 test("generates, downloads, verifies, and rejects tampering", async ({ page }, testInfo) => {
