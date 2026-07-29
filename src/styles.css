@@ -578,7 +578,7 @@ a {
 
 .builder-grid {
   display: grid;
-  grid-template-columns: minmax(540px, 1.08fr) minmax(390px, 0.82fr);
+  grid-template-columns: minmax(540px, 1fr) minmax(870px, 1.25fr);
   align-items: start;
   gap: 3.5vw;
 }
@@ -1385,6 +1385,29 @@ a {
   font-size: inherit;
 }
 
+.certificate-preview-viewport {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 10px;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: var(--gold) color-mix(in srgb, var(--navy) 12%, transparent);
+  scrollbar-width: thin;
+}
+
+.certificate-preview-viewport::-webkit-scrollbar {
+  height: 9px;
+}
+
+.certificate-preview-viewport::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--navy) 12%, transparent);
+}
+
+.certificate-preview-viewport::-webkit-scrollbar-thumb {
+  background: var(--gold);
+}
+
 .certificate-preview {
   --certificate-preview-scale: 0.5;
   --certificate-dark: #061a33;
@@ -1397,6 +1420,7 @@ a {
   --certificate-accent-text: #7e4c09;
   position: relative;
   width: 100%;
+  min-width: 870px;
   overflow: hidden;
   padding: 10px;
   aspect-ratio: 11 / 8.5;
@@ -2743,6 +2767,20 @@ footer > div:last-child a {
 
 
 
+@media (max-width: 1700px) {
+  .builder-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-column {
+    position: relative;
+    top: auto;
+    grid-row: 1;
+    width: 100%;
+    max-width: 900px;
+  }
+}
+
 @media (max-width: 1100px) {
   .site-header {
     grid-template-columns: 1fr auto;
@@ -2769,7 +2807,7 @@ footer > div:last-child a {
     position: relative;
     top: auto;
     grid-row: 1;
-    max-width: 760px;
+    max-width: 900px;
   }
 
   .method-grid {

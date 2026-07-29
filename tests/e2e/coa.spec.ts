@@ -393,8 +393,15 @@ test("renders coherent specimen states and complete responsive certificate headi
         const frame = element.querySelector<HTMLElement>(".certificate-preview__frame")!;
         const canvas = element.querySelector<HTMLElement>(".certificate-preview__canvas")!;
         const certificateText = Array.from(frame.querySelectorAll<HTMLElement>(
-          ".certificate-preview__collection, .certificate-preview__record-type, .certificate-preview__header > strong, .certificate-preview__id, .certificate-preview__id span, .certificate-preview__id > strong, .certificate-preview__title h3, .certificate-preview__title p, .certificate-preview__photo, .certificate-preview__photo-caption, .certificate-preview__facts dt, .certificate-preview__facts dd, .certificate-preview__weight span, .certificate-preview__weight strong, .certificate-preview__weight em, .certificate-preview__weight small, .certificate-preview__signoff span, .certificate-preview__signoff strong, .certificate-preview__signoff small, .certificate-preview__seal, .certificate-preview__seal small",
+          ".certificate-preview__collection, .certificate-preview__record-type, .certificate-preview__header > strong, .certificate-preview__id, .certificate-preview__id span, .certificate-preview__id > strong, .certificate-preview__title h3, .certificate-preview__title p, .certificate-preview__photo, .certificate-preview__photo-caption, .certificate-preview__facts dt, .certificate-preview__facts dd, .certificate-preview__weight span, .certificate-preview__weight strong, .certificate-preview__weight em, .certificate-preview__weight small, .certificate-preview__signoff span, .certificate-preview__signoff strong, .certificate-preview__signoff small, .certificate-preview__seal, .certificate-preview__seal small, .certificate-preview__status",
         ));
+        const scale = Number.parseFloat(getComputedStyle(canvas).getPropertyValue("--certificate-preview-scale"));
+        const generatedFactsStyle = getComputedStyle(element.querySelector(".certificate-preview__facts")!, "::before");
+        const fontSizes = certificateText.map((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+        if (generatedFactsStyle.content !== "none" && generatedFactsStyle.content !== "normal") {
+          fontSizes.push(Number.parseFloat(generatedFactsStyle.fontSize));
+        }
+        const minimumFontSize = Math.min(...fontSizes);
         return {
           headingText: heading.textContent,
           recordTypeText: recordType.textContent,
@@ -412,8 +419,9 @@ test("renders coherent specimen states and complete responsive certificate headi
           canonicalFrame: {
             width: Number.parseFloat(getComputedStyle(frame).width),
             height: Number.parseFloat(getComputedStyle(frame).height),
-            scale: Number.parseFloat(getComputedStyle(canvas).getPropertyValue("--certificate-preview-scale")),
-            minimumFontSize: Math.min(...certificateText.map((node) => Number.parseFloat(getComputedStyle(node).fontSize))),
+            scale,
+            minimumFontSize,
+            effectiveMinimumFontSize: scale * minimumFontSize,
           },
           fontSizes: {
             recordType: fontSize(".certificate-preview__record-type"),
@@ -451,6 +459,7 @@ test("renders coherent specimen states and complete responsive certificate headi
       expect(geometry.canonicalFrame.scale, `${id} scale at ${width}px`).toBeGreaterThan(0);
       expect(geometry.canonicalFrame.scale, `${id} scale at ${width}px`).toBeLessThanOrEqual(1);
       expect(geometry.canonicalFrame.minimumFontSize, `${id} canonical font floor at ${width}px`).toBeGreaterThanOrEqual(16);
+      expect(geometry.canonicalFrame.effectiveMinimumFontSize, `${id} rendered font floor at ${width}px`).toBeGreaterThanOrEqual(12);
       for (const [level, size, minimum, maximum] of [
         ["record type", geometry.fontSizes.recordType, id === "museum-ledger" ? 20 : 16, id === "museum-ledger" ? 20 : 16],
         ["certificate heading", geometry.fontSizes.heading, 30, 30],
@@ -685,6 +694,7 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
     .toBeGreaterThanOrEqual(22);
 
   const certificatePreview = page.locator(".certificate-preview");
+  const previewViewport = page.getByLabel("Scrollable live certificate preview");
   const fallbackMark = certificatePreview.locator(".certificate-preview__collection > .orbit-mark");
   await expect(fallbackMark).toBeVisible();
   await expect(certificatePreview.locator(".certificate-preview__logo")).toHaveCount(0);
@@ -798,11 +808,32 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   expect(desktopDimensions.body.left).toBeGreaterThanOrEqual(desktopDimensions.frame.left);
   expect(desktopDimensions.body.right).toBeLessThanOrEqual(desktopDimensions.frame.right);
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".site-header")).toBeVisible();
-  await expect(liveLogo).toBeVisible();
-  const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }));
-  expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport);
+  await expect(previewViewport).toHaveAttribute("tabindex", "0");
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.locator(".site-header")).toBeVisible();
+    await expect(liveLogo).toBeVisible();
+    const previewScroll = await previewViewport.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      overflowX: getComputedStyle(element).overflowX,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(previewScroll.overflowX).toBe("auto");
+    expect(previewScroll.scrollWidth).toBeGreaterThan(previewScroll.clientWidth);
+    await previewViewport.evaluate((element) => { element.scrollLeft = 0; });
+    await previewViewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => previewViewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    await previewViewport.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+    const rightContentVisible = await previewViewport.evaluate((element) => {
+      const viewport = element.getBoundingClientRect();
+      const certificateId = element.querySelector<HTMLElement>(".certificate-preview__id")!.getBoundingClientRect();
+      return certificateId.left < viewport.right && certificateId.right > viewport.left;
+    });
+    expect(rightContentVisible).toBe(true);
+    const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }));
+    expect(dimensions.width, `page overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+  }
 
   await logoInput.setInputFiles([]);
   await expect(liveLogo).toHaveCount(0);
@@ -855,7 +886,12 @@ test("keeps certificate facts, signoff, and non-active status treatments disjoin
       expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(frameBox!.x + frameBox!.width);
       expect(statusBox!.y + statusBox!.height).toBeLessThanOrEqual(frameBox!.y + frameBox!.height);
       expect(statusBox!.width).toBeGreaterThan(30);
-      expect(Number.parseFloat(await status.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(6);
+      const statusType = await status.evaluate((element) => {
+        const canvas = element.closest(".certificate-preview")!.querySelector<HTMLElement>(".certificate-preview__canvas")!;
+        const scale = Number.parseFloat(getComputedStyle(canvas).getPropertyValue("--certificate-preview-scale"));
+        return Number.parseFloat(getComputedStyle(element).fontSize) * scale;
+      });
+      expect(statusType, `${id} rendered status font at ${width}px`).toBeGreaterThanOrEqual(12);
 
       const dimensions = await page.evaluate(() => ({
         width: document.documentElement.scrollWidth,

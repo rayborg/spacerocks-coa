@@ -881,8 +881,19 @@ export default function App() {
             </div>
 
             <aside className="preview-column">
-              <div className="preview-column__head"><span>Live preview</span><small>Final export is high resolution</small></div>
-              <CertificatePreview values={previewValues} photo={photos[0]} identity={identity} logoPreviewUrl={logoPreviewUrl} />
+              <div className="preview-column__head"><span>Live preview</span><small>12px minimum / scroll if needed</small></div>
+              <div
+                className="certificate-preview-viewport"
+                tabIndex={0}
+                aria-label="Scrollable live certificate preview"
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                  event.preventDefault();
+                  event.currentTarget.scrollLeft += event.key === "ArrowRight" ? 80 : -80;
+                }}
+              >
+                <CertificatePreview values={previewValues} photo={photos[0]} identity={identity} logoPreviewUrl={logoPreviewUrl} />
+              </div>
               <div className="preview-checks">
                 <span className={identity ? "complete" : ""}><i />Signing identity</span>
                 <span className={photos.length ? "complete" : ""}><i />Original evidence</span>
