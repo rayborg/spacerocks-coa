@@ -53,6 +53,19 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   await expect(page.getByRole("heading", { name: /certificate is only as enduring/i })).toBeVisible();
   await expect(page.getByLabel("Weight (grams)")).toHaveValue("44.7");
   await expect(page.getByLabel("Specimen form")).toHaveValue("Half stone / end cut");
+  await expect(page.getByRole("radio")).toHaveCount(9);
+
+  const proofChain = page.locator(".hero__ledger");
+  const proofChainBox = await proofChain.boundingBox();
+  expect(proofChainBox?.width).toBeGreaterThan(450);
+  expect(Number.parseFloat(await proofChain.locator("li strong").first().evaluate((element) => getComputedStyle(element).fontSize)))
+    .toBeGreaterThanOrEqual(22);
+
+  await page.getByRole("radio", { name: /Museum Burgundy/ }).check();
+  const certificatePreview = page.locator(".certificate-preview");
+  await expect(certificatePreview).toHaveAttribute("data-certificate-theme", "museum-burgundy");
+  expect(await certificatePreview.evaluate((element) => getComputedStyle(element).getPropertyValue("--certificate-dark").trim()))
+    .toBe("#3b0d18");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".site-header")).toBeVisible();
@@ -63,6 +76,8 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
 
 test("generates, downloads, verifies, and rejects tampering", async ({ page }, testInfo) => {
   await page.goto("/#builder");
+
+  await page.getByRole("radio", { name: /Royal Amethyst/ }).check();
 
   const createKey = page.locator(".key-option").first();
   await createKey.getByLabel("Passphrase", { exact: true }).fill("correct horse battery staple");
@@ -80,6 +95,17 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     buffer: onePixelPng,
   });
   await page.getByLabel(/I attest this is an exact/).check();
+  const removeBox = await page.getByRole("button", { name: "Remove exact-specimen.png" }).boundingBox();
+  const metadataBox = await page.locator(".photo-item__meta").boundingBox();
+  expect(removeBox && metadataBox).toBeTruthy();
+  const overlaps = Boolean(
+    removeBox && metadataBox
+    && removeBox.x < metadataBox.x + metadataBox.width
+    && removeBox.x + removeBox.width > metadataBox.x
+    && removeBox.y < metadataBox.y + metadataBox.height
+    && removeBox.y + removeBox.height > metadataBox.y,
+  );
+  expect(overlaps).toBe(false);
 
   const packageDownload = page.waitForEvent("download", { timeout: 90_000 });
   await page.getByRole("button", { name: "Issue signed COA package" }).click();
@@ -95,8 +121,10 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(manifestName).toBeTruthy();
   const root = manifestName!.slice(0, -"manifest.json".length);
   const manifest = JSON.parse(await archive.file(manifestName!)!.async("text")) as {
+    certificate: { visualTheme?: string };
     files: Array<{ path: string }>;
   };
+  expect(manifest.certificate.visualTheme).toBe("royal-amethyst");
   const signedPaths = manifest.files.map((entry) => entry.path);
   expect(signedPaths).toEqual(expect.arrayContaining([
     "README-FIRST.txt",
@@ -105,6 +133,12 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     "verification-instructions.txt",
     "verify.py",
   ]));
+  await writeFile(
+    testInfo.outputPath("generated-certificate.png"),
+    await archive.file(`${root}certificate.png`)!.async("nodebuffer"),
+  );
+  await expect(archive.file(`${root}certificate.txt`)!.async("text"))
+    .resolves.toContain("Certificate color scheme: Royal Amethyst");
   const verifySource = await archive.file(`${root}verify.py`)!.async("text");
   const verifyPath = testInfo.outputPath("verify.py");
   await writeFile(verifyPath, verifySource, "utf8");

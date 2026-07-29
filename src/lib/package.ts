@@ -12,6 +12,7 @@ import {
 } from "./core";
 import { signBytes } from "./crypto";
 import { renderCertificate } from "./certificate";
+import { getCertificateTheme } from "../certificateThemes";
 
 const APPLICATION_VERSION = "1.0.0";
 const MAX_PHOTO_COUNT = 100;
@@ -111,6 +112,7 @@ CERTIFICATE OF AUTHENTICITY - PLAIN-TEXT ARCHIVAL DUPLICATE
 Certificate ID: ${values.certificateId}
 Certificate version: ${values.certificateVersion}
 Certificate status: ${values.certificateStatus}
+Certificate color scheme: ${getCertificateTheme(values.certificateTheme).name}
 Issue date: ${displayDate(values.issueDate)}
 
 SPECIMEN
@@ -438,6 +440,7 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
       issueDate: values.issueDate,
       version: values.certificateVersion.trim(),
       status: values.certificateStatus,
+      visualTheme: values.certificateTheme,
       supersedes: optional(values.supersededCertificateId),
       notes: optional(values.certificateNotes),
     },
@@ -562,6 +565,7 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
       issueDate: values.issueDate,
       version: values.certificateVersion.trim(),
       status: values.certificateStatus,
+      visualTheme: values.certificateTheme,
       recordFile: "certificate-record.json",
       recordSha256: recordHash,
       supersedes: optional(values.supersededCertificateId),

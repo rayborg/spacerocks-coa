@@ -1,17 +1,11 @@
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import type { FormValues } from "../types";
+import { certificateFooterLayout, getCertificateTheme } from "../certificateThemes";
 import { displayDate } from "./core";
 
 const WIDTH = 2200;
 const HEIGHT = 1700;
-const NAVY = "#071a2f";
-const NAVY_SOFT = "#102b48";
-const GOLD = "#b9852e";
-const GOLD_LIGHT = "#e3bc69";
-const IVORY = "#f5f0e3";
-const INK = "#122236";
-const MUTED = "#66717d";
 
 export interface CertificateRenderInput {
   values: FormValues;
@@ -166,10 +160,10 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-function drawOrbitMark(context: CanvasRenderingContext2D, x: number, y: number) {
+function drawOrbitMark(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
   context.save();
-  context.strokeStyle = GOLD_LIGHT;
-  context.fillStyle = GOLD_LIGHT;
+  context.strokeStyle = color;
+  context.fillStyle = color;
   context.lineWidth = 4;
   context.beginPath();
   context.ellipse(x, y, 48, 17, -0.3, 0, Math.PI * 2);
@@ -193,12 +187,21 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const context = canvas.getContext("2d");
   if (!context) throw new Error("This browser cannot create a certificate canvas.");
 
+  const theme = getCertificateTheme(input.values.certificateTheme);
+  const NAVY = theme.dark;
+  const NAVY_SOFT = theme.darkSoft;
+  const GOLD = theme.accent;
+  const GOLD_LIGHT = theme.accentLight;
+  const IVORY = theme.paper;
+  const INK = theme.ink;
+  const MUTED = theme.muted;
+
   context.fillStyle = IVORY;
   context.fillRect(0, 0, WIDTH, HEIGHT);
 
   // A subtle deterministic paper texture avoids a sterile digital appearance.
   let seed = Number.parseInt(input.recordHash.slice(0, 8), 16) || 1;
-  context.fillStyle = "rgba(101, 77, 35, 0.045)";
+  context.fillStyle = `${INK}0b`;
   for (let index = 0; index < 1800; index += 1) {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     const x = seed % WIDTH;
@@ -226,7 +229,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   }
 
   if (logo) drawContainedImage(context, logo, 105, 70, 120, 105);
-  else drawOrbitMark(context, 162, 122);
+  else drawOrbitMark(context, 162, 122, GOLD_LIGHT);
 
   context.fillStyle = GOLD_LIGHT;
   context.font = "600 33px Arial, sans-serif";
@@ -252,7 +255,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.font = `400 ${titleSize}px Georgia, serif`;
   context.fillStyle = NAVY;
   context.fillText(input.values.meteoriteName, 112, 522);
-  context.fillStyle = "#8d651f";
+  context.fillStyle = theme.accentText;
   context.font = "600 37px Arial, sans-serif";
   context.fillText(input.values.classification.toUpperCase(), 116, 590);
   context.strokeStyle = GOLD;
@@ -299,7 +302,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const tableY = 680;
   const tableWidth = 1308;
   const rowHeight = 82;
-  context.strokeStyle = "rgba(125, 91, 33, 0.55)";
+  context.strokeStyle = `${GOLD}8c`;
   context.lineWidth = 2;
   roundedRect(context, tableX, tableY, tableWidth, rows.length * rowHeight, 18);
   context.stroke();
@@ -311,7 +314,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   rows.forEach(([label, value], index) => {
     const y = tableY + index * rowHeight;
     if (index % 2 === 1) {
-      context.fillStyle = "rgba(174, 137, 72, 0.09)";
+      context.fillStyle = `${GOLD}17`;
       context.fillRect(tableX + 2, y, tableWidth - 4, rowHeight);
     }
     context.fillStyle = NAVY;
@@ -383,9 +386,9 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   wrapText(context, input.values.provenance, 112, 1534, 1490, 30, 2);
 
   context.fillStyle = MUTED;
-  context.font = "400 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-  context.fillText(`Record SHA-256: ${input.recordHash}`, 112, 1633);
-  context.fillText(`Key FP: ${input.fingerprint}`, 112, 1660);
+  context.font = `400 ${certificateFooterLayout.fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  context.fillText(`Record SHA-256: ${input.recordHash}`, 112, certificateFooterLayout.recordHashBaseline);
+  context.fillText(`Key FP: ${input.fingerprint}`, 112, certificateFooterLayout.keyFingerprintBaseline);
 
   if (input.values.certificateStatus !== "active") {
     context.save();

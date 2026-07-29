@@ -40,3 +40,7 @@ The generated PDF is a standard archival PDF containing the high-resolution cert
 ## Deployment
 
 Pushes to `main` deploy `dist/` through `.github/workflows/deploy-pages.yml`. GitHub Pages must use GitHub Actions as its source.
+
+## Future services
+
+The audited plan for a future optional Stripe-funded Bitcoin OpenTimestamps service is preserved in [`docs/PAID_BITCOIN_TIMESTAMP_SERVICE_PLAN.md`](docs/PAID_BITCOIN_TIMESTAMP_SERVICE_PLAN.md). That work is intentionally deferred until corrections and improvements to the existing browser-only COA application are complete.

@@ -34,6 +34,19 @@
         "issueDate": { "type": "string", "format": "date" },
         "version": { "type": "string", "minLength": 1 },
         "status": { "enum": ["active", "superseded", "revoked", "transferred"] },
+        "visualTheme": {
+          "enum": [
+            "observatory-navy",
+            "museum-burgundy",
+            "field-archive",
+            "charcoal-gold",
+            "desert-copper",
+            "celestial-teal",
+            "royal-amethyst",
+            "arctic-slate",
+            "monochrome-ink"
+          ]
+        },
         "recordFile": { "const": "certificate-record.json" },
         "recordSha256": { "$ref": "#/$defs/sha256" },
         "supersedes": { "type": "string", "minLength": 1 },

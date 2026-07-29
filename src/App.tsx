@@ -10,6 +10,11 @@ import type {
 } from "./types";
 import { downloadBlob, sanitizeFileName } from "./lib/core";
 import { generateSigningIdentity, importSigningIdentity } from "./lib/crypto";
+import {
+  certificateThemeIds,
+  certificateThemes,
+  getCertificateTheme,
+} from "./certificateThemes";
 
 const requiredText = (label: string) => z.string().trim().min(1, `${label} is required.`);
 const optionalEmail = z
@@ -48,6 +53,7 @@ const formSchema = z
     issueDate: requiredText("Issue date"),
     certificateVersion: requiredText("Certificate version"),
     certificateStatus: z.enum(["active", "superseded", "revoked", "transferred"]),
+    certificateTheme: z.enum(certificateThemeIds),
     supersededCertificateId: z.string(),
     certificateNotes: z.string(),
     meteoriteName: requiredText("Meteorite name"),
@@ -98,6 +104,7 @@ const defaultValues: FormValues = {
   issueDate: "2026-07-25",
   certificateVersion: "1.0",
   certificateStatus: "active",
+  certificateTheme: "observatory-navy",
   supersededCertificateId: "",
   certificateNotes: "",
   meteoriteName: "Aguas Zarcas",
@@ -161,8 +168,24 @@ function CertificatePreview({
   identity?: SigningIdentity;
 }) {
   const statusClass = values.certificateStatus === "active" ? "" : " certificate-preview--flagged";
+  const theme = getCertificateTheme(values.certificateTheme);
+  const themeStyle = {
+    "--certificate-dark": theme.dark,
+    "--certificate-dark-soft": theme.darkSoft,
+    "--certificate-accent": theme.accent,
+    "--certificate-accent-light": theme.accentLight,
+    "--certificate-paper": theme.paper,
+    "--certificate-ink": theme.ink,
+    "--certificate-muted": theme.muted,
+    "--certificate-accent-text": theme.accentText,
+  } as React.CSSProperties;
   return (
-    <div className={`certificate-preview${statusClass}`} aria-label="Live certificate preview">
+    <div
+      className={`certificate-preview${statusClass}`}
+      style={themeStyle}
+      data-certificate-theme={theme.id}
+      aria-label={`Live certificate preview in ${theme.name}`}
+    >
       <div className="certificate-preview__frame">
         <header className="certificate-preview__header">
           <div className="certificate-preview__collection">
@@ -565,6 +588,29 @@ export default function App() {
                   <Field label="Certificate notes">
                     <input {...register("certificateNotes")} />
                   </Field>
+                  <fieldset className="theme-field field--wide">
+                    <legend>Certificate color scheme</legend>
+                    <span className="theme-field__hint">The selected palette is applied to the live preview, PNG, and PDF.</span>
+                    <div className="theme-picker">
+                      {certificateThemes.map((theme) => (
+                        <label className="theme-option" key={theme.id}>
+                          <input type="radio" value={theme.id} {...register("certificateTheme")} />
+                          <span
+                            className="theme-option__body"
+                            style={{
+                              "--swatch-dark": theme.dark,
+                              "--swatch-accent": theme.accent,
+                              "--swatch-paper": theme.paper,
+                            } as React.CSSProperties}
+                          >
+                            <span className="theme-option__swatches" aria-hidden="true"><i /><i /><i /></span>
+                            <strong>{theme.name}</strong>
+                            <small>{theme.description}</small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                 </div>
               </details>
 
@@ -688,12 +734,14 @@ export default function App() {
                     <article className="photo-item" key={photo.id}>
                       <img src={photo.previewUrl} alt="" />
                       <div className="photo-item__fields">
-                        <div><span>Original {String(index + 1).padStart(2, "0")}</span><strong>{photo.file.name}</strong><small>{(photo.file.size / 1024 / 1024).toFixed(2)} MB</small></div>
+                        <div className="photo-item__heading">
+                          <div className="photo-item__meta"><span>Original {String(index + 1).padStart(2, "0")}</span><strong>{photo.file.name}</strong><small>{(photo.file.size / 1024 / 1024).toFixed(2)} MB</small></div>
+                          <button type="button" className="remove-button" onClick={() => removePhoto(photo.id)} aria-label={`Remove ${photo.file.name}`}>Remove</button>
+                        </div>
                         <label>Caption<input value={photo.caption} onChange={(event) => updatePhoto(photo.id, { caption: event.target.value })} /></label>
                         <label>Capture date<input type="date" value={photo.captureDate} onChange={(event) => updatePhoto(photo.id, { captureDate: event.target.value })} /></label>
                         <label className="attestation"><input type="checkbox" checked={photo.isUnmodifiedOriginal} onChange={(event) => updatePhoto(photo.id, { isUnmodifiedOriginal: event.target.checked })} /><span>I attest this is an exact, unmodified photograph of the specimen.</span></label>
                       </div>
-                      <button type="button" className="remove-button" onClick={() => removePhoto(photo.id)} aria-label={`Remove ${photo.file.name}`}>Remove</button>
                     </article>
                   ))}
                 </div>
