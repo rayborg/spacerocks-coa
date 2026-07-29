@@ -35,7 +35,7 @@
         "version": { "type": "string", "minLength": 1 },
         "status": { "enum": ["active", "superseded", "revoked", "transferred"] },
         "visualStyle": {
-          "enum": ["regal-archive", "museum-ledger", "celestial-formal"]
+          "enum": ["regal-archive", "museum-ledger", "celestial-formal", "museum-type"]
         },
         "visualTheme": {
           "enum": [

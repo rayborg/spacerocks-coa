@@ -10,7 +10,6 @@ A static, browser-only application for creating and verifying self-contained met
 - Creates a deterministic, versioned JSON manifest.
 - Exports certificate PDF, PNG, UTF-8 text, record, audit log, schema, signature, public key, checksums, instructions, and an offline Python verifier in one ZIP.
 - Verifies generated and compatible legacy packages in the browser without uploading them.
-- Showcases a fully populated synthetic John Doe certificate produced through the same local issuance flow, with all 40 source fields disclosed and loadable into the workbench.
 - Requires no backend, database, domain, blockchain, IPFS, or Arweave for core verification.
 
 ## Security model

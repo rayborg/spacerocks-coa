@@ -4,8 +4,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import JSZip from "jszip";
-import { exampleCertificateValues } from "../../src/exampleCertificate";
 import { CERTIFICATE_EXPORT_FONT_FLOOR } from "../../src/lib/certificate";
+import type { FormValues } from "../../src/types";
 
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -33,9 +33,8 @@ const themeCases = [
 ] as const;
 
 const certificateStyleCases = [
-  ["Regal Archive", "regal-archive"],
-  ["Museum Ledger", "museum-ledger"],
   ["Celestial Formal", "celestial-formal"],
+  ["Museum Type", "museum-type"],
 ] as const;
 
 async function selectCertificateStyle(stylePicker: Locator, preview: Locator, name: string, id: string): Promise<void> {
@@ -132,74 +131,6 @@ function duplicateCentralDirectoryEntry(zip: Buffer, targetSuffix: string): Buff
   return result;
 }
 
-test("showcases and loads a complete synthetic certificate", async ({ page }) => {
-  await page.goto("/#example");
-
-  await expect(page.getByRole("heading", { name: "See every layer come together." })).toBeVisible();
-  await expect(page.getByText("Fully synthetic demonstration", { exact: true })).toBeVisible();
-  const finalCertificate = page.getByRole("img", { name: /Synthetic John Doe certificate/ });
-  await expect(finalCertificate).toBeVisible();
-  const imageDimensions = await finalCertificate.evaluate((element: HTMLImageElement) => ({
-    complete: element.complete,
-    height: element.naturalHeight,
-    width: element.naturalWidth,
-  }));
-  expect(imageDimensions).toEqual({ complete: true, height: 1700, width: 2200 });
-  const displayedType = await finalCertificate.evaluate((element: HTMLImageElement, exportFontFloor) => {
-    const scale = element.getBoundingClientRect().width / element.naturalWidth;
-    return {
-      commonMinimum: 18 * scale,
-      smallest: exportFontFloor * scale,
-    };
-  }, CERTIFICATE_EXPORT_FONT_FLOOR);
-  expect(displayedType.smallest).toBeGreaterThanOrEqual(10);
-  expect(displayedType.commonMinimum).toBeGreaterThanOrEqual(11);
-
-  const fullRecord = page.locator(".example-record");
-  await fullRecord.locator("summary").click();
-  await expect(fullRecord.locator("dt")).toHaveCount(40);
-  await expect(fullRecord.locator("dd")).toHaveCount(40);
-  expect(await fullRecord.locator("dd").allTextContents()).not.toContain("");
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  const exampleViewport = page.getByLabel("Scrollable final synthetic certificate");
-  const exampleScroll = await exampleViewport.evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    overflowX: getComputedStyle(element).overflowX,
-    scrollWidth: element.scrollWidth,
-  }));
-  expect(exampleScroll.overflowX).toBe("auto");
-  expect(exampleScroll.scrollWidth).toBeGreaterThan(exampleScroll.clientWidth);
-  await exampleViewport.evaluate((element) => { element.scrollLeft = 0; });
-  await exampleViewport.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect.poll(() => exampleViewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-  const mobileWidth = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: window.innerWidth }));
-  expect(mobileWidth.document).toBeLessThanOrEqual(mobileWidth.viewport);
-
-  await page.setViewportSize({ width: 1280, height: 1000 });
-  await page.getByRole("button", { name: "Load in workbench" }).click();
-  await expect(page.getByText(/Complete John Doe example loaded/).first()).toBeVisible();
-
-  for (const [name, value] of Object.entries(exampleCertificateValues)) {
-    if (name === "certificateStyle" || name === "certificateTheme") {
-      await expect(page.locator(`input[name="${name}"][value="${value}"]`), `${name} example selection`).toBeChecked();
-    } else {
-      await expect(page.locator(`[name="${name}"]`), `${name} example value`).toHaveValue(value);
-    }
-  }
-
-  await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-style", "museum-ledger");
-  await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-theme", "desert-copper");
-  await expect(page.locator(".certificate-preview__logo")).toHaveAttribute("src", /^blob:/);
-  await expect(page.locator(".certificate-preview__photo img")).toHaveAttribute("src", /^blob:/);
-  await expect(page.locator(".photo-item")).toContainText("aster-vale-001-demo-specimen.jpg");
-  await expect(page.locator(".photo-item").getByLabel("Caption")).toHaveValue(/synthetic specimen image/i);
-  await expect(page.locator(".photo-item").getByLabel("Capture date")).toHaveValue("2026-07-29");
-  await expect(page.getByLabel(/I attest this is an exact/)).not.toBeChecked();
-  await expect(page.getByText("No key", { exact: true })).toBeVisible();
-});
-
 test("starts with blank content, provisional preview labels, and readable responsive controls", async ({ page }) => {
   await page.goto("/#builder");
 
@@ -214,7 +145,11 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(specimenForm.locator('option[value=""]')).toHaveAttribute("disabled", "");
   await expect(specimenForm.locator('option[value=""]')).toHaveText("Select specimen form");
   await expect(page.locator('select[name="certificateStatus"]')).toHaveValue("active");
-  await expect(page.getByRole("radio", { name: /Regal Archive/ })).toBeChecked();
+  const templatePicker = page.getByRole("group", { name: "Certificate template" });
+  await expect(templatePicker.getByRole("radio")).toHaveCount(2);
+  await expect(templatePicker.getByRole("radio", { name: /Celestial Formal/ })).toBeChecked();
+  await expect(templatePicker.getByRole("radio", { name: /Museum Type/ })).not.toBeChecked();
+  await expect(templatePicker.getByRole("radio", { name: /Regal Archive|Museum Ledger/ })).toHaveCount(0);
   await expect(page.getByRole("radio", { name: /Observatory Navy/ })).toBeChecked();
 
   await expect(page.getByLabel("Issuer display or legal name")).toHaveAttribute("placeholder", "e.g., John Doe");
@@ -378,7 +313,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   await page.goto("/#builder");
   const preview = page.locator(".certificate-preview");
   const summary = preview.locator(".certificate-preview__weight");
-  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+  const stylePicker = page.getByRole("group", { name: "Certificate template" });
 
   await expect(summary).toHaveClass(/certificate-preview__weight--empty/);
   for (const width of [2048, 1280, 760, 390, 320]) {
@@ -485,6 +420,11 @@ test("renders coherent specimen states and complete responsive certificate headi
           idLabelFits: idLabel.scrollWidth <= idLabel.clientWidth,
           idValueFits: idValue.scrollWidth <= idValue.clientWidth,
           factLabelsFit: factLabels.every((node) => node.scrollWidth <= node.clientWidth),
+          factLabelMetrics: factLabels.map((node) => ({
+            text: node.textContent,
+            clientWidth: node.clientWidth,
+            scrollWidth: node.scrollWidth,
+          })),
           factValuesFit: factValues.every((node) => node.scrollWidth <= node.clientWidth),
           canonicalFrame: {
             width: Number.parseFloat(getComputedStyle(frame).width),
@@ -514,15 +454,18 @@ test("renders coherent specimen states and complete responsive certificate headi
         };
       });
       expect(geometry.headingText).toBe("Certificate of Authenticity");
-      expect(geometry.recordTypeText).toBe(id === "museum-ledger" ? "Signed specimen catalog" : "Archival specimen record");
-      expect(geometry.idLabelText).toBe(id === "museum-ledger" ? "COA catalog ID" : "Certificate ID");
+      expect(geometry.recordTypeText).toBe(id === "museum-type" ? "Scientific specimen identification" : "Archival specimen record");
+      expect(geometry.idLabelText).toBe(id === "museum-type" ? "Specimen record" : "Certificate ID");
       expect(geometry.headingFits, `${id} title clipping at ${width}px`).toBe(true);
       expect(geometry.meteoriteNameFits, `${id} representative meteorite name clipping at ${width}px`).toBe(true);
       expect(geometry.collectionFits, `${id} representative collection clipping at ${width}px`).toBe(true);
       expect(geometry.collectionTextHandled, `${id} representative collection text handling at ${width}px`).toBe(true);
       expect(geometry.idLabelFits, `${id} representative ID label clipping at ${width}px`).toBe(true);
       expect(geometry.idValueFits, `${id} representative ID clipping at ${width}px`).toBe(true);
-      expect(geometry.factLabelsFit, `${id} representative fact label clipping at ${width}px`).toBe(true);
+      expect(
+        geometry.factLabelsFit,
+        `${id} representative fact label clipping at ${width}px: ${JSON.stringify(geometry.factLabelMetrics)}`,
+      ).toBe(true);
       expect(geometry.factValuesFit, `${id} representative fact value clipping at ${width}px`).toBe(true);
       expect(geometry.canonicalFrame.width).toBe(1100);
       expect(geometry.canonicalFrame.height).toBe(850);
@@ -531,7 +474,7 @@ test("renders coherent specimen states and complete responsive certificate headi
       expect(geometry.canonicalFrame.minimumFontSize, `${id} canonical font floor at ${width}px`).toBeGreaterThanOrEqual(16);
       expect(geometry.canonicalFrame.effectiveMinimumFontSize, `${id} rendered font floor at ${width}px`).toBeGreaterThanOrEqual(12);
       for (const [level, size, minimum, maximum] of [
-        ["record type", geometry.fontSizes.recordType, id === "museum-ledger" ? 20 : 16, id === "museum-ledger" ? 20 : 16],
+        ["record type", geometry.fontSizes.recordType, 16, 16],
         ["certificate heading", geometry.fontSizes.heading, 30, 30],
         ["certificate ID", geometry.fontSizes.certificateId, 24, 24],
         ["meteorite name", geometry.fontSizes.meteoriteName, 40, 40],
@@ -558,14 +501,14 @@ test("renders coherent specimen states and complete responsive certificate headi
   }
 
   await page.setViewportSize({ width: 2048, height: 1150 });
-  await selectCertificateStyle(stylePicker, preview, "Museum Ledger", "museum-ledger");
+  await selectCertificateStyle(stylePicker, preview, "Museum Type", "museum-type");
   const fontInflationStyle = await page.addStyleTag({
     content: `
-      .certificate-preview--museum-ledger .certificate-preview__collection,
-      .certificate-preview--museum-ledger .certificate-preview__record-type,
-      .certificate-preview--museum-ledger .certificate-preview__id span,
-      .certificate-preview--museum-ledger .certificate-preview__id > strong,
-      .certificate-preview--museum-ledger .certificate-preview__photo-caption {
+      .certificate-preview--museum-type .certificate-preview__collection,
+      .certificate-preview--museum-type .certificate-preview__record-type,
+      .certificate-preview--museum-type .certificate-preview__id span,
+      .certificate-preview--museum-type .certificate-preview__id > strong,
+      .certificate-preview--museum-type .certificate-preview__photo-caption {
         font-size: 24px !important;
       }
     `,
@@ -608,8 +551,8 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(inflatedMuseumHeader.textStaysSingleLine).toBe(true);
   expect(inflatedMuseumHeader.collectionOverflows).toBe(true);
   expect(inflatedMuseumHeader.collectionEllipsis).toBe("ellipsis");
-  expect(inflatedMuseumHeader.markWidth).toBe(17);
-  expect(inflatedMuseumHeader.markHeight).toBe(17);
+  expect(inflatedMuseumHeader.markWidth).toBe(20);
+  expect(inflatedMuseumHeader.markHeight).toBe(20);
   expect(inflatedMuseumHeader.markFlexShrink).toBe("0");
   expect(inflatedMuseumHeader.captionFits).toBe(true);
   expect(inflatedMuseumHeader.captionWhiteSpace).toBe("nowrap");
@@ -652,65 +595,43 @@ test("renders coherent specimen states and complete responsive certificate headi
   await page.locator('input[name="certificateId"]').fill("MUS-2026-0042");
   await page.getByLabel("Recorded owner").fill("");
 
-  await selectCertificateStyle(stylePicker, preview, "Museum Ledger", "museum-ledger");
+  await selectCertificateStyle(stylePicker, preview, "Museum Type", "museum-type");
   const museumSignature = await preview.evaluate((element) => {
+    const frame = getComputedStyle(element.querySelector(".certificate-preview__frame")!);
     const id = getComputedStyle(element.querySelector(".certificate-preview__id")!);
     const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
     const factLabel = getComputedStyle(element.querySelector(".certificate-preview__facts dt")!);
     const photoCaption = element.querySelector<HTMLElement>(".certificate-preview__photo-caption")!;
     const weight = getComputedStyle(element.querySelector(".certificate-preview__weight")!);
     const seal = getComputedStyle(element.querySelector(".certificate-preview__seal")!);
-    const watermark = getComputedStyle(element.querySelector(".certificate-preview__body")!, "::before");
+    const catalogNote = element.querySelector<HTMLElement>(".certificate-preview__catalog-note")!;
     return {
+      frameRadius: frame.borderRadius,
+      frameBorder: frame.borderTopWidth,
       accessionBackground: id.backgroundColor,
       factsBorder: facts.borderTopWidth,
-      factLabelBackground: factLabel.backgroundColor,
+      factLabelColor: factLabel.color,
       photoCaption: photoCaption.textContent,
       photoCaptionFits: photoCaption.scrollWidth <= photoCaption.clientWidth && photoCaption.scrollHeight <= photoCaption.clientHeight,
       photoCaptionWhiteSpace: getComputedStyle(photoCaption).whiteSpace,
       measurementRail: weight.borderLeftWidth,
       sealRadius: seal.borderRadius,
       sealBorder: seal.borderTopWidth,
-      watermark: watermark.backgroundImage,
+      catalogNote: catalogNote.textContent,
     };
   });
+  expect(Number.parseFloat(museumSignature.frameRadius)).toBeGreaterThanOrEqual(20);
+  expect(Number.parseFloat(museumSignature.frameBorder)).toBeGreaterThanOrEqual(7);
   expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
-  expect(museumSignature.factLabelBackground).not.toBe("rgba(0, 0, 0, 0)");
-  expect(museumSignature.photoCaption).toContain("Photo record 01");
+  expect(museumSignature.factLabelColor).not.toBe("rgb(0, 0, 0)");
+  expect(museumSignature.photoCaption).toContain("photo record 01");
   expect(museumSignature.photoCaptionFits).toBe(true);
   expect(museumSignature.photoCaptionWhiteSpace).toBe("nowrap");
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);
-  expect(museumSignature.sealRadius).toBe("50%");
-  expect(Number.parseFloat(museumSignature.sealBorder)).toBeGreaterThanOrEqual(2);
-  expect(museumSignature.watermark).toContain("linear-gradient");
-  expect(museumSignature.watermark).not.toContain("radial-gradient");
-
-  await selectCertificateStyle(stylePicker, preview, "Regal Archive", "regal-archive");
-  const regalSignature = await preview.evaluate((element) => {
-    const frame = getComputedStyle(element.querySelector(".certificate-preview__frame")!);
-    const title = getComputedStyle(element.querySelector(".certificate-preview__title")!);
-    const photo = getComputedStyle(element.querySelector(".certificate-preview__photo")!);
-    const facts = getComputedStyle(element.querySelector(".certificate-preview__facts")!);
-    const weight = getComputedStyle(element.querySelector(".certificate-preview__weight")!);
-    const seal = getComputedStyle(element.querySelector(".certificate-preview__seal")!);
-    return {
-      frameShadow: frame.boxShadow,
-      titleAlignment: title.textAlign,
-      photoBorder: photo.borderTopStyle,
-      factsBorder: facts.borderTopStyle,
-      weightBackground: weight.backgroundColor,
-      weightColor: weight.color,
-      sealShadow: seal.boxShadow,
-    };
-  });
-  expect(regalSignature.frameShadow).not.toBe("none");
-  expect(regalSignature.titleAlignment).toBe("center");
-  expect(regalSignature.photoBorder).toBe("double");
-  expect(regalSignature.factsBorder).toBe("double");
-  expect(regalSignature.weightBackground).not.toBe("rgba(0, 0, 0, 0)");
-  expect(regalSignature.weightColor).not.toBe("rgb(255, 255, 255)");
-  expect(regalSignature.sealShadow).not.toBe("none");
+  expect(Number.parseFloat(museumSignature.sealRadius)).toBeGreaterThanOrEqual(10);
+  expect(Number.parseFloat(museumSignature.sealBorder)).toBeGreaterThanOrEqual(4);
+  expect(museumSignature.catalogNote).toContain("No additional catalog notes supplied.");
 
   if (artifactDirectory) {
     await page.setViewportSize({ width: 1280, height: 1000 });
@@ -720,8 +641,8 @@ test("renders coherent specimen states and complete responsive certificate headi
     }
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
-      await selectCertificateStyle(stylePicker, preview, "Museum Ledger", "museum-ledger");
-      await preview.screenshot({ path: join(artifactDirectory, `filled-museum-ledger-${width}.png`) });
+      await selectCertificateStyle(stylePicker, preview, "Museum Type", "museum-type");
+      await preview.screenshot({ path: join(artifactDirectory, `filled-museum-type-${width}.png`) });
     }
   }
 });
@@ -733,7 +654,7 @@ test("captures blank certificate style references when requested", async ({ page
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.goto("/#builder");
   const preview = page.locator(".certificate-preview");
-  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+  const stylePicker = page.getByRole("group", { name: "Certificate template" });
   for (const [name, id] of certificateStyleCases) {
     await selectCertificateStyle(stylePicker, preview, name, id);
     await preview.screenshot({ path: join(artifactDirectory, `blank-${id}-1280.png`) });
@@ -750,11 +671,11 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   await expect(page.getByRole("heading", { name: /certificate is only as enduring/i })).toBeVisible();
   await expect(page.getByLabel("Weight (grams)")).toHaveValue("");
   await expect(page.getByLabel("Specimen form")).toHaveValue("");
-  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+  const stylePicker = page.getByRole("group", { name: "Certificate template" });
   const themePicker = page.getByRole("group", { name: "Certificate color scheme" });
-  await expect(stylePicker.getByRole("radio")).toHaveCount(3);
+  await expect(stylePicker.getByRole("radio")).toHaveCount(2);
   await expect(themePicker.getByRole("radio")).toHaveCount(9);
-  await expect(stylePicker.getByRole("radio", { name: /Regal Archive/ })).toBeChecked();
+  await expect(stylePicker.getByRole("radio", { name: /Celestial Formal/ })).toBeChecked();
   await expect(themePicker.getByRole("radio", { name: /Observatory Navy/ })).toBeChecked();
 
   const proofChain = page.locator(".hero__ledger");
@@ -835,27 +756,30 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
       ].join("|");
     }));
   }
-  expect(styleSignatures.size).toBe(3);
+  expect(styleSignatures.size).toBe(2);
 
   const themeSignatures = new Set<string>();
-  for (const [name, id, expectedVariables] of themeCases) {
-    await themePicker.getByRole("radio", { name: new RegExp(name) }).check();
-    await expect(certificatePreview).toHaveAttribute("data-certificate-theme", id);
-    const variables = await certificatePreview.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return [
-        "--certificate-dark",
-        "--certificate-dark-soft",
-        "--certificate-accent",
-        "--certificate-accent-light",
-        "--certificate-paper",
-      ].map((property) => style.getPropertyValue(property).trim());
-    });
-    expect(variables).toEqual(expectedVariables);
-    themeSignatures.add(variables.join("|"));
+  for (const [styleName, styleId] of certificateStyleCases) {
+    await selectCertificateStyle(stylePicker, certificatePreview, styleName, styleId);
+    for (const [name, id, expectedVariables] of themeCases) {
+      await themePicker.getByRole("radio", { name: new RegExp(name) }).check();
+      await expect(certificatePreview).toHaveAttribute("data-certificate-theme", id);
+      const variables = await certificatePreview.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [
+          "--certificate-dark",
+          "--certificate-dark-soft",
+          "--certificate-accent",
+          "--certificate-accent-light",
+          "--certificate-paper",
+        ].map((property) => style.getPropertyValue(property).trim());
+      });
+      expect(variables).toEqual(expectedVariables);
+      themeSignatures.add(variables.join("|"));
+    }
   }
   expect(themeSignatures.size).toBe(9);
-  await expect(certificatePreview).toHaveAttribute("data-certificate-style", "celestial-formal");
+  await expect(certificatePreview).toHaveAttribute("data-certificate-style", "museum-type");
 
   const photoBox = await certificatePreview.locator(".certificate-preview__photo").boundingBox();
   const detailsBox = await certificatePreview.locator(".certificate-preview__weight").boundingBox();
@@ -918,7 +842,7 @@ test("keeps certificate facts, signoff, and non-active status treatments disjoin
 
   const certificatePreview = page.locator(".certificate-preview");
   const status = certificatePreview.locator(".certificate-preview__status");
-  const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
+  const stylePicker = page.getByRole("group", { name: "Certificate template" });
 
   for (const width of [1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
@@ -985,6 +909,98 @@ test("keeps certificate facts, signoff, and non-active status treatments disjoin
   }
 });
 
+test("keeps unbroken Museum Type export notes inside their ruled panel", async ({ page }) => {
+  await page.goto("/");
+  const values = {
+    issuerName: "Test Issuer",
+    collectionName: "Test Meteorite Collection",
+    issuerEmail: "",
+    issuerPhone: "",
+    issuerAddress: "",
+    issuerWebsite: "",
+    certificateId: "WRAP-TEST-0001",
+    issueDate: "2026-07-29",
+    certificateVersion: "1.0",
+    certificateStatus: "active",
+    certificateStyle: "museum-type",
+    certificateTheme: "observatory-navy",
+    supersededCertificateId: "",
+    certificateNotes: "",
+    meteoriteName: "Test Meteorite",
+    classification: "L5 chondrite",
+    weightGrams: "12.3",
+    weightPrecision: "0.1",
+    specimenForm: "Fragment",
+    dimensions: "",
+    numberOfPieces: "1",
+    preparationState: "",
+    identifyingMarks: "",
+    recordedOwner: "Test Owner",
+    fallStatus: "Find",
+    fallDate: "2024-01-15",
+    country: "Canada",
+    region: "",
+    locality: "Example Township",
+    latitude: "45.4215 N",
+    longitude: "75.6972 W",
+    metbullCode: "",
+    officialReferenceUrl: "",
+    recoveryInformation: "R".repeat(3000),
+    provenance: "P".repeat(5000),
+    previousOwner: "",
+    buyer: "",
+    transferDate: "",
+    invoiceReference: "",
+    transferNotes: "",
+  } satisfies FormValues;
+
+  const noteDraws = await page.evaluate(async (renderValues) => {
+    const modulePath = "/src/lib/certificate.ts";
+    const { renderCertificate } = await import(/* @vite-ignore */ modulePath) as typeof import("../../src/lib/certificate");
+    const draws: Array<{ text: string; width: number; y: number; fontSize: number }> = [];
+    const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (...args) {
+      const [text, x, y] = args;
+      if (x === 134 && y >= 1332 && y <= 1496) {
+        draws.push({
+          text: String(text),
+          width: this.measureText(String(text)).width,
+          y,
+          fontSize: Number.parseFloat(this.font.match(/([0-9.]+)px/)?.[1] ?? "0"),
+        });
+      }
+      return originalFillText.apply(this, args);
+    };
+
+    try {
+      const photo = new File([
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#333"/></svg>',
+      ], "specimen.svg", { type: "image/svg+xml" });
+      await renderCertificate({
+        values: renderValues,
+        fingerprint: "AA:".repeat(31) + "AA",
+        recordHash: "a".repeat(64),
+        qrPayload: "https://example.invalid/verify/WRAP-TEST-0001",
+        mainPhoto: photo,
+      });
+      return draws;
+    } finally {
+      CanvasRenderingContext2D.prototype.fillText = originalFillText;
+    }
+  }, values);
+
+  const provenanceDraws = noteDraws.filter(({ y }) => y <= 1419);
+  const supplementalDraws = noteDraws.filter(({ y }) => y >= 1472);
+  expect(provenanceDraws).toHaveLength(4);
+  expect(supplementalDraws).toHaveLength(2);
+  expect(provenanceDraws.at(-1)?.text).toMatch(/\.\.\.$/);
+  expect(supplementalDraws.at(-1)?.text).toMatch(/\.\.\.$/);
+  for (const draw of noteDraws) {
+    expect(draw.width, `note line at y=${draw.y}: ${draw.text}`).toBeLessThanOrEqual(922);
+    expect(draw.fontSize).toBeGreaterThanOrEqual(CERTIFICATE_EXPORT_FONT_FLOOR);
+  }
+});
+
 test("generates, downloads, verifies, and rejects tampering", async ({ page }, testInfo) => {
   await page.goto("/#builder");
 
@@ -1010,7 +1026,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('textarea[name="provenance"]').fill("Documented test custody from recovery through issuance.");
 
   await page.getByRole("radio", { name: /Royal Amethyst/ }).check();
-  await page.getByRole("radio", { name: /Museum Ledger/ }).check();
+  await page.getByRole("radio", { name: /Museum Type/ }).check();
   if (process.env.COA_ARTIFACT_DIR) {
     await page.locator('select[name="certificateStatus"]').selectOption("revoked");
   }
@@ -1100,7 +1116,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     certificate: { visualStyle?: string; visualTheme?: string };
     files: Array<{ path: string }>;
   };
-  expect(manifest.certificate.visualStyle).toBe("museum-ledger");
+  expect(manifest.certificate.visualStyle).toBe("museum-type");
   expect(manifest.certificate.visualTheme).toBe("royal-amethyst");
   const signedPaths = manifest.files.map((entry) => entry.path);
   expect(signedPaths).toEqual(expect.arrayContaining([
@@ -1117,41 +1133,41 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   if (process.env.COA_ARTIFACT_DIR) {
     await mkdir(process.env.COA_ARTIFACT_DIR, { recursive: true });
     await writeFile(
-      join(process.env.COA_ARTIFACT_DIR, "revoked-museum-ledger-certificate.png"),
+      join(process.env.COA_ARTIFACT_DIR, "revoked-museum-type-certificate.png"),
       await archive.file(`${root}certificate.png`)!.async("nodebuffer"),
     );
     await writeFile(
-      join(process.env.COA_ARTIFACT_DIR, "revoked-museum-ledger-certificate.pdf"),
+      join(process.env.COA_ARTIFACT_DIR, "revoked-museum-type-certificate.pdf"),
       await archive.file(`${root}certificate.pdf`)!.async("nodebuffer"),
     );
 
-    await page.getByRole("radio", { name: /Regal Archive/ }).check();
-    await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-style", "regal-archive");
-    const regalPackageDownload = page.waitForEvent("download", { timeout: 90_000 });
+    await page.getByRole("radio", { name: /Celestial Formal/ }).check();
+    await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-style", "celestial-formal");
+    const celestialPackageDownload = page.waitForEvent("download", { timeout: 90_000 });
     await page.getByRole("button", { name: "Issue signed COA package" }).click();
-    const regalDownload = await regalPackageDownload;
-    const regalPackagePath = await regalDownload.path();
-    expect(regalPackagePath).toBeTruthy();
-    const regalArchive = await JSZip.loadAsync(await readFile(regalPackagePath!));
-    const regalManifestName = Object.keys(regalArchive.files).find((name) => name.endsWith("/manifest.json"));
-    expect(regalManifestName).toBeTruthy();
-    const regalRoot = regalManifestName!.slice(0, -"manifest.json".length);
+    const celestialDownload = await celestialPackageDownload;
+    const celestialPackagePath = await celestialDownload.path();
+    expect(celestialPackagePath).toBeTruthy();
+    const celestialArchive = await JSZip.loadAsync(await readFile(celestialPackagePath!));
+    const celestialManifestName = Object.keys(celestialArchive.files).find((name) => name.endsWith("/manifest.json"));
+    expect(celestialManifestName).toBeTruthy();
+    const celestialRoot = celestialManifestName!.slice(0, -"manifest.json".length);
     await writeFile(
-      join(process.env.COA_ARTIFACT_DIR, "revoked-regal-archive-certificate.png"),
-      await regalArchive.file(`${regalRoot}certificate.png`)!.async("nodebuffer"),
+      join(process.env.COA_ARTIFACT_DIR, "revoked-celestial-formal-certificate.png"),
+      await celestialArchive.file(`${celestialRoot}certificate.png`)!.async("nodebuffer"),
     );
     await writeFile(
-      join(process.env.COA_ARTIFACT_DIR, "revoked-regal-archive-certificate.pdf"),
-      await regalArchive.file(`${regalRoot}certificate.pdf`)!.async("nodebuffer"),
+      join(process.env.COA_ARTIFACT_DIR, "revoked-celestial-formal-certificate.pdf"),
+      await celestialArchive.file(`${celestialRoot}certificate.pdf`)!.async("nodebuffer"),
     );
   }
   const certificateRecord = JSON.parse(await archive.file(`${root}certificate-record.json`)!.async("text")) as {
     certificate: { visualStyle?: string; visualTheme?: string };
   };
-  expect(certificateRecord.certificate.visualStyle).toBe("museum-ledger");
+  expect(certificateRecord.certificate.visualStyle).toBe("museum-type");
   expect(certificateRecord.certificate.visualTheme).toBe("royal-amethyst");
   const certificateText = await archive.file(`${root}certificate.txt`)!.async("text");
-  expect(certificateText).toContain("Certificate layout style: Museum Ledger");
+  expect(certificateText).toContain("Certificate layout style: Museum Type");
   expect(certificateText).toContain("Certificate color scheme: Royal Amethyst");
   const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v1.schema.json`)!.async("text")) as {
     properties: {
@@ -1166,6 +1182,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     "regal-archive",
     "museum-ledger",
     "celestial-formal",
+    "museum-type",
   ]);
   const verifySource = await archive.file(`${root}verify.py`)!.async("text");
   const verifyPath = testInfo.outputPath("verify.py");

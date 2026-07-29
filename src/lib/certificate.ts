@@ -80,28 +80,35 @@ function wrapText(
   lineHeight: number,
   maxLines = 3,
 ) {
-  const words = text.trim().split(/\s+/);
+  let remaining = text.trim().replace(/\s+/g, " ");
   const lines: string[] = [];
-  let line = "";
 
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (context.measureText(candidate).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = candidate;
+  while (remaining) {
+    if (context.measureText(remaining).width <= maxWidth) {
+      lines.push(remaining);
+      break;
     }
+
+    let low = 0;
+    let high = remaining.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (context.measureText(remaining.slice(0, middle)).width <= maxWidth) low = middle;
+      else high = middle - 1;
+    }
+    if (low === 0) break;
+
+    const fittingPrefix = remaining.slice(0, low);
+    const whitespaceIndex = fittingPrefix.lastIndexOf(" ");
+    const splitIndex = whitespaceIndex > 0 ? whitespaceIndex : low;
+    lines.push(remaining.slice(0, splitIndex).trimEnd());
+    remaining = remaining.slice(splitIndex).trimStart();
   }
-  if (line) lines.push(line);
 
   const visible = lines.slice(0, maxLines);
   if (lines.length > maxLines) {
-    let last = visible[maxLines - 1] ?? "";
-    while (context.measureText(`${last}...`).width > maxWidth && last.includes(" ")) {
-      last = last.slice(0, last.lastIndexOf(" "));
-    }
-    visible[maxLines - 1] = `${last}...`;
+    const lastIndex = maxLines - 1;
+    visible[lastIndex] = fitTextWithEllipsis(context, `${visible[lastIndex] ?? ""}...`, maxWidth);
   }
 
   visible.forEach((value, index) => context.fillText(value, x, y + index * lineHeight));
@@ -407,6 +414,321 @@ function drawStyleFrame(
   context.restore();
 }
 
+async function drawMuseumTypeCertificate(
+  context: CanvasRenderingContext2D,
+  input: CertificateRenderInput,
+  theme: ReturnType<typeof getCertificateTheme>,
+) {
+  const { dark, darkSoft, accent, accentLight, paper, ink, muted, accentText } = theme;
+  context.fillStyle = paper;
+  context.fillRect(0, 0, WIDTH, HEIGHT);
+
+  context.fillStyle = `${dark}0a`;
+  let seed = Number.parseInt(input.recordHash.slice(0, 8), 16) || 1;
+  for (let index = 0; index < 280; index += 1) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const x = seed % WIDTH;
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    context.fillRect(x, seed % HEIGHT, 2, 2);
+  }
+
+  context.strokeStyle = dark;
+  context.lineWidth = 18;
+  roundedRect(context, 34, 34, WIDTH - 68, HEIGHT - 68, 42);
+  context.stroke();
+  context.strokeStyle = accent;
+  context.lineWidth = 4;
+  roundedRect(context, 56, 56, WIDTH - 112, HEIGHT - 112, 28);
+  context.stroke();
+
+  context.fillStyle = dark;
+  roundedRect(context, 88, 68, 1340, 132, 18);
+  context.fill();
+  context.fillStyle = accent;
+  context.fillRect(88, 174, 1340, 26);
+
+  let logo: HTMLImageElement | undefined;
+  if (input.logo) {
+    try {
+      logo = await fileToImage(input.logo);
+    } catch {
+      logo = undefined;
+    }
+  }
+  if (logo) {
+    context.fillStyle = `${paper}f2`;
+    roundedRect(context, 108, 84, 122, 76, 8);
+    context.fill();
+    drawContainedImage(context, logo, 116, 90, 106, 64);
+  } else {
+    context.strokeStyle = accentLight;
+    context.lineWidth = 5;
+    roundedRect(context, 122, 92, 82, 62, 6);
+    context.stroke();
+    context.fillStyle = accentLight;
+    context.font = "800 34px Arial, sans-serif";
+    context.textAlign = "center";
+    context.fillText("M", 163, 135);
+    context.textAlign = "left";
+  }
+
+  context.fillStyle = accentLight;
+  const collectionSize = fitFontSize(
+    context,
+    input.values.collectionName.toUpperCase(),
+    1050,
+    28,
+    "Arial, sans-serif",
+    "800",
+  );
+  context.font = `800 ${collectionSize}px Arial, sans-serif`;
+  context.fillText(fitTextWithEllipsis(context, input.values.collectionName.toUpperCase(), 1050), 255, 134);
+  context.fillStyle = paper;
+  context.font = "800 18px Arial, sans-serif";
+  context.fillText("SCIENTIFIC SPECIMEN IDENTIFICATION CARD", 255, 169);
+
+  context.fillStyle = `${accent}1c`;
+  roundedRect(context, 1470, 68, 642, 132, 18);
+  context.fill();
+  context.strokeStyle = dark;
+  context.lineWidth = 4;
+  roundedRect(context, 1470, 68, 642, 132, 18);
+  context.stroke();
+  context.fillStyle = accentText;
+  context.font = "800 18px Arial, sans-serif";
+  context.fillText("SPECIMEN RECORD", 1502, 108);
+  context.fillStyle = dark;
+  const idSize = fitFontSize(context, input.values.certificateId, 570, 34, "Arial, sans-serif", "800");
+  context.font = `800 ${idSize}px Arial, sans-serif`;
+  context.fillText(fitTextWithEllipsis(context, input.values.certificateId, 570), 1502, 154);
+  context.fillStyle = input.values.certificateStatus === "active" ? accentText : "#8b2a2a";
+  context.font = "800 18px Arial, sans-serif";
+  context.fillText(input.values.certificateStatus.toUpperCase(), 1502, 184);
+
+  context.fillStyle = accentText;
+  context.font = "800 20px Arial, sans-serif";
+  context.fillText("CERTIFICATE OF AUTHENTICITY / METEORITE SPECIMEN", 112, 248);
+  context.fillStyle = dark;
+  const nameSize = fitFontSize(context, input.values.meteoriteName, 1570, 92, 'Impact, "Arial Narrow", Arial, sans-serif', "800");
+  context.font = `800 ${nameSize}px Impact, "Arial Narrow", Arial, sans-serif`;
+  context.fillText(fitTextWithEllipsis(context, input.values.meteoriteName, 1570), 110, 322);
+  context.fillStyle = accentText;
+  context.font = "800 30px Arial, sans-serif";
+  context.fillText(fitTextWithEllipsis(context, input.values.classification.toUpperCase(), 1570), 112, 378);
+  context.fillStyle = dark;
+  context.fillRect(110, 408, 1980, 8);
+  context.fillStyle = accent;
+  context.fillRect(110, 420, 1980, 4);
+
+  const photoFrame = { x: 110, y: 466, width: 1150, height: 578 };
+  context.fillStyle = `${paper}ee`;
+  roundedRect(context, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height, 18);
+  context.fill();
+  context.strokeStyle = dark;
+  context.lineWidth = 7;
+  roundedRect(context, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height, 18);
+  context.stroke();
+  context.strokeStyle = accent;
+  context.lineWidth = 3;
+  roundedRect(context, photoFrame.x + 14, photoFrame.y + 14, photoFrame.width - 28, photoFrame.height - 72, 10);
+  context.stroke();
+  try {
+    const photo = await fileToImage(input.mainPhoto);
+    drawContainedImage(context, photo, photoFrame.x + 25, photoFrame.y + 25, photoFrame.width - 50, photoFrame.height - 102);
+  } catch {
+    context.fillStyle = darkSoft;
+    context.fillRect(photoFrame.x + 25, photoFrame.y + 25, photoFrame.width - 50, photoFrame.height - 102);
+    context.fillStyle = paper;
+    context.textAlign = "center";
+    context.font = "800 21px Arial, sans-serif";
+    context.fillText("ORIGINAL PHOTO PRESERVED IN PACKAGE", photoFrame.x + photoFrame.width / 2, photoFrame.y + 276);
+    context.textAlign = "left";
+  }
+  context.fillStyle = dark;
+  context.fillRect(photoFrame.x + 3, photoFrame.y + photoFrame.height - 55, photoFrame.width - 6, 52);
+  context.fillStyle = accentLight;
+  context.font = "800 18px ui-monospace, SFMono-Regular, Menlo, monospace";
+  context.fillText("EXACT SPECIMEN / PHOTO RECORD 01", photoFrame.x + 26, photoFrame.y + photoFrame.height - 21);
+
+  const panelX = 1300;
+  const panelY = 466;
+  const panelWidth = 790;
+  const panelHeight = 578;
+  context.fillStyle = `${paper}ee`;
+  roundedRect(context, panelX, panelY, panelWidth, panelHeight, 18);
+  context.fill();
+  context.strokeStyle = dark;
+  context.lineWidth = 5;
+  roundedRect(context, panelX, panelY, panelWidth, panelHeight, 18);
+  context.stroke();
+  context.fillStyle = dark;
+  roundedRect(context, panelX, panelY, panelWidth, 66, 18);
+  context.fill();
+  context.fillRect(panelX, panelY + 32, panelWidth, 34);
+  context.fillStyle = paper;
+  context.font = "800 22px Arial, sans-serif";
+  context.fillText("CATALOG FACTS", panelX + 28, panelY + 43);
+
+  const locality = [input.values.locality, input.values.region, input.values.country].filter((value) => value.trim()).join(", ");
+  const catalogRows = [
+    ["FALL / FIND", input.values.fallStatus],
+    ["DATE", displayDate(input.values.fallDate)],
+    ["LOCALITY", locality],
+    ["COORDINATES", `${input.values.latitude}, ${input.values.longitude}`],
+    ["SPECIMEN FORM", input.values.specimenForm],
+    ["RECORDED OWNER", input.values.recordedOwner],
+    ["ISSUED", displayDate(input.values.issueDate)],
+  ];
+  const rowHeight = (panelHeight - 66) / catalogRows.length;
+  catalogRows.forEach(([label, value], index) => {
+    const rowY = panelY + 66 + index * rowHeight;
+    if (index % 2 === 1) {
+      context.fillStyle = `${accent}14`;
+      context.fillRect(panelX + 3, rowY, panelWidth - 6, rowHeight);
+    }
+    context.strokeStyle = `${dark}4d`;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(panelX + 3, rowY + rowHeight);
+    context.lineTo(panelX + panelWidth - 3, rowY + rowHeight);
+    context.stroke();
+    context.fillStyle = accentText;
+    context.font = "800 18px Arial, sans-serif";
+    context.fillText(label, panelX + 28, rowY + 45);
+    context.fillStyle = ink;
+    const valueSize = fitFontSize(context, value, 440, 24, "Arial, sans-serif", "700");
+    context.font = `700 ${valueSize}px Arial, sans-serif`;
+    context.fillText(fitTextWithEllipsis(context, value, 440), panelX + 320, rowY + 45);
+  });
+
+  const measurementY = 1082;
+  context.fillStyle = `${accent}16`;
+  context.fillRect(110, measurementY, 1980, 120);
+  context.strokeStyle = dark;
+  context.lineWidth = 5;
+  context.strokeRect(110, measurementY, 1980, 120);
+  const measurements = [
+    ["WEIGHT", `${input.values.weightGrams} g`],
+    ["DIMENSIONS", input.values.dimensions.trim() || "Not supplied"],
+    ["PIECES", input.values.numberOfPieces],
+    ["PREPARATION", input.values.preparationState.trim() || "Not supplied"],
+  ];
+  measurements.forEach(([label, value], index) => {
+    const x = 110 + index * 495;
+    if (index > 0) {
+      context.strokeStyle = `${dark}80`;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(x, measurementY);
+      context.lineTo(x, measurementY + 120);
+      context.stroke();
+    }
+    context.fillStyle = accentText;
+    context.font = "800 18px Arial, sans-serif";
+    context.fillText(label, x + 28, measurementY + 37);
+    context.fillStyle = dark;
+    const valueSize = fitFontSize(context, value, 430, 36, 'Impact, "Arial Narrow", Arial, sans-serif', "800");
+    context.font = `800 ${valueSize}px Impact, "Arial Narrow", Arial, sans-serif`;
+    context.fillText(fitTextWithEllipsis(context, value, 430), x + 28, measurementY + 85);
+  });
+
+  const notesX = 110;
+  const notesY = 1240;
+  const notesWidth = 970;
+  const notesHeight = 280;
+  context.fillStyle = `${paper}f2`;
+  context.fillRect(notesX, notesY, notesWidth, notesHeight);
+  context.strokeStyle = dark;
+  context.lineWidth = 4;
+  context.strokeRect(notesX, notesY, notesWidth, notesHeight);
+  context.fillStyle = dark;
+  context.fillRect(notesX, notesY, notesWidth, 54);
+  context.fillStyle = paper;
+  context.font = "800 20px Arial, sans-serif";
+  context.fillText("PROVENANCE / CATALOG NOTES", notesX + 24, notesY + 36);
+  context.fillStyle = ink;
+  context.font = "400 21px Arial, sans-serif";
+  wrapText(context, input.values.provenance, notesX + 24, notesY + 92, notesWidth - 48, 29, 4);
+  const supplemental = input.values.recoveryInformation.trim()
+    ? `Recovery: ${input.values.recoveryInformation.trim()}`
+    : input.values.identifyingMarks.trim()
+      ? `Identifying marks: ${input.values.identifyingMarks.trim()}`
+      : "No additional recovery or identifying-mark notes supplied.";
+  context.fillStyle = muted;
+  context.font = "400 18px Arial, sans-serif";
+  wrapText(context, supplemental, notesX + 24, notesY + 232, notesWidth - 48, 24, 2);
+
+  const authX = 1120;
+  const authY = 1240;
+  const authWidth = 970;
+  const authHeight = 280;
+  context.fillStyle = dark;
+  roundedRect(context, authX, authY, authWidth, authHeight, 18);
+  context.fill();
+  context.strokeStyle = accent;
+  context.lineWidth = 5;
+  roundedRect(context, authX, authY, authWidth, authHeight, 18);
+  context.stroke();
+  context.fillStyle = accentLight;
+  context.font = "800 20px Arial, sans-serif";
+  context.fillText("AUTHENTICATION / RECORD VERIFICATION", authX + 30, authY + 42);
+  context.fillStyle = paper;
+  context.font = "800 30px Arial, sans-serif";
+  context.fillText(fitTextWithEllipsis(context, input.values.issuerName, 580), authX + 30, authY + 93);
+  context.fillStyle = accentLight;
+  context.font = "800 17px Arial, sans-serif";
+  context.fillText("ED25519 DIGITAL SIGNATURE", authX + 30, authY + 132);
+  context.fillStyle = paper;
+  context.font = "400 17px ui-monospace, SFMono-Regular, Menlo, monospace";
+  context.fillText(fitTextWithEllipsis(context, input.fingerprint, 590), authX + 30, authY + 168);
+  context.fillStyle = `${paper}b8`;
+  context.font = "400 18px Arial, sans-serif";
+  context.fillText(`Certificate version ${input.values.certificateVersion}`, authX + 30, authY + 213);
+  context.fillText("Scan to inspect the signed record payload.", authX + 30, authY + 244);
+
+  const qrDataUrl = await QRCode.toDataURL(input.qrPayload, {
+    errorCorrectionLevel: "M",
+    margin: 2,
+    width: 224,
+    color: { dark, light: "#ffffff" },
+  });
+  const qr = await dataUrlToImage(qrDataUrl);
+  context.fillStyle = "#ffffff";
+  roundedRect(context, authX + authWidth - 244, authY + 18, 224, 244, 10);
+  context.fill();
+  context.drawImage(qr, authX + authWidth - 234, authY + 28, 204, 204);
+  context.fillStyle = dark;
+  context.font = "800 16px Arial, sans-serif";
+  context.textAlign = "center";
+  context.fillText("SHA-256", authX + authWidth - 132, authY + 250);
+  context.textAlign = "left";
+
+  context.fillStyle = muted;
+  context.font = `400 ${certificateFooterLayout.fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  context.fillText(`Record SHA-256: ${input.recordHash}`, 112, certificateFooterLayout.recordHashBaseline);
+  context.fillText(`Key FP: ${input.fingerprint}`, 112, certificateFooterLayout.keyFingerprintBaseline);
+}
+
+async function encodeCertificateCanvas(canvas: HTMLCanvasElement, input: CertificateRenderInput) {
+  const pngBlob = await canvasToBlob(canvas);
+  const png = new Uint8Array(await pngBlob.arrayBuffer());
+  const pdfDocument = new jsPDF({
+    orientation: "landscape",
+    unit: "in",
+    format: "letter",
+    compress: true,
+  });
+  pdfDocument.setProperties({
+    title: `${input.values.certificateId} - Certificate of Authenticity`,
+    subject: `${input.values.meteoriteName} meteorite specimen`,
+    author: input.values.issuerName,
+    creator: "Spacerocks COA Studio",
+  });
+  pdfDocument.addImage(png, "PNG", 0, 0, 11, 8.5, undefined, "FAST");
+  const pdf = new Uint8Array(pdfDocument.output("arraybuffer"));
+  return { png, pdf };
+}
+
 export async function renderCertificate(input: CertificateRenderInput): Promise<{
   png: Uint8Array;
   pdf: Uint8Array;
@@ -426,6 +748,11 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const IVORY = theme.paper;
   const INK = theme.ink;
   const MUTED = theme.muted;
+
+  if (certificateStyle === "museum-type") {
+    await drawMuseumTypeCertificate(context, input, theme);
+    return encodeCertificateCanvas(canvas, input);
+  }
 
   context.fillStyle = IVORY;
   context.fillRect(0, 0, WIDTH, HEIGHT);
@@ -894,22 +1221,5 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.fillText(`Record SHA-256: ${input.recordHash}`, 112, certificateFooterLayout.recordHashBaseline);
   context.fillText(`Key FP: ${input.fingerprint}`, 112, certificateFooterLayout.keyFingerprintBaseline);
 
-  const pngBlob = await canvasToBlob(canvas);
-  const png = new Uint8Array(await pngBlob.arrayBuffer());
-  const pdfDocument = new jsPDF({
-    orientation: "landscape",
-    unit: "in",
-    format: "letter",
-    compress: true,
-  });
-  pdfDocument.setProperties({
-    title: `${input.values.certificateId} - Certificate of Authenticity`,
-    subject: `${input.values.meteoriteName} meteorite specimen`,
-    author: input.values.issuerName,
-    creator: "Spacerocks COA Studio",
-  });
-  pdfDocument.addImage(png, "PNG", 0, 0, 11, 8.5, undefined, "FAST");
-  const pdf = new Uint8Array(pdfDocument.output("arraybuffer"));
-
-  return { png, pdf };
+  return encodeCertificateCanvas(canvas, input);
 }
