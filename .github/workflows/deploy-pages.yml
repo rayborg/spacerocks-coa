@@ -29,8 +29,8 @@ jobs:
         run: npm ci
       - name: Test
         run: npm test
-      - name: Install browser
-        run: npx playwright install --with-deps chromium
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium firefox webkit
       - name: Install offline verifier dependency
         run: python3 -m pip install cryptography
       - name: Browser tests

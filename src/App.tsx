@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -176,6 +176,7 @@ function CertificatePreview({
   identity?: SigningIdentity;
   logoPreviewUrl?: string;
 }) {
+  const canvasRef = useRef<HTMLDivElement>(null);
   const statusClass = values.certificateStatus === "active" ? "" : " certificate-preview--flagged";
   const theme = getCertificateTheme(values.certificateTheme);
   const certificateStyle = getCertificateStyle(values.certificateStyle);
@@ -193,6 +194,25 @@ function CertificatePreview({
     "--certificate-muted": theme.muted,
     "--certificate-accent-text": theme.accentText,
   } as React.CSSProperties;
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const updateScale = () => {
+      const scale = Math.min(canvas.clientWidth / 1100, canvas.clientHeight / 850);
+      if (scale > 0) canvas.style.setProperty("--certificate-preview-scale", scale.toString());
+    };
+    updateScale();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateScale);
+      return () => window.removeEventListener("resize", updateScale);
+    }
+
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div
       className={`certificate-preview certificate-preview--${certificateStyle.id}${statusClass}`}
@@ -201,57 +221,59 @@ function CertificatePreview({
       data-certificate-theme={theme.id}
       aria-label={`Live certificate preview in ${certificateStyle.name} style and ${theme.name} colors`}
     >
-      <div className="certificate-preview__frame">
-        <header className="certificate-preview__header">
-          <div className="certificate-preview__collection">
-            {logoPreviewUrl ? <img className="certificate-preview__logo" src={logoPreviewUrl} alt={`${values.collectionName || "Collection"} logo`} /> : <span className="orbit-mark" aria-hidden="true"><i /></span>}
-            <span>{values.collectionName || "Collection name"}</span>
+      <div className="certificate-preview__canvas" ref={canvasRef}>
+        <div className="certificate-preview__frame">
+          <header className="certificate-preview__header">
+            <div className="certificate-preview__collection">
+              {logoPreviewUrl ? <img className="certificate-preview__logo" src={logoPreviewUrl} alt={`${values.collectionName || "Collection"} logo`} /> : <span className="orbit-mark" aria-hidden="true"><i /></span>}
+              <span>{values.collectionName || "Collection name"}</span>
+            </div>
+            <span className="certificate-preview__record-type">{isMuseumLedger ? "Signed specimen catalog" : "Archival specimen record"}</span>
+            <strong>Certificate of Authenticity</strong>
+            <div className="certificate-preview__id">
+              <span>{isMuseumLedger ? "Catalog record / COA ID" : "Certificate ID"}</span>
+              <strong>{values.certificateId || "Pending"}</strong>
+            </div>
+          </header>
+          <div className="certificate-preview__body">
+            <div className="certificate-preview__title">
+              <h3>{values.meteoriteName || "Meteorite name"}</h3>
+              <p>{values.classification || "Classification"}</p>
+            </div>
+            <div className="certificate-preview__photo">
+              {photo ? <img src={photo.previewUrl} alt={photo.caption || "Uploaded specimen"} /> : <span>Exact specimen photo required</span>}
+            </div>
+            <dl className="certificate-preview__facts">
+              <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>
+              <div><dt>Locality</dt><dd>{values.locality || "Not entered"}</dd></div>
+              <div><dt>Specimen form</dt><dd>{values.specimenForm || "Not recorded"}</dd></div>
+              <div><dt>Recorded owner</dt><dd>{values.recordedOwner || "Not entered"}</dd></div>
+            </dl>
+            <div className={`certificate-preview__weight certificate-preview__weight--${specimenState}`} data-specimen-state={specimenState}>
+              {specimenState === "empty" ? (
+                <><span>Recorded specimen</span><strong>Awaiting details</strong></>
+              ) : (
+                <>
+                  <span>{specimenState === "complete" ? "Specimen details" : hasWeight ? "Recorded weight" : "Specimen form"}</span>
+                  <strong>{hasWeight ? <>{values.weightGrams}<small> g</small></> : values.specimenForm}</strong>
+                  {specimenState === "complete" ? <em>{values.specimenForm}</em> : null}
+                </>
+              )}
+            </div>
+            <div className="certificate-preview__signoff">
+              <span>Digitally signed by</span>
+              <strong>{values.issuerName || "Issuer"}</strong>
+              <small>{identity ? `Key ${identity.fingerprint.slice(0, 17)}...` : "Signing key not loaded"}</small>
+            </div>
+            <div className="certificate-preview__seal" aria-hidden="true">
+              <span>SHA</span>
+              <i />
+              <small>256</small>
+            </div>
+            {values.certificateStatus !== "active" ? (
+              <div className="certificate-preview__status">{values.certificateStatus}</div>
+            ) : null}
           </div>
-          <span className="certificate-preview__record-type">{isMuseumLedger ? "Signed specimen catalog" : "Archival specimen record"}</span>
-          <strong>Certificate of Authenticity</strong>
-          <div className="certificate-preview__id">
-            <span>{isMuseumLedger ? "Catalog record / COA ID" : "Certificate ID"}</span>
-            {values.certificateId || "Pending"}
-          </div>
-        </header>
-        <div className="certificate-preview__body">
-          <div className="certificate-preview__title">
-            <h3>{values.meteoriteName || "Meteorite name"}</h3>
-            <p>{values.classification || "Classification"}</p>
-          </div>
-          <div className="certificate-preview__photo">
-            {photo ? <img src={photo.previewUrl} alt={photo.caption || "Uploaded specimen"} /> : <span>Exact specimen photo required</span>}
-          </div>
-          <dl className="certificate-preview__facts">
-            <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>
-            <div><dt>Locality</dt><dd>{values.locality || "Not entered"}</dd></div>
-            <div><dt>Specimen form</dt><dd>{values.specimenForm || "Not recorded"}</dd></div>
-            <div><dt>Recorded owner</dt><dd>{values.recordedOwner || "Not entered"}</dd></div>
-          </dl>
-          <div className={`certificate-preview__weight certificate-preview__weight--${specimenState}`} data-specimen-state={specimenState}>
-            {specimenState === "empty" ? (
-              <><span>Recorded specimen</span><strong>Awaiting details</strong></>
-            ) : (
-              <>
-                <span>{specimenState === "complete" ? "Specimen details" : hasWeight ? "Recorded weight" : "Specimen form"}</span>
-                <strong>{hasWeight ? <>{values.weightGrams}<small> g</small></> : values.specimenForm}</strong>
-                {specimenState === "complete" ? <em>{values.specimenForm}</em> : null}
-              </>
-            )}
-          </div>
-          <div className="certificate-preview__signoff">
-            <span>Digitally signed by</span>
-            <strong>{values.issuerName || "Issuer"}</strong>
-            <small>{identity ? `Key ${identity.fingerprint.slice(0, 17)}...` : "Signing key not loaded"}</small>
-          </div>
-          <div className="certificate-preview__seal" aria-hidden="true">
-            <span>SHA</span>
-            <i />
-            <small>256</small>
-          </div>
-          {values.certificateStatus !== "active" ? (
-            <div className="certificate-preview__status">{values.certificateStatus}</div>
-          ) : null}
         </div>
       </div>
     </div>

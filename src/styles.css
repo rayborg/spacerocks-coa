@@ -1386,6 +1386,7 @@ a {
 }
 
 .certificate-preview {
+  --certificate-preview-scale: 0.5;
   --certificate-dark: #061a33;
   --certificate-dark-soft: #123a63;
   --certificate-accent: #b87518;
@@ -1394,8 +1395,9 @@ a {
   --certificate-ink: #10233b;
   --certificate-muted: #5d6570;
   --certificate-accent-text: #7e4c09;
+  position: relative;
   width: 100%;
-  container-type: inline-size;
+  overflow: hidden;
   padding: 10px;
   aspect-ratio: 11 / 8.5;
   background:
@@ -1405,13 +1407,27 @@ a {
   box-shadow: 0 24px 55px rgba(7, 26, 47, 0.2);
 }
 
+.certificate-preview__canvas {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
 .certificate-preview__frame {
   position: relative;
-  height: 100%;
+  width: 1100px;
+  height: 850px;
+  flex: 0 0 auto;
   overflow: hidden;
   background: var(--certificate-paper);
   border: 2px solid var(--certificate-accent);
   box-shadow: inset 0 0 0 4px var(--certificate-paper), inset 0 0 0 5px var(--certificate-accent);
+  transform: scale(var(--certificate-preview-scale));
+  transform-origin: center;
 }
 
 .certificate-preview--regal-archive {
@@ -1521,8 +1537,8 @@ a {
 .certificate-preview--regal-archive .certificate-preview__id {
   top: 20%;
   right: 5%;
-  width: 18%;
-  padding-left: 3%;
+  width: 22%;
+  padding-left: 2%;
   color: var(--certificate-dark);
   border-left: 1px solid color-mix(in srgb, var(--certificate-accent) 72%, transparent);
 }
@@ -1742,7 +1758,7 @@ a {
   background: var(--certificate-dark);
   border-top: 1px solid var(--certificate-accent);
   font-family: var(--mono);
-  font-size: clamp(3px, 0.75cqw, 4.5px);
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-align: left;
@@ -1771,7 +1787,7 @@ a {
   content: "Object catalog / signed specimen record";
   color: var(--certificate-dark);
   font-family: var(--mono);
-  font-size: clamp(3px, 0.78cqw, 5px);
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1779,7 +1795,7 @@ a {
 
 .certificate-preview--museum-ledger .certificate-preview__facts > div {
   grid-template-columns: 34% 1fr;
-  min-height: clamp(13px, 3.6cqw, 20px);
+  min-height: 40px;
   padding: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--certificate-dark) 22%, transparent);
   background: transparent;
@@ -1953,18 +1969,18 @@ a {
 .certificate-preview__collection {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   color: var(--certificate-accent-light);
   font-family: var(--serif);
-  font-size: clamp(5.5px, 1.4cqw, 10px);
+  font-size: 16px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .certificate-preview__logo {
   display: block;
-  width: clamp(24px, 4vw, 58px);
-  height: clamp(16px, 2.6vw, 38px);
+  width: 72px;
+  height: 46px;
   flex: 0 0 auto;
   object-fit: contain;
   object-position: center;
@@ -1991,19 +2007,19 @@ a {
 .orbit-mark {
   position: relative;
   display: block;
-  width: 22px;
-  height: 10px;
-  border: 1px solid var(--certificate-accent-light);
+  width: 36px;
+  height: 16px;
+  border: 2px solid var(--certificate-accent-light);
   border-radius: 50%;
   transform: rotate(-15deg);
 }
 
 .orbit-mark i {
   position: absolute;
-  top: 2px;
-  left: 8px;
-  width: 5px;
-  height: 5px;
+  top: 3px;
+  left: 13px;
+  width: 8px;
+  height: 8px;
   background: var(--certificate-accent-light);
   border-radius: 50%;
 }
@@ -2014,7 +2030,7 @@ a {
   left: 4.5%;
   max-width: 67%;
   font-family: var(--serif);
-  font-size: clamp(7px, 2.75cqw, 20px);
+  font-size: 30px;
   font-weight: 400;
   line-height: 1;
   text-transform: uppercase;
@@ -2027,7 +2043,7 @@ a {
   left: 4.5%;
   color: var(--certificate-accent-light);
   font-family: sans-serif;
-  font-size: clamp(4px, 1.05cqw, 7px);
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.18em;
   line-height: 1;
@@ -2044,19 +2060,29 @@ a {
   top: 25%;
   right: 4.5%;
   display: grid;
-  gap: 5px;
+  gap: 8px;
+  overflow: hidden;
   text-align: right;
   font-family: var(--serif);
-  font-size: clamp(6px, 2.1cqw, 12px);
+  font-size: 24px;
+  white-space: nowrap;
 }
 
 .certificate-preview__id span {
   color: var(--certificate-accent-light);
   font-family: sans-serif;
-  font-size: 0.62em;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.certificate-preview__id > strong {
+  overflow: hidden;
+  font: inherit;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .certificate-preview__body {
@@ -2075,7 +2101,7 @@ a {
   overflow: hidden;
   margin: 0;
   font-family: var(--serif);
-  font-size: clamp(10px, 3.7cqw, 30px);
+  font-size: 40px;
   font-weight: 400;
   line-height: 1;
   text-overflow: ellipsis;
@@ -2086,7 +2112,7 @@ a {
   overflow: hidden;
   margin: 3% 0 4%;
   color: var(--certificate-accent-text);
-  font-size: clamp(5px, 1.6cqw, 10px);
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-overflow: ellipsis;
@@ -2103,11 +2129,11 @@ a {
   height: 39%;
   overflow: hidden;
   place-items: center;
-  padding: 8px;
+  padding: 14px;
   color: #a7b2bc;
   background: var(--certificate-dark-soft);
   border: 3px solid var(--certificate-dark);
-  font-size: clamp(4.5px, 1.4cqw, 7.5px);
+  font-size: 16px;
   line-height: 1.4;
   text-align: center;
   text-transform: uppercase;
@@ -2131,7 +2157,7 @@ a {
 .certificate-preview__facts > div {
   display: grid;
   grid-template-columns: 39% 1fr;
-  min-height: clamp(13px, 4cqw, 22px);
+  min-height: 42px;
   align-items: center;
   padding: 1% 3%;
 }
@@ -2142,7 +2168,7 @@ a {
 
 .certificate-preview__facts dt {
   overflow: hidden;
-  font-size: clamp(4.5px, 1.4cqw, 8px);
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-overflow: ellipsis;
@@ -2154,7 +2180,7 @@ a {
   overflow: hidden;
   margin: 0;
   font-family: var(--serif);
-  font-size: clamp(5.5px, 1.85cqw, 10.5px);
+  font-size: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2178,7 +2204,7 @@ a {
 .certificate-preview__weight span,
 .certificate-preview__weight em {
   color: var(--certificate-accent-light);
-  font-size: clamp(4px, 1.2cqw, 6.5px);
+  font-size: 16px;
   font-style: normal;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -2188,7 +2214,7 @@ a {
 .certificate-preview__weight strong {
   max-width: 100%;
   font-family: var(--serif);
-  font-size: clamp(13px, 5.2cqw, 30px);
+  font-size: 48px;
   font-weight: 400;
   line-height: 1;
 }
@@ -2196,12 +2222,12 @@ a {
 .certificate-preview__weight--empty strong,
 .certificate-preview__weight--partial strong {
   overflow-wrap: anywhere;
-  font-size: clamp(7px, 1.3cqw, 18px);
+  font-size: 20px;
   line-height: 1.08;
 }
 
 .certificate-preview__weight--empty {
-  gap: clamp(2px, 0.5cqw, 4px);
+  gap: 8px;
   justify-items: stretch;
   overflow: hidden;
   padding: 1.5%;
@@ -2212,7 +2238,7 @@ a {
   width: 100%;
   max-width: 100%;
   overflow: hidden;
-  font-size: clamp(2.5px, 0.55cqw, 3.5px);
+  font-size: 16px;
   letter-spacing: 0.04em;
   line-height: 1;
   text-overflow: clip;
@@ -2225,14 +2251,14 @@ a {
   max-width: 100%;
   overflow: hidden;
   overflow-wrap: normal;
-  font-size: clamp(3.5px, 0.68cqw, 5px);
+  font-size: 20px;
   line-height: 1.1;
   text-overflow: clip;
   white-space: nowrap;
 }
 
 .certificate-preview__weight small {
-  font-size: 0.52em;
+  font-size: 16px;
 }
 
 .certificate-preview__signoff {
@@ -2248,7 +2274,7 @@ a {
 .certificate-preview__signoff span,
 .certificate-preview__signoff small {
   color: var(--certificate-muted);
-  font-size: clamp(4px, 1.1cqw, 6.5px);
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2257,7 +2283,7 @@ a {
 .certificate-preview__signoff strong {
   margin: 1% 0;
   font-family: var(--serif);
-  font-size: clamp(7px, 2.7cqw, 16px);
+  font-size: 24px;
   font-weight: 500;
 }
 
@@ -2274,8 +2300,12 @@ a {
   border: 1px solid var(--certificate-accent);
   border-radius: 50%;
   font-family: var(--mono);
-  font-size: clamp(4px, 0.48vw, 7px);
+  font-size: 16px;
   font-weight: 800;
+}
+
+.certificate-preview__seal small {
+  font-size: 16px;
 }
 
 .certificate-preview__seal i {
@@ -2290,11 +2320,11 @@ a {
   bottom: 17%;
   z-index: 2;
   width: 20%;
-  padding: clamp(3px, 1cqw, 6px) clamp(2px, 0.7cqw, 5px);
+  padding: 10px 8px;
   color: #8f2f2f;
   background: rgba(255, 255, 255, 0.82);
   border: 2px solid #8f2f2f;
-  font-size: clamp(6px, 1.8cqw, 10px);
+  font-size: 18px;
   font-weight: 800;
   line-height: 1;
   text-align: center;

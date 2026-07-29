@@ -207,10 +207,16 @@ test("starts with blank content, provisional preview labels, and readable respon
         viewportWidth: window.innerWidth,
         photoCardFits: photoCardBox.left >= 0 && photoCardBox.right <= window.innerWidth
           && photoCard.scrollWidth <= photoCard.clientWidth,
-        controlsFit: visibleControls.every((element) => {
+        overflowingControls: visibleControls.filter((element) => {
           const box = element.getBoundingClientRect();
-          return box.left >= 0 && box.right <= window.innerWidth && element.scrollWidth <= element.clientWidth;
-        }),
+          return box.left < 0 || box.right > window.innerWidth || element.scrollWidth > element.clientWidth + 1;
+        }).map((element) => ({
+          name: element.getAttribute("name"),
+          type: element.getAttribute("type"),
+          className: element.className,
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+        })),
       };
     });
     const minimumControlSize = width <= 760 ? 16 : 14;
@@ -231,7 +237,7 @@ test("starts with blank content, provisional preview labels, and readable respon
     }
     expect(styles.pageWidth, `page overflow at ${width}px`).toBeLessThanOrEqual(styles.viewportWidth);
     expect(styles.photoCardFits, `photo card overflow at ${width}px`).toBe(true);
-    expect(styles.controlsFit, `control overflow at ${width}px`).toBe(true);
+    expect(styles.overflowingControls, `control overflow at ${width}px`).toEqual([]);
     await expect(preview).toBeVisible();
   }
 });
@@ -315,8 +321,8 @@ test("renders coherent specimen states and complete responsive certificate headi
           detailWhiteSpace: getComputedStyle(detail).whiteSpace,
         };
       });
-      expect(blankSummary.labelSize, `${name} blank label at ${width}px`).toBeLessThanOrEqual(3.5);
-      expect(blankSummary.detailSize, `${name} blank detail at ${width}px`).toBeLessThanOrEqual(5);
+      expect(blankSummary.labelSize, `${name} blank label at ${width}px`).toBe(16);
+      expect(blankSummary.detailSize, `${name} blank detail at ${width}px`).toBe(20);
       expect(blankSummary.labelFits, `${name} blank label clipping at ${width}px`).toBe(true);
       expect(blankSummary.detailFits, `${name} blank detail clipping at ${width}px`).toBe(true);
       expect(blankSummary.labelContained, `${name} blank label containment at ${width}px`).toBe(true);
@@ -372,6 +378,14 @@ test("renders coherent specimen states and complete responsive certificate headi
         const recordType = element.querySelector<HTMLElement>(".certificate-preview__record-type")!;
         const collection = element.querySelector<HTMLElement>(".certificate-preview__collection")!;
         const idLabel = element.querySelector<HTMLElement>(".certificate-preview__id span")!;
+        const idValue = element.querySelector<HTMLElement>(".certificate-preview__id > strong")!;
+        const factLabels = Array.from(element.querySelectorAll<HTMLElement>(".certificate-preview__facts dt"));
+        const factValues = Array.from(element.querySelectorAll<HTMLElement>(".certificate-preview__facts dd"));
+        const frame = element.querySelector<HTMLElement>(".certificate-preview__frame")!;
+        const canvas = element.querySelector<HTMLElement>(".certificate-preview__canvas")!;
+        const certificateText = Array.from(frame.querySelectorAll<HTMLElement>(
+          ".certificate-preview__collection, .certificate-preview__record-type, .certificate-preview__header > strong, .certificate-preview__id, .certificate-preview__id span, .certificate-preview__id > strong, .certificate-preview__title h3, .certificate-preview__title p, .certificate-preview__photo, .certificate-preview__facts dt, .certificate-preview__facts dd, .certificate-preview__weight span, .certificate-preview__weight strong, .certificate-preview__weight em, .certificate-preview__weight small, .certificate-preview__signoff span, .certificate-preview__signoff strong, .certificate-preview__signoff small, .certificate-preview__seal, .certificate-preview__seal small",
+        ));
         return {
           headingText: heading.textContent,
           recordTypeText: recordType.textContent,
@@ -380,6 +394,16 @@ test("renders coherent specimen states and complete responsive certificate headi
           headingFits: heading.scrollWidth <= heading.clientWidth,
           meteoriteNameFits: meteoriteName.scrollWidth <= meteoriteName.clientWidth,
           collectionFits: collection.scrollWidth <= collection.clientWidth,
+          idLabelFits: idLabel.scrollWidth <= idLabel.clientWidth,
+          idValueFits: idValue.scrollWidth <= idValue.clientWidth,
+          factLabelsFit: factLabels.every((node) => node.scrollWidth <= node.clientWidth),
+          factValuesFit: factValues.every((node) => node.scrollWidth <= node.clientWidth),
+          canonicalFrame: {
+            width: Number.parseFloat(getComputedStyle(frame).width),
+            height: Number.parseFloat(getComputedStyle(frame).height),
+            scale: Number.parseFloat(getComputedStyle(canvas).getPropertyValue("--certificate-preview-scale")),
+            minimumFontSize: Math.min(...certificateText.map((node) => Number.parseFloat(getComputedStyle(node).fontSize))),
+          },
           fontSizes: {
             recordType: fontSize(".certificate-preview__record-type"),
             heading: fontSize(".certificate-preview__header > strong"),
@@ -406,16 +430,25 @@ test("renders coherent specimen states and complete responsive certificate headi
       expect(geometry.headingFits, `${id} title clipping at ${width}px`).toBe(true);
       expect(geometry.meteoriteNameFits, `${id} representative meteorite name clipping at ${width}px`).toBe(true);
       expect(geometry.collectionFits, `${id} representative collection clipping at ${width}px`).toBe(true);
+      expect(geometry.idLabelFits, `${id} representative ID label clipping at ${width}px`).toBe(true);
+      expect(geometry.idValueFits, `${id} representative ID clipping at ${width}px`).toBe(true);
+      expect(geometry.factLabelsFit, `${id} representative fact label clipping at ${width}px`).toBe(true);
+      expect(geometry.factValuesFit, `${id} representative fact value clipping at ${width}px`).toBe(true);
+      expect(geometry.canonicalFrame.width).toBe(1100);
+      expect(geometry.canonicalFrame.height).toBe(850);
+      expect(geometry.canonicalFrame.scale, `${id} scale at ${width}px`).toBeGreaterThan(0);
+      expect(geometry.canonicalFrame.scale, `${id} scale at ${width}px`).toBeLessThanOrEqual(1);
+      expect(geometry.canonicalFrame.minimumFontSize, `${id} canonical font floor at ${width}px`).toBeGreaterThanOrEqual(16);
       for (const [level, size, minimum, maximum] of [
-        ["record type", geometry.fontSizes.recordType, 4, 7],
-        ["certificate heading", geometry.fontSizes.heading, 7, 20],
-        ["certificate ID", geometry.fontSizes.certificateId, 6, 12],
-        ["meteorite name", geometry.fontSizes.meteoriteName, 10, 30],
-        ["classification", geometry.fontSizes.classification, 5, 10],
-        ["fact label", geometry.fontSizes.factLabel, 4.5, 8],
-        ["fact value", geometry.fontSizes.factValue, 5.5, 10.5],
-        ["specimen weight", geometry.fontSizes.specimenWeight, 13, 30],
-        ["signoff", geometry.fontSizes.signoff, 7, 16],
+        ["record type", geometry.fontSizes.recordType, 16, 16],
+        ["certificate heading", geometry.fontSizes.heading, 30, 30],
+        ["certificate ID", geometry.fontSizes.certificateId, 24, 24],
+        ["meteorite name", geometry.fontSizes.meteoriteName, 40, 40],
+        ["classification", geometry.fontSizes.classification, 16, 16],
+        ["fact label", geometry.fontSizes.factLabel, 16, 16],
+        ["fact value", geometry.fontSizes.factValue, 18, 18],
+        ["specimen weight", geometry.fontSizes.specimenWeight, 48, 48],
+        ["signoff", geometry.fontSizes.signoff, 24, 24],
       ] as const) {
         expect(size, `${id} ${level} too small at ${width}px`).toBeGreaterThanOrEqual(minimum);
         expect(size, `${id} ${level} too large at ${width}px`).toBeLessThanOrEqual(maximum);
@@ -432,6 +465,39 @@ test("renders coherent specimen states and complete responsive certificate headi
       }
     }
   }
+
+  const longCertificateId = `COA-${"X".repeat(116)}`;
+  const longOwner = "Long-form collection owner name ".repeat(8).trim();
+  await page.locator('input[name="certificateId"]').fill(longCertificateId);
+  await page.getByLabel("Recorded owner").fill(longOwner);
+  await expect(preview.locator(".certificate-preview__id > strong")).toHaveText(longCertificateId);
+  for (const [name, id] of styles) {
+    await stylePicker.getByRole("radio", { name: new RegExp(name) }).check();
+    await expect(preview).toHaveAttribute("data-certificate-style", id);
+    const boundaryOverflow = await preview.evaluate((element) => {
+      const frame = element.querySelector<HTMLElement>(".certificate-preview__frame")!.getBoundingClientRect();
+      const idValue = element.querySelector<HTMLElement>(".certificate-preview__id > strong")!;
+      const owner = element.querySelectorAll<HTMLElement>(".certificate-preview__facts dd")[3];
+      const idBox = idValue.getBoundingClientRect();
+      const ownerBox = owner.getBoundingClientRect();
+      return {
+        idOverflows: idValue.scrollWidth > idValue.clientWidth,
+        idEllipsis: getComputedStyle(idValue).textOverflow,
+        idContained: idBox.left >= frame.left && idBox.right <= frame.right,
+        ownerOverflows: owner.scrollWidth > owner.clientWidth,
+        ownerEllipsis: getComputedStyle(owner).textOverflow,
+        ownerContained: ownerBox.left >= frame.left && ownerBox.right <= frame.right,
+      };
+    });
+    expect(boundaryOverflow.idOverflows, `${id} long ID exercises ellipsis`).toBe(true);
+    expect(boundaryOverflow.idEllipsis, `${id} long ID ellipsis`).toBe("ellipsis");
+    expect(boundaryOverflow.idContained, `${id} long ID containment`).toBe(true);
+    expect(boundaryOverflow.ownerOverflows, `${id} long owner exercises ellipsis`).toBe(true);
+    expect(boundaryOverflow.ownerEllipsis, `${id} long owner ellipsis`).toBe("ellipsis");
+    expect(boundaryOverflow.ownerContained, `${id} long owner containment`).toBe(true);
+  }
+  await page.locator('input[name="certificateId"]').fill("MUS-2026-0042");
+  await page.getByLabel("Recorded owner").fill("");
 
   await stylePicker.getByRole("radio", { name: /Museum Ledger/ }).check();
   const museumSignature = await preview.evaluate((element) => {
