@@ -44,6 +44,45 @@ function boxesIntersect(left: BoundingBox, right: BoundingBox): boolean {
     && left.y + left.height > right.y;
 }
 
+const contentFieldNames = [
+  "issuerName",
+  "collectionName",
+  "issuerEmail",
+  "issuerPhone",
+  "issuerAddress",
+  "issuerWebsite",
+  "certificateId",
+  "issueDate",
+  "certificateVersion",
+  "supersededCertificateId",
+  "certificateNotes",
+  "meteoriteName",
+  "classification",
+  "weightGrams",
+  "weightPrecision",
+  "dimensions",
+  "numberOfPieces",
+  "preparationState",
+  "identifyingMarks",
+  "recordedOwner",
+  "fallStatus",
+  "fallDate",
+  "country",
+  "region",
+  "locality",
+  "latitude",
+  "longitude",
+  "metbullCode",
+  "officialReferenceUrl",
+  "recoveryInformation",
+  "provenance",
+  "previousOwner",
+  "buyer",
+  "transferDate",
+  "invoiceReference",
+  "transferNotes",
+] as const;
+
 function duplicateCentralDirectoryEntry(zip: Buffer, targetSuffix: string): Buffer {
   let eocdOffset = -1;
   for (let offset = zip.length - 22; offset >= Math.max(0, zip.length - 65_557); offset -= 1) {
@@ -77,6 +116,122 @@ function duplicateCentralDirectoryEntry(zip: Buffer, targetSuffix: string): Buff
   return result;
 }
 
+test("starts with blank content, provisional preview labels, and readable responsive controls", async ({ page }) => {
+  await page.goto("/#builder");
+
+  for (const name of contentFieldNames) {
+    const field = page.locator(`[name="${name}"]`);
+    await expect(field, `${name} starts empty`).toHaveValue("");
+    await expect(field, `${name} has a placeholder`).toHaveAttribute("placeholder", /\S/);
+  }
+
+  const specimenForm = page.getByLabel("Specimen form");
+  await expect(specimenForm).toHaveValue("");
+  await expect(specimenForm.locator('option[value=""]')).toHaveAttribute("disabled", "");
+  await expect(specimenForm.locator('option[value=""]')).toHaveText("Select specimen form");
+  await expect(page.locator('select[name="certificateStatus"]')).toHaveValue("active");
+  await expect(page.getByRole("radio", { name: /Regal Archive/ })).toBeChecked();
+  await expect(page.getByRole("radio", { name: /Observatory Navy/ })).toBeChecked();
+
+  await expect(page.getByLabel("Issuer display or legal name")).toHaveAttribute("placeholder", "e.g., John Doe");
+  await expect(page.getByLabel("Meteorite name")).toHaveAttribute("placeholder", "e.g., Aguas Zarcas");
+  await expect(page.getByLabel("Weight (grams)")).toHaveAttribute("placeholder", "e.g., 44.7");
+  await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("");
+  await expect(page.getByLabel("Meteorite name")).toHaveValue("");
+  await expect(page.getByLabel("Weight (grams)")).toHaveValue("");
+
+  const preview = page.locator(".certificate-preview");
+  await expect(preview.locator(".certificate-preview__collection")).toContainText("Collection name");
+  await expect(preview.locator(".certificate-preview__title h3")).toHaveText("Meteorite name");
+  await expect(preview.locator(".certificate-preview__title p")).toHaveText("Classification");
+  await expect(preview.locator(".certificate-preview__id")).toContainText("Pending");
+  await expect(preview.locator(".certificate-preview__facts")).toContainText("Not entered");
+  await expect(preview.locator(".certificate-preview__facts")).toContainText("Specimen form");
+  await expect(preview.locator(".certificate-preview__weight strong")).toHaveText("--");
+  await expect(preview.locator(".certificate-preview__weight")).not.toContainText("0 g");
+  await expect(preview.locator(".certificate-preview__signoff strong")).toHaveText("Issuer");
+
+  await page.getByRole("button", { name: "Issue signed COA package" }).click();
+  await expect(page.locator(".generation-status")).toHaveText("Review the highlighted required fields.");
+  await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("");
+
+  await page.locator(".photo-drop input[type=file]").setInputFiles({
+    name: "filename-must-not-become-caption.png",
+    mimeType: "image/png",
+    buffer: onePixelPng,
+    lastModified: Date.UTC(2024, 0, 15),
+  });
+  const photoCaption = page.getByLabel("Caption", { exact: true });
+  const photoCaptureDate = page.getByLabel("Capture date", { exact: true });
+  await expect(page.locator(".photo-item__meta strong")).toHaveText("filename-must-not-become-caption.png");
+  await expect(photoCaption).toHaveValue("");
+  await expect(photoCaptureDate).toHaveValue("");
+  await expect(photoCaption).toHaveAttribute("placeholder", "e.g., Front face");
+  await expect(photoCaptureDate).toHaveAttribute("placeholder", "e.g., 2026-07-29");
+
+  for (const width of [1280, 760, 390, 320]) {
+    await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+    const styles = await page.evaluate(() => {
+      const fontSize = (selector: string) => Number.parseFloat(getComputedStyle(document.querySelector(selector)!).fontSize);
+      const visibleControls = Array.from(document.querySelectorAll<HTMLElement>(
+        ".field input:not([type=file]):not([type=radio]), .field select, .field textarea, .photo-item input:not([type=checkbox])",
+      )).filter((element) => element.getClientRects().length > 0);
+      const photoCard = document.querySelector<HTMLElement>(".photo-item")!;
+      const photoCardBox = photoCard.getBoundingClientRect();
+      return {
+        controlSizes: [
+          fontSize('input[name="issuerName"]'),
+          fontSize('select[name="specimenForm"]'),
+          fontSize('textarea[name="provenance"]'),
+        ],
+        photoControlSizes: [fontSize(".photo-item input"), fontSize('.photo-item input[type="date"]')],
+        labelSize: fontSize(".field__label"),
+        hintSize: fontSize(".theme-field__hint"),
+        styleDescriptionSize: fontSize(".style-option__body > small"),
+        themeDescriptionSize: fontSize(".theme-option__body > small"),
+        supportTextSizes: [
+          fontSize(".workbench-section summary small"),
+          fontSize(".key-state"),
+          fontSize(".key-option .button"),
+          fontSize(".generation-status"),
+          fontSize(".issue-section > div:first-child > span"),
+          fontSize(".preview-column__head > small"),
+          fontSize(".preview-checks span"),
+          fontSize(".preview-note p"),
+        ],
+        pageWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        photoCardFits: photoCardBox.left >= 0 && photoCardBox.right <= window.innerWidth
+          && photoCard.scrollWidth <= photoCard.clientWidth,
+        controlsFit: visibleControls.every((element) => {
+          const box = element.getBoundingClientRect();
+          return box.left >= 0 && box.right <= window.innerWidth && element.scrollWidth <= element.clientWidth;
+        }),
+      };
+    });
+    const minimumControlSize = width <= 760 ? 16 : 14;
+    for (const size of styles.controlSizes) {
+      expect(size, `control font at ${width}px`).toBeGreaterThanOrEqual(minimumControlSize);
+      expect(size, `control font at ${width}px`).toBeLessThanOrEqual(18);
+    }
+    for (const size of styles.photoControlSizes) {
+      expect(size, `photo control font at ${width}px`).toBeGreaterThanOrEqual(minimumControlSize);
+      expect(size, `photo control font at ${width}px`).toBeLessThanOrEqual(18);
+    }
+    expect(styles.labelSize, `label font at ${width}px`).toBeGreaterThanOrEqual(11);
+    expect(styles.hintSize, `hint font at ${width}px`).toBeGreaterThanOrEqual(11);
+    expect(styles.styleDescriptionSize, `style description font at ${width}px`).toBeGreaterThanOrEqual(11);
+    expect(styles.themeDescriptionSize, `theme description font at ${width}px`).toBeGreaterThanOrEqual(11);
+    for (const size of styles.supportTextSizes) {
+      expect(size, `support text font at ${width}px`).toBeGreaterThanOrEqual(11);
+    }
+    expect(styles.pageWidth, `page overflow at ${width}px`).toBeLessThanOrEqual(styles.viewportWidth);
+    expect(styles.photoCardFits, `photo card overflow at ${width}px`).toBe(true);
+    expect(styles.controlsFit, `control overflow at ${width}px`).toBe(true);
+    await expect(preview).toBeVisible();
+  }
+});
+
 test("loads the workbench on desktop and mobile without horizontal overflow", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (message) => {
@@ -85,8 +240,8 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /certificate is only as enduring/i })).toBeVisible();
-  await expect(page.getByLabel("Weight (grams)")).toHaveValue("44.7");
-  await expect(page.getByLabel("Specimen form")).toHaveValue("Half stone / end cut");
+  await expect(page.getByLabel("Weight (grams)")).toHaveValue("");
+  await expect(page.getByLabel("Specimen form")).toHaveValue("");
   const stylePicker = page.getByRole("group", { name: "Certificate layout style" });
   const themePicker = page.getByRole("group", { name: "Certificate color scheme" });
   await expect(stylePicker.getByRole("radio")).toHaveCount(3);
@@ -110,7 +265,7 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   const liveLogo = certificatePreview.locator(".certificate-preview__collection > img.certificate-preview__logo");
   await expect(liveLogo).toBeVisible();
   await expect(liveLogo).toHaveAttribute("src", /^blob:/);
-  await expect(liveLogo).toHaveAttribute("alt", "The Spacerocks Collection logo");
+  await expect(liveLogo).toHaveAttribute("alt", "Collection logo");
   const firstLogoSource = await liveLogo.getAttribute("src");
   const logoGeometry = await liveLogo.evaluate((element) => {
     const image = element as HTMLImageElement;
@@ -309,6 +464,27 @@ test("keeps certificate facts, signoff, and non-active status treatments disjoin
 test("generates, downloads, verifies, and rejects tampering", async ({ page }, testInfo) => {
   await page.goto("/#builder");
 
+  await page.locator('input[name="issuerName"]').fill("Test Issuer");
+  await page.locator('input[name="collectionName"]').fill("Test Meteorite Collection");
+  await page.locator('input[name="certificateId"]').fill("TEST-COA-0001");
+  await page.locator('input[name="issueDate"]').fill("2026-07-29");
+  await page.locator('input[name="certificateVersion"]').fill("1.0");
+  await page.locator('input[name="meteoriteName"]').fill("Test Meteorite");
+  await page.locator('input[name="classification"]').fill("L5 chondrite");
+  await page.locator('input[name="weightGrams"]').fill("12.3");
+  await page.locator('input[name="weightPrecision"]').fill("0.1");
+  await page.locator('select[name="specimenForm"]').selectOption({ label: "Fragment" });
+  await page.locator('input[name="numberOfPieces"]').fill("1");
+  await page.locator('input[name="recordedOwner"]').fill("Test Owner");
+  await page.locator("details", { hasText: "Fall, find, and provenance" }).locator("summary").click();
+  await page.locator('input[name="fallStatus"]').fill("Find");
+  await page.locator('input[name="fallDate"]').fill("2024-01-15");
+  await page.locator('input[name="country"]').fill("Canada");
+  await page.locator('input[name="locality"]').fill("Example Township");
+  await page.locator('input[name="latitude"]').fill("45.4215 N");
+  await page.locator('input[name="longitude"]').fill("75.6972 W");
+  await page.locator('textarea[name="provenance"]').fill("Documented test custody from recovery through issuance.");
+
   await page.getByRole("radio", { name: /Royal Amethyst/ }).check();
   await page.getByRole("radio", { name: /Museum Ledger/ }).check();
 
@@ -345,7 +521,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   const download = await packageDownload;
   const packagePath = await download.path();
   expect(packagePath).toBeTruthy();
-  expect(download.suggestedFilename()).toContain("AZ-2019-0447-HE");
+  expect(download.suggestedFilename()).toContain("TEST-COA-0001");
   await expect(page.getByText("Release created")).toBeVisible();
 
   const packageBuffer = await readFile(packagePath!);

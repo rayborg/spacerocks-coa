@@ -100,41 +100,41 @@ const formSchema = z
   });
 
 const defaultValues: FormValues = {
-  issuerName: "Raymond Borges Hink",
-  collectionName: "The Spacerocks Collection",
+  issuerName: "",
+  collectionName: "",
   issuerEmail: "",
   issuerPhone: "",
   issuerAddress: "",
   issuerWebsite: "",
-  certificateId: "AZ-2019-0447-HE",
-  issueDate: "2026-07-25",
-  certificateVersion: "1.0",
+  certificateId: "",
+  issueDate: "",
+  certificateVersion: "",
   certificateStatus: "active",
   certificateStyle: "regal-archive",
   certificateTheme: "observatory-navy",
   supersededCertificateId: "",
   certificateNotes: "",
-  meteoriteName: "Aguas Zarcas",
-  classification: "CM2 carbonaceous chondrite",
-  weightGrams: "44.7",
-  weightPrecision: "0.1",
-  specimenForm: "Half stone / end cut",
+  meteoriteName: "",
+  classification: "",
+  weightGrams: "",
+  weightPrecision: "",
+  specimenForm: "",
   dimensions: "",
-  numberOfPieces: "1",
-  preparationState: "Half stone with exposed cut face",
+  numberOfPieces: "",
+  preparationState: "",
   identifyingMarks: "",
-  recordedOwner: "Raymond Borges Hink",
-  fallStatus: "Witnessed fall",
-  fallDate: "2019-04-23",
-  country: "Costa Rica",
-  region: "Alajuela Province",
-  locality: "Alajuela Province, Costa Rica",
-  latitude: "10\u00b023\u203229.03\u2033 N",
-  longitude: "84\u00b020\u203228.58\u2033 W",
-  metbullCode: "69696",
-  officialReferenceUrl: "https://www.lpi.usra.edu/meteor/metbull.cfm?code=69696",
+  recordedOwner: "",
+  fallStatus: "",
+  fallDate: "",
+  country: "",
+  region: "",
+  locality: "",
+  latitude: "",
+  longitude: "",
+  metbullCode: "",
+  officialReferenceUrl: "",
   recoveryInformation: "",
-  provenance: "Recorded in The Spacerocks Collection as the exact 44.7 g half stone / end cut represented by this certificate package.",
+  provenance: "",
   previousOwner: "",
   buyer: "",
   transferDate: "",
@@ -218,15 +218,15 @@ function CertificatePreview({
             {photo ? <img src={photo.previewUrl} alt={photo.caption || "Uploaded specimen"} /> : <span>Exact specimen photo required</span>}
           </div>
           <dl className="certificate-preview__facts">
-            <div><dt>Fall / find</dt><dd>{values.fallStatus}</dd></div>
-            <div><dt>Locality</dt><dd>{values.locality}</dd></div>
-            <div><dt>Specimen form</dt><dd>{values.specimenForm}</dd></div>
-            <div><dt>Recorded owner</dt><dd>{values.recordedOwner}</dd></div>
+            <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>
+            <div><dt>Locality</dt><dd>{values.locality || "Not entered"}</dd></div>
+            <div><dt>Specimen form</dt><dd>{values.specimenForm || "Specimen form"}</dd></div>
+            <div><dt>Recorded owner</dt><dd>{values.recordedOwner || "Not entered"}</dd></div>
           </dl>
           <div className="certificate-preview__weight">
             <span>Specimen details</span>
-            <strong>{values.weightGrams || "0"}<small> g</small></strong>
-            <em>{values.specimenForm}</em>
+            <strong>{values.weightGrams ? <>{values.weightGrams}<small> g</small></> : "--"}</strong>
+            <em>{values.specimenForm || "Specimen form"}</em>
           </div>
           <div className="certificate-preview__signoff">
             <span>Digitally signed by</span>
@@ -449,8 +449,8 @@ export default function App() {
         id: crypto.randomUUID(),
         file,
         previewUrl: URL.createObjectURL(file),
-        caption: file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "),
-        captureDate: file.lastModified ? new Date(file.lastModified).toISOString().slice(0, 10) : "",
+        caption: "",
+        captureDate: "",
         isUnmodifiedOriginal: false,
       })),
     ]);
@@ -561,22 +561,22 @@ export default function App() {
                 <summary><span>01</span><div><strong>Issuer identity</strong><small>Who is authorizing this record</small></div></summary>
                 <div className="workbench-section__body field-grid">
                   <Field label="Issuer display or legal name" error={errors.issuerName?.message}>
-                    <input {...register("issuerName")} />
+                    <input placeholder="e.g., John Doe" {...register("issuerName")} />
                   </Field>
                   <Field label="Collection or business" error={errors.collectionName?.message}>
-                    <input {...register("collectionName")} />
+                    <input placeholder="e.g., Example Meteorite Collection" {...register("collectionName")} />
                   </Field>
                   <Field label="Email" error={errors.issuerEmail?.message}>
-                    <input type="email" {...register("issuerEmail")} />
+                    <input type="email" placeholder="e.g., issuer@example.com" {...register("issuerEmail")} />
                   </Field>
                   <Field label="Phone">
-                    <input {...register("issuerPhone")} />
+                    <input type="tel" placeholder="e.g., +1 555 010 0123" {...register("issuerPhone")} />
                   </Field>
                   <Field label="Address" wide>
-                    <input {...register("issuerAddress")} />
+                    <input placeholder="e.g., 123 Example Street, City, Country" {...register("issuerAddress")} />
                   </Field>
                   <Field label="Website" error={errors.issuerWebsite?.message}>
-                    <input type="url" placeholder="https://" {...register("issuerWebsite")} />
+                    <input type="url" placeholder="e.g., https://example.com" {...register("issuerWebsite")} />
                   </Field>
                   <Field label="Logo" hint="Optional. Included and hashed in the package.">
                     <input type="file" accept="image/*" onChange={(event) => setLogo(event.target.files?.[0])} />
@@ -588,13 +588,13 @@ export default function App() {
                 <summary><span>02</span><div><strong>Certificate identity</strong><small>Versioned, traceable, never silently overwritten</small></div></summary>
                 <div className="workbench-section__body field-grid">
                   <Field label="Certificate ID" hint="Portable characters only" error={errors.certificateId?.message}>
-                    <input {...register("certificateId")} />
+                    <input placeholder="e.g., COA-2026-0001" {...register("certificateId")} />
                   </Field>
                   <Field label="Issue date" error={errors.issueDate?.message}>
-                    <input type="date" {...register("issueDate")} />
+                    <input type="date" placeholder="e.g., 2026-07-29" {...register("issueDate")} />
                   </Field>
                   <Field label="Version" error={errors.certificateVersion?.message}>
-                    <input {...register("certificateVersion")} />
+                    <input placeholder="e.g., 1.0" {...register("certificateVersion")} />
                   </Field>
                   <Field label="Status" error={errors.certificateStatus?.message}>
                     <select {...register("certificateStatus")}>
@@ -605,10 +605,10 @@ export default function App() {
                     </select>
                   </Field>
                   <Field label="Superseded certificate ID" error={errors.supersededCertificateId?.message}>
-                    <input {...register("supersededCertificateId")} />
+                    <input placeholder="e.g., COA-2025-0001" {...register("supersededCertificateId")} />
                   </Field>
                   <Field label="Certificate notes">
-                    <input {...register("certificateNotes")} />
+                    <input placeholder="e.g., Notes about this certificate version" {...register("certificateNotes")} />
                   </Field>
                   <fieldset className="theme-field field--wide">
                     <legend>Certificate layout style</legend>
@@ -656,19 +656,20 @@ export default function App() {
                 <summary><span>03</span><div><strong>Specimen record</strong><small>Physical identity and classification</small></div></summary>
                 <div className="workbench-section__body field-grid">
                   <Field label="Meteorite name" error={errors.meteoriteName?.message}>
-                    <input {...register("meteoriteName")} />
+                    <input placeholder="e.g., Aguas Zarcas" {...register("meteoriteName")} />
                   </Field>
                   <Field label="Classification" error={errors.classification?.message}>
-                    <input {...register("classification")} />
+                    <input placeholder="e.g., CM2 carbonaceous chondrite" {...register("classification")} />
                   </Field>
                   <Field label="Weight (grams)" error={errors.weightGrams?.message}>
-                    <input inputMode="decimal" {...register("weightGrams")} />
+                    <input inputMode="decimal" placeholder="e.g., 44.7" {...register("weightGrams")} />
                   </Field>
                   <Field label="Weight precision (grams)" error={errors.weightPrecision?.message}>
-                    <input inputMode="decimal" {...register("weightPrecision")} />
+                    <input inputMode="decimal" placeholder="e.g., 0.1" {...register("weightPrecision")} />
                   </Field>
                   <Field label="Specimen form" error={errors.specimenForm?.message}>
                     <select {...register("specimenForm")}>
+                      <option value="" disabled>Select specimen form</option>
                       <option>Complete individual</option>
                       <option>Partial individual</option>
                       <option>Half stone / end cut</option>
@@ -683,16 +684,16 @@ export default function App() {
                     <input placeholder="e.g. 42 x 31 x 18 mm" {...register("dimensions")} />
                   </Field>
                   <Field label="Number of pieces" error={errors.numberOfPieces?.message}>
-                    <input inputMode="numeric" {...register("numberOfPieces")} />
+                    <input inputMode="numeric" placeholder="e.g., 1" {...register("numberOfPieces")} />
                   </Field>
                   <Field label="Preparation state">
-                    <input {...register("preparationState")} />
+                    <input placeholder="e.g., Natural crust with one cut face" {...register("preparationState")} />
                   </Field>
                   <Field label="Identifying marks" wide>
-                    <input {...register("identifyingMarks")} />
+                    <input placeholder="e.g., Collection label or distinguishing feature" {...register("identifyingMarks")} />
                   </Field>
                   <Field label="Recorded owner" error={errors.recordedOwner?.message}>
-                    <input {...register("recordedOwner")} />
+                    <input placeholder="e.g., John Doe" {...register("recordedOwner")} />
                   </Field>
                 </div>
               </details>
@@ -701,52 +702,52 @@ export default function App() {
                 <summary><span>04</span><div><strong>Fall, find, and provenance</strong><small>Origin and chain of custody</small></div></summary>
                 <div className="workbench-section__body field-grid">
                   <Field label="Fall or find status" error={errors.fallStatus?.message}>
-                    <input {...register("fallStatus")} />
+                    <input placeholder="e.g., Witnessed fall" {...register("fallStatus")} />
                   </Field>
                   <Field label="Date" error={errors.fallDate?.message}>
-                    <input type="date" {...register("fallDate")} />
+                    <input type="date" placeholder="e.g., 2024-01-15" {...register("fallDate")} />
                   </Field>
                   <Field label="Country" error={errors.country?.message}>
-                    <input {...register("country")} />
+                    <input placeholder="e.g., Canada" {...register("country")} />
                   </Field>
                   <Field label="Region">
-                    <input {...register("region")} />
+                    <input placeholder="e.g., Ontario" {...register("region")} />
                   </Field>
                   <Field label="Locality" error={errors.locality?.message}>
-                    <input {...register("locality")} />
+                    <input placeholder="e.g., Near Example Township" {...register("locality")} />
                   </Field>
                   <Field label="Meteoritical Bulletin code">
-                    <input {...register("metbullCode")} />
+                    <input placeholder="e.g., 12345" {...register("metbullCode")} />
                   </Field>
                   <Field label="Latitude" error={errors.latitude?.message}>
-                    <input {...register("latitude")} />
+                    <input placeholder="e.g., 45.4215 N" {...register("latitude")} />
                   </Field>
                   <Field label="Longitude" error={errors.longitude?.message}>
-                    <input {...register("longitude")} />
+                    <input placeholder="e.g., 75.6972 W" {...register("longitude")} />
                   </Field>
                   <Field label="Official reference URL" wide error={errors.officialReferenceUrl?.message}>
-                    <input type="url" {...register("officialReferenceUrl")} />
+                    <input type="url" placeholder="e.g., https://example.org/record/12345" {...register("officialReferenceUrl")} />
                   </Field>
                   <Field label="Finder / recovery information" wide>
-                    <textarea rows={3} {...register("recoveryInformation")} />
+                    <textarea rows={3} placeholder="e.g., Describe who recovered the specimen and how" {...register("recoveryInformation")} />
                   </Field>
                   <Field label="Provenance and chain of custody" wide error={errors.provenance?.message}>
-                    <textarea rows={4} {...register("provenance")} />
+                    <textarea rows={4} placeholder="e.g., Describe the documented custody history" {...register("provenance")} />
                   </Field>
                   <Field label="Previous owner">
-                    <input {...register("previousOwner")} />
+                    <input placeholder="e.g., Previous collector or institution" {...register("previousOwner")} />
                   </Field>
                   <Field label="Buyer / transferee">
-                    <input {...register("buyer")} />
+                    <input placeholder="e.g., Receiving collector or institution" {...register("buyer")} />
                   </Field>
                   <Field label="Transfer date">
-                    <input type="date" {...register("transferDate")} />
+                    <input type="date" placeholder="e.g., 2026-07-29" {...register("transferDate")} />
                   </Field>
                   <Field label="Invoice / reference">
-                    <input {...register("invoiceReference")} />
+                    <input placeholder="e.g., INV-2026-0001" {...register("invoiceReference")} />
                   </Field>
                   <Field label="Transfer notes" wide>
-                    <textarea rows={3} {...register("transferNotes")} />
+                    <textarea rows={3} placeholder="e.g., Record transfer terms or related notes" {...register("transferNotes")} />
                   </Field>
                 </div>
               </details>
@@ -776,8 +777,8 @@ export default function App() {
                           <div className="photo-item__meta"><span>Original {String(index + 1).padStart(2, "0")}</span><strong>{photo.file.name}</strong><small>{(photo.file.size / 1024 / 1024).toFixed(2)} MB</small></div>
                           <button type="button" className="remove-button" onClick={() => removePhoto(photo.id)} aria-label={`Remove ${photo.file.name}`}>Remove</button>
                         </div>
-                        <label>Caption<input value={photo.caption} onChange={(event) => updatePhoto(photo.id, { caption: event.target.value })} /></label>
-                        <label>Capture date<input type="date" value={photo.captureDate} onChange={(event) => updatePhoto(photo.id, { captureDate: event.target.value })} /></label>
+                        <label>Caption<input placeholder="e.g., Front face" value={photo.caption} onChange={(event) => updatePhoto(photo.id, { caption: event.target.value })} /></label>
+                        <label>Capture date<input type="date" placeholder="e.g., 2026-07-29" value={photo.captureDate} onChange={(event) => updatePhoto(photo.id, { captureDate: event.target.value })} /></label>
                         <label className="attestation"><input type="checkbox" checked={photo.isUnmodifiedOriginal} onChange={(event) => updatePhoto(photo.id, { isUnmodifiedOriginal: event.target.checked })} /><span>I attest this is an exact, unmodified photograph of the specimen.</span></label>
                       </div>
                     </article>
@@ -805,8 +806,8 @@ export default function App() {
                     <div className="key-option">
                       <span className="option-label">Create new identity</span>
                       <p>Generate a persistent issuer key, encrypted with a passphrase before it can be downloaded.</p>
-                      <label>Passphrase<input type="password" autoComplete="new-password" value={generatePassphrase} onChange={(event) => setGeneratePassphrase(event.target.value)} /></label>
-                      <label>Confirm passphrase<input type="password" autoComplete="new-password" value={confirmPassphrase} onChange={(event) => setConfirmPassphrase(event.target.value)} /></label>
+                      <label>Passphrase<input type="password" placeholder="Enter at least 12 characters" autoComplete="new-password" value={generatePassphrase} onChange={(event) => setGeneratePassphrase(event.target.value)} /></label>
+                      <label>Confirm passphrase<input type="password" placeholder="Re-enter the passphrase" autoComplete="new-password" value={confirmPassphrase} onChange={(event) => setConfirmPassphrase(event.target.value)} /></label>
                       <button type="button" className="button button--navy button--small" disabled={keyBusy} onClick={() => void generateKey()}>{keyBusy ? "Working..." : "Generate Ed25519 key"}</button>
                     </div>
                     <div className="key-divider"><span>or</span></div>
@@ -814,7 +815,7 @@ export default function App() {
                       <span className="option-label">Unlock existing identity</span>
                       <p>Import a Spacerocks encrypted key backup. The file and passphrase remain local.</p>
                       <label>Encrypted key backup<input type="file" accept=".json,application/json" onChange={(event) => setImportFile(event.target.files?.[0])} /></label>
-                      <label>Passphrase<input type="password" autoComplete="current-password" value={importPassphrase} onChange={(event) => setImportPassphrase(event.target.value)} /></label>
+                      <label>Passphrase<input type="password" placeholder="Enter the backup passphrase" autoComplete="current-password" value={importPassphrase} onChange={(event) => setImportPassphrase(event.target.value)} /></label>
                       <button type="button" className="button button--outline button--small" disabled={keyBusy} onClick={() => void importKey()}>{keyBusy ? "Working..." : "Unlock signing key"}</button>
                     </div>
                   </div>

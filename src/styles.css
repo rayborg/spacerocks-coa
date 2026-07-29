@@ -320,7 +320,7 @@ a {
 .button--small {
   min-height: 40px;
   padding: 0 17px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .text-link,
@@ -596,7 +596,7 @@ a {
 .workbench-section summary small,
 .evidence-section__head small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.04em;
 }
 
@@ -625,7 +625,7 @@ a {
 .key-option label,
 .photo-item__fields label {
   color: #475564;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -643,6 +643,15 @@ a {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(18, 34, 54, 0.22);
   border-radius: 1px;
+  font-size: 14px;
+}
+
+.field input::placeholder,
+.field textarea::placeholder,
+.key-option input::placeholder,
+.photo-item input::placeholder {
+  color: #77818b;
+  opacity: 1;
 }
 
 .field textarea {
@@ -652,13 +661,13 @@ a {
 .field input[type="file"],
 .key-option input[type="file"] {
   padding: 8px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .field__hint,
 .field__error {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -677,7 +686,7 @@ a {
   margin: 0 0 7px;
   padding: 0;
   color: #475564;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -687,7 +696,7 @@ a {
   display: block;
   margin-bottom: 12px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -844,7 +853,7 @@ a {
 
 .style-option__body > small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -915,7 +924,7 @@ a {
 
 .theme-option__body > small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -973,7 +982,7 @@ a {
 
 .photo-drop small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .inline-status,
@@ -990,12 +999,14 @@ a {
 
 .photo-list {
   display: grid;
+  min-width: 0;
   gap: 12px;
   margin-top: 18px;
 }
 
 .photo-item {
   display: grid;
+  min-width: 0;
   grid-template-columns: 112px minmax(0, 1fr);
   gap: 18px;
   padding: 14px;
@@ -1012,6 +1023,7 @@ a {
 
 .photo-item__fields {
   display: grid;
+  min-width: 0;
   grid-template-columns: 1fr 150px;
   gap: 12px;
 }
@@ -1038,7 +1050,7 @@ a {
 .photo-item__meta small {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .photo-item__meta strong {
@@ -1051,13 +1063,16 @@ a {
 
 .photo-item__fields label {
   display: grid;
+  min-width: 0;
   gap: 5px;
 }
 
 .photo-item__fields input {
+  min-width: 0;
+  max-width: 100%;
   min-height: 36px;
   padding: 7px 9px;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .photo-item__fields .attestation {
@@ -1065,7 +1080,7 @@ a {
   display: flex;
   align-items: flex-start;
   color: var(--ink);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0;
   line-height: 1.4;
@@ -1086,7 +1101,7 @@ a {
   background: #fff8f6;
   border: 1px solid rgba(145, 57, 57, 0.24);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1;
   text-transform: uppercase;
@@ -1126,7 +1141,7 @@ a {
 .key-state {
   gap: 8px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1164,7 +1179,7 @@ a {
   min-height: 48px;
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -1177,7 +1192,7 @@ a {
   min-height: 38px;
   padding: 7px 9px;
   background: white;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .key-divider {
@@ -1207,7 +1222,7 @@ a {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -1226,7 +1241,7 @@ a {
 
 .loaded-key > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1252,7 +1267,7 @@ a {
 
 .issue-section > div:first-child > span {
   color: var(--gold-light);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -1269,7 +1284,7 @@ a {
   max-width: 540px;
   margin: 0;
   color: #aeb9c4;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -1290,7 +1305,7 @@ a {
   display: grid;
   gap: 2px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1306,10 +1321,14 @@ a {
   justify-content: space-between;
   margin-bottom: 12px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.preview-column__head > small {
+  font-size: inherit;
 }
 
 .certificate-preview {
@@ -1868,7 +1887,7 @@ a {
   padding: 13px;
   color: var(--muted);
   background: #f7f3e9;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1896,14 +1915,14 @@ a {
 }
 
 .preview-note strong {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
 }
 
 .preview-note p {
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -2397,6 +2416,14 @@ footer > div:last-child a {
     grid-column: auto;
   }
 
+  .field input:not([type="file"]):not([type="radio"]),
+  .field select,
+  .field textarea,
+  .key-option input:not([type="file"]),
+  .photo-item input:not([type="checkbox"]) {
+    font-size: 16px;
+  }
+
   .key-divider {
     display: flex;
     align-items: center;
@@ -2410,7 +2437,7 @@ footer > div:last-child a {
   }
 
   .photo-item {
-    grid-template-columns: 82px 1fr;
+    grid-template-columns: 82px minmax(0, 1fr);
   }
 
   .photo-item > img {
