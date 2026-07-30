@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spacerocks.example/contracts/checkout-response.schema.json",
+  "title": "Phase 0 timestamp checkout response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["order_reference", "status_token", "checkout_url", "payment_state", "fulfillment_state"],
+  "properties": {
+    "order_reference": {"type": "string", "pattern": "^ts_[0-9A-HJKMNP-TV-Z]{26}$"},
+    "status_token": {"type": "string", "pattern": "^v[1-9][0-9]*\\.[A-Za-z0-9_-]{43}$"},
+    "checkout_url": {"type": "string", "format": "uri", "maxLength": 2048, "pattern": "^https://"},
+    "payment_state": {"const": "checkout_open"},
+    "fulfillment_state": {"const": "awaiting_payment"}
+  }
+}

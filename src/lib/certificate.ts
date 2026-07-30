@@ -10,6 +10,14 @@ const HEIGHT = 1700;
 const CELESTIAL_PHOTO_ASPECT_RATIO = 560 / 455;
 export const CERTIFICATE_EXPORT_FONT_FLOOR = 16;
 
+function recorded(value: string): string {
+  return value.trim() || "Not recorded";
+}
+
+function recordedCoordinates(latitude: string, longitude: string): string {
+  return [latitude.trim(), longitude.trim()].filter(Boolean).join(", ") || "Not recorded";
+}
+
 export interface CertificateRenderInput {
   values: FormValues;
   fingerprint: string;
@@ -580,9 +588,9 @@ async function drawMuseumTypeCertificate(
     ["FALL / FIND", input.values.fallStatus],
     ["DATE", displayDate(input.values.fallDate)],
     ["LOCALITY", locality],
-    ["COORDINATES", `${input.values.latitude}, ${input.values.longitude}`],
+    ["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)],
     ["SPECIMEN FORM", input.values.specimenForm],
-    ["RECORDED OWNER", input.values.recordedOwner],
+    ["RECORDED OWNER", recorded(input.values.recordedOwner)],
     ["ISSUED", displayDate(input.values.issueDate)],
   ];
   const rowHeight = (panelHeight - 66) / catalogRows.length;
@@ -616,9 +624,9 @@ async function drawMuseumTypeCertificate(
   context.strokeRect(110, measurementY, 1980, 120);
   const measurements = [
     ["WEIGHT", `${input.values.weightGrams} g`],
-    ["DIMENSIONS", input.values.dimensions.trim() || "Not supplied"],
+    ["DIMENSIONS", recorded(input.values.dimensions)],
     ["PIECES", input.values.numberOfPieces],
-    ["PREPARATION", input.values.preparationState.trim() || "Not supplied"],
+    ["PREPARATION", recorded(input.values.preparationState)],
   ];
   measurements.forEach(([label, value], index) => {
     const x = 110 + index * 495;
@@ -655,12 +663,12 @@ async function drawMuseumTypeCertificate(
   context.fillText("PROVENANCE / CATALOG NOTES", notesX + 24, notesY + 36);
   context.fillStyle = ink;
   context.font = "400 21px Arial, sans-serif";
-  wrapText(context, input.values.provenance, notesX + 24, notesY + 92, notesWidth - 48, 29, 4);
+  wrapText(context, recorded(input.values.provenance), notesX + 24, notesY + 92, notesWidth - 48, 29, 4);
   const supplemental = input.values.recoveryInformation.trim()
     ? `Recovery: ${input.values.recoveryInformation.trim()}`
     : input.values.identifyingMarks.trim()
       ? `Identifying marks: ${input.values.identifyingMarks.trim()}`
-      : "No additional recovery or identifying-mark notes supplied.";
+      : "Not recorded";
   context.fillStyle = muted;
   context.font = "400 18px Arial, sans-serif";
   wrapText(context, supplemental, notesX + 24, notesY + 232, notesWidth - 48, 24, 2);
@@ -982,9 +990,9 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     ["FALL / FIND", input.values.fallStatus],
     ["DATE", displayDate(input.values.fallDate)],
     ["LOCALITY", input.values.locality],
-    ["COORDINATES", `${input.values.latitude}, ${input.values.longitude}`],
+    ["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)],
     ["SPECIMEN FORM", input.values.specimenForm],
-    ["RECORDED OWNER", input.values.recordedOwner],
+    ["RECORDED OWNER", recorded(input.values.recordedOwner)],
   ];
   const tableX = 112;
   const tableY = 680;
@@ -1221,7 +1229,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.fillText("PROVENANCE", 112, 1495);
   context.fillStyle = INK;
   context.font = "400 19px Arial, sans-serif";
-  wrapText(context, input.values.provenance, 112, 1534, 1490, 27, 2);
+  wrapText(context, recorded(input.values.provenance), 112, 1534, 1490, 27, 2);
 
   context.fillStyle = MUTED;
   context.font = `400 ${certificateFooterLayout.fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;

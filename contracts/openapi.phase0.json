@@ -1,0 +1,75 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Spacerocks Managed Timestamp Phase 0 Contract",
+    "version": "phase0-2026-07-30",
+    "description": "Frozen source of truth. Bearer status tokens are accepted only via the Authorization header. Browser redirects never authorize fulfillment."
+  },
+  "servers": [{"url": "https://timestamp-api.example.test"}],
+  "paths": {
+    "/v1/checkout": {
+      "post": {
+        "operationId": "createCheckout",
+        "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "./schemas/checkout-request.schema.json"}}}},
+        "responses": {"201": {"description": "Immutable order and hosted checkout created", "content": {"application/json": {"schema": {"$ref": "./schemas/checkout-response.schema.json"}}}}}
+      }
+    },
+    "/v1/orders/status": {
+      "get": {
+        "operationId": "getOrderStatus",
+        "security": [{"statusToken": []}],
+        "responses": {"200": {"description": "Customer-safe status; never includes email", "content": {"application/json": {"schema": {"$ref": "./schemas/order-status.schema.json"}}}}}
+      }
+    },
+    "/v1/orders/proof": {
+      "get": {
+        "operationId": "downloadProof",
+        "security": [{"statusToken": []}],
+        "responses": {
+          "200": {
+            "description": "Separate timestamp proof bundle",
+            "headers": {
+              "Content-Disposition": {
+                "required": true,
+                "schema": {"type": "string", "pattern": "^attachment; filename=\\\"[A-Za-z0-9._-]+\\.zip\\\"$"}
+              },
+              "Content-Length": {"required": true, "schema": {"type": "integer", "minimum": 1}},
+              "Cache-Control": {"required": true, "schema": {"const": "no-store"}}
+            },
+            "content": {
+              "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/orders/rotate-token": {
+      "post": {
+        "operationId": "rotateStatusToken",
+        "security": [{"statusToken": []}],
+        "responses": {
+          "200": {
+            "description": "Previous token revoked; replacement returned once",
+            "content": {
+              "application/json": {"schema": {"$ref": "./schemas/rotate-token-response.schema.json"}}
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "statusToken": {"type": "http", "scheme": "bearer", "bearerFormat": "vN.base64url-256-bit"}
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {"type": "string", "minLength": 22, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+      }
+    }
+  }
+}

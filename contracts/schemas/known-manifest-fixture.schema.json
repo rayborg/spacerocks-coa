@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spacerocks.example/contracts/known-manifest-fixture.schema.json",
+  "title": "Deterministic manifest-byte semantics fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["certificate", "generation", "schemaVersion"],
+  "properties": {
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {"id": {"const": "PHASE0-KNOWN-001"}}
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestSerialization"],
+      "properties": {
+        "manifestSerialization": {
+          "const": "UTF-8, sorted keys, two-space indentation, LF, final newline, no BOM"
+        }
+      }
+    },
+    "schemaVersion": {"const": "1.0.0"}
+  }
+}

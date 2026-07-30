@@ -29,11 +29,11 @@ interface PackageInput {
 interface PreparedPhoto {
   path: string;
   originalFilename: string;
-  caption: string;
+  caption?: string;
   mediaType: string;
   bytes: number;
   sha256: string;
-  captureDate: string;
+  captureDate?: string;
   isUnmodifiedOriginal: true;
   content: Uint8Array;
 }
@@ -50,6 +50,14 @@ function optional(value: string): string | undefined {
   return trimmed || undefined;
 }
 
+function recorded(value: string): string {
+  return optional(value) ?? "Not recorded";
+}
+
+function recordedCoordinates(latitude: string, longitude: string): string {
+  return [optional(latitude), optional(longitude)].filter(Boolean).join(", ") || "Not recorded";
+}
+
 function buildSpecimen(values: FormValues) {
   return {
     meteorite: values.meteoriteName.trim(),
@@ -61,21 +69,21 @@ function buildSpecimen(values: FormValues) {
     numberOfPieces: Number(values.numberOfPieces),
     preparationState: optional(values.preparationState),
     identifyingMarks: optional(values.identifyingMarks),
-    recordedOwner: values.recordedOwner.trim(),
+    recordedOwner: optional(values.recordedOwner),
     fall: {
       status: values.fallStatus.trim(),
-      date: values.fallDate,
+      date: optional(values.fallDate),
       country: values.country.trim(),
-      region: values.region.trim(),
+      region: optional(values.region),
       locality: values.locality.trim(),
-      latitude: values.latitude.trim(),
-      longitude: values.longitude.trim(),
+      latitude: optional(values.latitude),
+      longitude: optional(values.longitude),
       metbullCode: optional(values.metbullCode),
       officialReferenceUrl: optional(values.officialReferenceUrl),
       recoveryInformation: optional(values.recoveryInformation),
     },
     provenance: {
-      statement: values.provenance.trim(),
+      statement: optional(values.provenance),
       previousOwner: optional(values.previousOwner),
       buyer: optional(values.buyer),
       transferDate: optional(values.transferDate),
@@ -123,24 +131,24 @@ Classification: ${values.classification}
 Recorded weight: ${values.weightGrams} g
 Weight precision: ${values.weightPrecision} g
 Specimen form: ${values.specimenForm}
-Dimensions: ${values.dimensions || "Not recorded"}
+Dimensions: ${recorded(values.dimensions)}
 Number of pieces: ${values.numberOfPieces}
-Preparation state: ${values.preparationState || "Not recorded"}
-Identifying marks: ${values.identifyingMarks || "Not recorded"}
-Recorded owner: ${values.recordedOwner}
+Preparation state: ${recorded(values.preparationState)}
+Identifying marks: ${recorded(values.identifyingMarks)}
+Recorded owner: ${recorded(values.recordedOwner)}
 
 FALL OR FIND
 Status: ${values.fallStatus}
 Date: ${displayDate(values.fallDate)}
 Country: ${values.country}
-Region: ${values.region}
+Region: ${recorded(values.region)}
 Locality: ${values.locality}
-Coordinates: ${values.latitude}, ${values.longitude}
-Meteoritical Bulletin code: ${values.metbullCode || "Not recorded"}
-Official reference: ${values.officialReferenceUrl || "Not recorded"}
+Coordinates: ${recordedCoordinates(values.latitude, values.longitude)}
+Meteoritical Bulletin code: ${recorded(values.metbullCode)}
+Official reference: ${recorded(values.officialReferenceUrl)}
 
 PROVENANCE
-${values.provenance}
+${recorded(values.provenance)}
 
 DIGITAL ATTESTATION
 Issuer: ${values.issuerName}
@@ -414,11 +422,11 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
     preparedPhotos.push({
       path,
       originalFilename: photo.file.name,
-      caption: photo.caption.trim(),
+      caption: optional(photo.caption),
       mediaType: mediaTypeForFile(photo.file),
       bytes: content.byteLength,
       sha256: await sha256Hex(content),
-      captureDate: photo.captureDate,
+      captureDate: optional(photo.captureDate),
       isUnmodifiedOriginal: true,
       content,
     });

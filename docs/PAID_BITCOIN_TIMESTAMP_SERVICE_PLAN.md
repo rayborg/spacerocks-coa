@@ -1,10 +1,10 @@
 # Paid Bitcoin Timestamp Service Plan
 
-**Status:** Deferred until corrections and improvements to the existing browser-only COA application are complete.
+**Status:** Phase 0 implementation is present on `feature/on-chain-anchoring`; sandbox and live operation remain gated.
 
-**Last reviewed:** 2026-07-28
+**Last reviewed:** 2026-07-30
 
-This document preserves the complete audited plan for adding an optional, paid Bitcoin timestamp service to Spacerocks COA Studio. It is a future implementation plan, not a description of functionality currently available on the website.
+This document preserves the complete audited plan and records the current implementation boundary for an optional, paid Bitcoin timestamp service. Phase 0 code exists on the feature branch, but the currently deployed website does not offer a live paid service.
 
 The existing locally signed, offline-verifiable COA remains the foundational product. Payment processing and Bitcoin timestamping must remain optional supplemental services.
 
@@ -21,7 +21,34 @@ The existing locally signed, offline-verifiable COA remains the foundational pro
 | Customer delivery | Status page plus transactional email |
 | Email provider | Resend proposed; final approval still required |
 | Price | Decide after sandbox testing |
-| Current implementation status | Not started |
+| Current implementation status | Phase 0 deterministic code and tests present; external sandbox and every live gate remain blocked |
+
+### Current implementation boundary
+
+Implemented on the feature branch:
+
+- versioned request, response, receipt, and OpenAPI contracts with known-digest fixtures;
+- an optional frontend that is absent unless `VITE_TIMESTAMP_API_URL` is configured, sends an allowlisted checkout body, keeps bearer recovery tokens out of URLs, and distinguishes pending from verified states;
+- FastAPI checkout, signed-webhook, authenticated status/proof, token-rotation, liveness, and database-readiness routes;
+- immutable order bindings, Postgres migration, idempotency and Stripe-event controls, rate limits, durable job claims, proof history, receipt bundling, and an outbox record;
+- deterministic fixture payment, calendar, and Bitcoin-verification adapters restricted to `APP_ENV=test` inside `pytest`;
+- a Stripe test-mode adapter and canonical payment checks, with tests that do not contact Stripe;
+- durable jobs with leases, six-hour ordinary-pending successor polls, separate verified-bundle persistence, worker and operator factories, replay/upgrade/reverification commands, a non-root image, local Compose definition, and Railway preparation; and
+- unit, contract, API, security, failure, worker, migration, frontend, and mocked browser tests.
+
+Not implemented or not authorized for operation:
+
+- live payment mode, which the Phase 0 settings reject;
+- an approved Stripe sandbox account, Price, webhook endpoint, or end-to-end provider exercise;
+- a reviewed public OpenTimestamps transport or production Bitcoin verification source. Calendar parsing and fan-out code exists, but settings/composition cannot select it and the transport intentionally refuses operation until pinned-public-IP TLS/SNI handling passes review;
+- a transactional email sender or approved provider;
+- a `delivered` transition: without a sender, verified bundle/outbox creation leaves the order at `bitcoin_verified`;
+- typed append-only history for repeated live reverification and an approved verifier/Bitcoin-reorganization policy;
+- approved price, terms, privacy, refund, dispute, support, tax, legal, retention, and deletion policies;
+- monitored staging or production infrastructure, tested backup/restore, off-provider backup, alerting, or a live deployment; and
+- completion of the sandbox acceptance gates in section 24.
+
+Code presence does not satisfy an operational gate. Fixture confirmation is synthetic and pytest-only, a browser redirect is non-authoritative, calendar-pending is not Bitcoin-confirmed, and no live launch is authorized by this document.
 
 ## 1. Purpose
 
@@ -114,13 +141,15 @@ Claims to avoid:
 | Railway FastAPI service | Validate requests, create orders, create Stripe Checkout Sessions, expose status and proof endpoints |
 | Stripe Checkout | Collect payment on a Stripe-hosted page |
 | Stripe webhook endpoint | Verify payment events and authorize fulfillment |
-| Railway Postgres | Store immutable order bindings, events, job state, proof bytes, and delivery state |
+| Railway Postgres | Store immutable order bindings, events, job state, proof bytes, and current/future delivery state |
 | Timestamp worker | Submit exact digest bytes to multiple OpenTimestamps calendars |
 | Upgrade worker | Upgrade pending proofs and verify Bitcoin attestations |
-| Transactional email provider | Send payment, pending, confirmed, failure, and recovery notifications |
+| Future transactional email provider | Send payment, pending, confirmed, failure, and recovery notifications after sender approval |
 | Off-provider backup | Preserve encrypted database/proof copies outside Railway |
 
 ## 7. End-to-End Customer Flow
+
+This is the gated target flow, not a currently runnable provider flow. In particular, public calendar transport, production verification, email sending, and the `delivered` transition remain unavailable.
 
 1. The browser creates and signs the deterministic COA manifest.
 2. The browser calculates the exact SHA-256 of the final `manifest.json` bytes.
@@ -144,9 +173,10 @@ Claims to avoid:
 20. A scheduled worker periodically upgrades the proof.
 21. The verifier confirms that the upgraded proof targets the exact original digest.
 22. The service verifies the Bitcoin attestation according to the selected confirmation policy.
-23. The final proof bytes, checksum, target digest, block metadata, and verification result are preserved.
-24. A transactional outbox sends the customer a completion email.
-25. The customer downloads the separate timestamp proof package.
+23. The final proof bytes, checksum, target digest, block metadata, and verification result are preserved, and fulfillment becomes `bitcoin_verified`.
+24. A separate durable bundle job persists the verified download bundle and transactional outbox record. During the interval after verification and before bundle persistence, state is `bitcoin_verified` but `proof_available` is false.
+25. The customer downloads the separate timestamp proof package through authenticated access after bundle readiness.
+26. Without a sender the order remains `bitcoin_verified`; a future approved sender performs an audited transition to `delivered`.
 
 ## 8. Exact Digest Contract
 
@@ -177,24 +207,39 @@ A future validated-request mode could use a signed request envelope containing:
 
 That mode is not part of the initial paid service.
 
-## 9. Suggested Order States
+## 9. Order State Dimensions
 
-| State | Meaning |
+Payment and fulfillment are separate dimensions in the current contract.
+
+| Payment state | Meaning |
 | --- | --- |
 | `checkout_open` | Order exists and Checkout has not completed |
-| `payment_processing` | Stripe reports a payment method that has not settled |
+| `processing` | Stripe reports a payment method that has not settled |
 | `paid` | Payment is confirmed and fulfillment can begin |
-| `stamping` | A worker is creating and submitting the proof |
-| `calendar_pending` | A pending proof exists; Bitcoin attestation is not final |
-| `bitcoin_confirmed` | Exact digest and Bitcoin attestation have passed verification policy |
-| `delivered` | Completion notification was committed and proof is available |
-| `payment_failed` | Payment failed or an asynchronous method failed |
+| `failed` | Payment failed or an asynchronous method failed |
 | `expired` | Checkout expired before payment |
 | `refunded` | Commercial order was refunded; timestamp evidence is retained |
 | `disputed` | Stripe dispute requires review |
-| `manual_review` | Automated processing cannot safely continue |
+
+| Fulfillment state | Meaning |
+| --- | --- |
+| `awaiting_payment` | Fulfillment is not authorized |
+| `queued` | Paid work is durably queued |
+| `stamping` | A worker is creating or submitting the proof |
+| `calendar_pending` | A pending proof exists; Bitcoin attestation is not final |
+| `bitcoin_verified` | Exact digest and Bitcoin attestation passed the configured verification policy |
+| `delivered` | Reserved for a future audited sender transition after verified delivery; current code has no sender and does not enter this state |
+| `manual_review` | Automated processing refuses to continue; current operator tooling cannot restore fulfillment without a future audited state transition |
 
 State transitions must be monotonic and idempotent. Refunds and disputes do not erase an already-created timestamp.
+
+Status projection and artifact readiness are separate from durable historical rows:
+
+- `stamping` always reports `proof_available=false` and suppresses calendar-submission and Bitcoin-verification timestamps, even if stale/historical artifact rows exist.
+- `calendar_pending` may expose the current pending proof and calendar-submission time, but never a Bitcoin-verification time.
+- `bitcoin_verified` exposes verified state and its verification time before the separate bundle job necessarily finishes. `proof_available` remains false until the matching current verified bundle is durably persisted and validated, then becomes true without changing fulfillment state.
+- `manual_review` reports no downloadable proof. Historical proof, verification, or bundle rows remain evidence but cannot override the current refusal state.
+- No sender exists, so current runtime remains `bitcoin_verified`; it does not use bundle readiness as a substitute for `delivered`.
 
 ## 10. Stripe Controls
 
@@ -213,6 +258,8 @@ Required controls:
 - Webhooks return `2xx` only after required state has been durably persisted.
 - Complex timestamp work never runs inside the webhook request.
 - Sandbox and live keys, objects, endpoint secrets, and environments remain separate.
+- Checkout provider calls occur only after a durable idempotency reservation is committed. A processing/grace lease is held for 5-300 seconds (60 seconds by default); concurrent retries may receive HTTP `425` and no token until the lease expires.
+- Retries must reuse the identical request and idempotency key. After lease expiry, the server reuses the frozen provider idempotency key; it does not create a second mutable order binding.
 
 Required event handling may include:
 
@@ -234,13 +281,13 @@ The service requires:
 - Row locking or leases for job claims.
 - Retry counts and attempt history.
 - Exponential backoff with jitter.
-- Idempotent stamping and upgrading.
+- Idempotent local stamping/upgrading state, with documented at-least-once same-digest external submission across the calendar-acceptance/local-append crash window.
 - Crash recovery.
-- Dead-letter or manual-review handling.
+- Dead-letter or manual-review handling for actual retry exhaustion or unsafe states.
 - Operational replay commands.
 - Alerts for exhausted jobs.
 
-If a worker crashes after calendar submission, a retry must detect and preserve existing valid proof material instead of creating uncontrolled duplicate work.
+Calendar acceptance cannot be committed atomically with the local Postgres proof append. If a valid proof was appended before a crash, replay detects and preserves it without resubmission. If a calendar accepted the immutable digest but the process crashed before local append, the service has no durable response to detect and must recover by at-least-once resubmission of the same 32-byte digest. This may create repeated calendar commitments for the same digest; it is neither exactly-once submission nor a unique Bitcoin transaction guarantee.
 
 ## 12. OpenTimestamps Lifecycle
 
@@ -250,10 +297,12 @@ The worker should:
 - Preserve every returned pending attestation.
 - Store the initial proof before scheduling upgrades.
 - Retry upgrades without replacing historical proof versions.
-- Treat calendar failure as pending or manual review, not Bitcoin confirmation.
+- Treat an already-valid proof awaiting Bitcoin as ordinary pending; retry calendar transport failures and move unsafe/exhausted errors to manual review, never Bitcoin confirmation.
 - Verify the proof target against the stored digest.
 - Record the Bitcoin block height, block hash, block time, and chosen confirmation policy.
-- Reverify before final delivery.
+- Reverify before any future delivery transition.
+
+Ordinary confirmation pending is not a retry failure. The implemented worker completes the current upgrade job and schedules a durable successor six hours later. This successor polling continues beyond a short retry window and does not dead-letter or move to manual review merely because confirmation remains pending. Maximum polling duration, retention, customer escalation, and eventual disposition are unresolved live-policy gates.
 
 Public calendars do not provide a commercial service-level agreement. Confirmation can take hours or occasionally longer because commitments are batched.
 
@@ -290,6 +339,10 @@ Suggested structure:
 - Service version
 
 The receipt must not contain card data, Stripe secrets, private keys, specimen photographs, addresses, or unnecessary personal information.
+
+Every raw `.ots` proof version must contain 1 through 262,144 bytes. The parser, in-memory proof type, Postgres constraint, and receipt contract enforce the same maximum. Proof versions and their checksums are append-only; upgrades append a new version and never rewrite historical proof bytes.
+
+The highest valid proof version is the current cryptographic artifact, but downloadable-artifact readiness is a separate projection. A pending download is generated from a selected latest version and returned only after rechecking that the authorization token, immutable order binding, `calendar_pending` state, and selected latest metadata are still current. A `bitcoin_verified` order can report `proof_available=false` while the separate bundle job is pending; verified download becomes available only after a bundle bound to the current verified proof version is durably persisted and its length/checksum validate. `stamping` suppresses proof and timestamp projection, and `manual_review` suppresses download even if historical proof, verification, or bundle rows remain durable. Historical artifacts are evidence, not permission to project an obsolete state.
 
 ## 14. Security and Privacy Controls
 
@@ -348,18 +401,20 @@ Data not to retain:
 ```text
 POST /v1/checkout
 POST /v1/webhooks/stripe
-GET  /v1/orders/{status-token}
-GET  /v1/orders/{status-token}/proof
-POST /v1/orders/{status-token}/rotate-token
+GET  /v1/orders/status
+GET  /v1/orders/proof
+POST /v1/orders/rotate-token
 GET  /health/live
 GET  /health/ready
 ```
 
 The checkout endpoint creates an immutable order and returns a Stripe-hosted Checkout URL.
 
-The status endpoint returns only customer-safe state and timing information.
+Every order status, proof, and token-rotation request uses the fixed path shown above and requires `Authorization: Bearer <status-token>`. The status token must never appear in a URL path, query string, fragment, referrer, analytics event, or log.
 
-The proof endpoint returns a proof only when the token is valid and the order state allows delivery.
+The status endpoint returns only customer-safe state, timing, and current artifact-readiness information. In particular, `bitcoin_verified` may briefly report `proof_available=false` until the separate verified-bundle job persists the matching bundle; `stamping` reports no proof or calendar/Bitcoin timestamps.
+
+The proof endpoint returns only the current state-appropriate artifact when bearer authorization succeeds and artifact readiness allows download. Token rotation revokes the old bearer token and returns the replacement only in the authenticated response body.
 
 ## 17. Account Setup - Sandbox
 
@@ -601,7 +656,7 @@ Secrets must be entered directly into Railway's Variables dashboard. They must n
 | Backend encryption/signing secret, if introduced | Yes | Separate staging and production values |
 | Frontend origin | No | Environment-specific configuration |
 | API URL | No | Frontend configuration |
-| Public calendar URLs | No | Backend configuration |
+| Public calendar URLs (future) | No | No current runtime variable; only after pinned-public-IP TLS/SNI transport and composition review |
 | Status/download token | Yes to the customer | Store only its hash in Postgres |
 | MFA recovery codes | Yes | Offline password manager or secure recovery storage |
 
@@ -629,7 +684,7 @@ These credentials and identity documents must never be provided to the coding ag
 
 ## 21. Engineering Responsibilities
 
-After accounts and non-sensitive decisions exist, implementation can cover:
+Engineering scope includes the following. Phase 0 implements portions of this list as described in the current implementation boundary; provider-backed and live work remains gated:
 
 - Creating the backend repository.
 - Building FastAPI endpoints.
@@ -661,7 +716,7 @@ The final policy must define when fulfillment begins:
 
 Recommended behavior:
 
-- If payment succeeds but no pending proof can be created within a short operational limit, move to manual review and offer or issue a refund.
+- If payment succeeds but no initial pending proof can be created within the approved operational limit, retry transport failures and then move unsafe/exhausted work to manual review under the approved refund policy. This does not apply to an already-valid ordinary pending proof, which uses six-hour successor polling.
 - If payment is refunded before stamping, cancel pending work where possible.
 - If calendar submission has already occurred, retain the timestamp because it cannot be withdrawn.
 - A refund changes the commercial order state but does not erase cryptographic evidence.
@@ -691,7 +746,7 @@ Required runbooks:
 - Replay a safe Stripe event
 - Resume a failed timestamp job
 - Upgrade a pending proof manually
-- Reverify a completed proof
+- Reverify a completed proof only under an approved verifier/reorganization policy and record each request/result in typed append-only history
 - Rotate an exposed status token
 - Rotate Stripe, Railway, Resend, and backend secrets
 - Reconcile Postgres orders with Stripe
@@ -710,15 +765,15 @@ Live payments remain blocked until all applicable gates pass.
 4. Stripe success, decline, 3DS, abandoned Checkout, expiration, refund, and dispute scenarios have correct states.
 5. Invalid webhook signatures and modified raw bodies cannot trigger fulfillment.
 6. Wrong sandbox/live mode, amount, currency, product, order metadata, or payment state cannot trigger fulfillment.
-7. Duplicate, concurrent, and out-of-order webhooks create exactly one fulfillment.
-8. Worker termination at each processing stage recovers without losing or corrupting proof data.
+7. Duplicate, concurrent, and out-of-order webhooks create one durable order/fulfillment job stream; this does not override documented at-least-once same-digest calendar resubmission after an acceptance-before-append crash.
+8. Worker termination at each processing stage recovers without losing or corrupting proof data; a crash after calendar acceptance but before local proof append is expected to at-least-once resubmit the same immutable digest.
 9. Multiple-calendar submission succeeds.
 10. Complete calendar outage remains safely pending and alerts operations.
-11. Upgrade polling tolerates long delays and uses bounded retries.
-12. Confirmed state requires exact-digest verification and the selected Bitcoin confirmation policy.
+11. Ordinary pending uses durable six-hour successor polls without consuming a short retry/dead-letter budget; outage/error retries remain bounded, and approved retention/escalation limits are documented.
+12. Confirmed state requires exact-digest verification and the selected Bitcoin confirmation/reorganization policy.
 13. Wrong-digest, corrupt, truncated, and pending proofs cannot be delivered as confirmed.
 14. Status and proof tokens resist enumeration and are absent from logs and analytics.
-15. Email delivery, bounce handling, repeat download, and support lookup work without relying on the browser redirect.
+15. An approved sender, email delivery/bounce handling, repeat download, and support lookup work without relying on the browser redirect; until then orders remain `bitcoin_verified`, not `delivered`.
 16. Database and proof backups restore successfully into a clean test environment.
 17. Stripe reconciliation identifies missed or delayed events.
 18. Monitoring alerts and manual recovery procedures have been exercised.
@@ -815,7 +870,7 @@ Current published Railway and Resend prices can change and must not be hard-code
 
 ## 28. Deferred Decisions
 
-The following decisions must be made after the basic COA implementation is corrected and before paid-service implementation begins:
+The following decisions remain required before the corresponding provider-backed sandbox work or any live service begins:
 
 - [ ] Approve Resend or select another transactional email provider.
 - [ ] Confirm the Stripe account country and general entity type.
@@ -833,9 +888,9 @@ The following decisions must be made after the basic COA implementation is corre
 
 ## 29. Immediate Project Priority
 
-Do not begin implementing payment, Railway, email, or OpenTimestamps functionality yet.
+Phase 0 local and deterministic implementation was explicitly authorized and is now present on the feature branch. Continue validating that code and correcting the foundational browser-only COA without treating Phase 0 as an operational service.
 
-The immediate priority is to collect, assess, and correct requested issues in the existing browser-only COA implementation. The paid timestamp service should resume only after the base application is stable and the user explicitly authorizes the next phase.
+Do not enable provider-backed public-calendar operation, transactional email, live payment mode, or public deployment until the applicable sandbox gates, account-owner decisions, policies, backup/restore controls, monitoring, and explicit authorization are complete. Phase 1 and every live phase remain blocked.
 
 ## 30. Primary Official Sources
 

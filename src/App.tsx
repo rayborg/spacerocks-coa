@@ -20,6 +20,8 @@ import {
   certificateStyles,
   getCertificateStyle,
 } from "./certificateStyles";
+import PaidTimestampPanel from "./components/PaidTimestampPanel";
+import { timestampServiceConfig } from "./lib/timestamp-service";
 
 const requiredText = (label: string) => z.string().trim().min(1, `${label} is required.`);
 const optionalEmail = z
@@ -30,6 +32,18 @@ const optionalUrl = z
   .string()
   .trim()
   .refine((value) => !value || z.string().url().safeParse(value).success, "Enter a complete URL, including https://.");
+const optionalDate = z
+  .string()
+  .trim()
+  .refine(
+    (value) => {
+      if (!value) return true;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const parsed = new Date(`${value}T00:00:00Z`);
+      return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+    },
+    "Enter a valid date.",
+  );
 const positiveNumber = z
   .string()
   .trim()
@@ -71,21 +85,21 @@ const formSchema = z
     numberOfPieces: positiveInteger,
     preparationState: z.string(),
     identifyingMarks: z.string(),
-    recordedOwner: requiredText("Recorded owner"),
+    recordedOwner: z.string(),
     fallStatus: requiredText("Fall or find status"),
-    fallDate: requiredText("Fall or find date"),
+    fallDate: optionalDate,
     country: requiredText("Country"),
     region: z.string(),
     locality: requiredText("Locality"),
-    latitude: requiredText("Latitude"),
-    longitude: requiredText("Longitude"),
+    latitude: z.string(),
+    longitude: z.string(),
     metbullCode: z.string(),
     officialReferenceUrl: optionalUrl,
     recoveryInformation: z.string(),
-    provenance: z.string().trim().min(10, "Provide a meaningful provenance statement."),
+    provenance: z.string(),
     previousOwner: z.string(),
     buyer: z.string(),
-    transferDate: z.string(),
+    transferDate: optionalDate,
     invoiceReference: z.string(),
     transferNotes: z.string(),
   })
@@ -188,7 +202,7 @@ function CertificatePreview({
   const museumCatalogNote = values.recoveryInformation.trim()
     || values.preparationState.trim()
     || values.provenance.trim()
-    || "No additional catalog notes supplied.";
+    || "Not recorded";
   const themeStyle = {
     "--certificate-dark": theme.dark,
     "--certificate-dark-soft": theme.darkSoft,
@@ -257,7 +271,7 @@ function CertificatePreview({
               <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>
               <div><dt>Locality</dt><dd>{values.locality || "Not entered"}</dd></div>
               <div><dt>Specimen form</dt><dd>{values.specimenForm || "Not recorded"}</dd></div>
-              <div><dt>Recorded owner</dt><dd>{values.recordedOwner || "Not entered"}</dd></div>
+              <div><dt>Recorded owner</dt><dd>{values.recordedOwner.trim() || "Not recorded"}</dd></div>
             </dl>
             {isMuseumType ? (
               <div className="certificate-preview__catalog-note">
@@ -398,7 +412,7 @@ export default function App() {
   const [photoStatus, setPhotoStatus] = useState("");
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationBusy, setGenerationBusy] = useState(false);
-  const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string }>();
+  const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string; certificateReference: string }>();
   useEffect(() => {
     if (!logo) {
       setLogoPreviewUrl(undefined);
@@ -543,7 +557,7 @@ export default function App() {
       const { buildCertificatePackage } = await import("./lib/package");
       const result = await buildCertificatePackage({ values, photos, logo, identity });
       downloadBlob(result.blob, result.fileName);
-      setReceipt({ recordHash: result.recordHash, manifestHash: result.manifestHash });
+      setReceipt({ recordHash: result.recordHash, manifestHash: result.manifestHash, certificateReference: values.certificateId });
       setGenerationStatus("The self-contained signed package was generated and downloaded.");
     } catch (error) {
       setGenerationStatus(error instanceof Error ? error.message : "The certificate package could not be generated.");
@@ -620,19 +634,19 @@ export default function App() {
                   <Field label="Collection or business" error={errors.collectionName?.message}>
                     <input placeholder="e.g., Example Meteorite Collection" {...register("collectionName")} />
                   </Field>
-                  <Field label="Email" error={errors.issuerEmail?.message}>
-                    <input type="email" placeholder="e.g., issuer@example.com" {...register("issuerEmail")} />
+                  <Field label="Email (optional)" error={errors.issuerEmail?.message}>
+                    <input type="email" placeholder="Optional - e.g., issuer@example.com" {...register("issuerEmail")} />
                   </Field>
-                  <Field label="Phone">
-                    <input type="tel" placeholder="e.g., +1 555 010 0123" {...register("issuerPhone")} />
+                  <Field label="Phone (optional)">
+                    <input type="tel" placeholder="Optional - e.g., +1 555 010 0123" {...register("issuerPhone")} />
                   </Field>
-                  <Field label="Address" wide>
-                    <input placeholder="e.g., 123 Example Street, City, Country" {...register("issuerAddress")} />
+                  <Field label="Address (optional)" wide>
+                    <input placeholder="Optional - e.g., 123 Example Street, City, Country" {...register("issuerAddress")} />
                   </Field>
-                  <Field label="Website" error={errors.issuerWebsite?.message}>
-                    <input type="url" placeholder="e.g., https://example.com" {...register("issuerWebsite")} />
+                  <Field label="Website (optional)" error={errors.issuerWebsite?.message}>
+                    <input type="url" placeholder="Optional - e.g., https://example.com" {...register("issuerWebsite")} />
                   </Field>
-                  <Field label="Logo" hint="Optional. Included and hashed in the package.">
+                  <Field label="Logo (optional)" hint="Optional - included and hashed in the package.">
                     <input type="file" accept="image/*" onChange={(event) => setLogo(event.target.files?.[0])} />
                   </Field>
                 </div>
@@ -658,11 +672,11 @@ export default function App() {
                       <option value="transferred">Transferred</option>
                     </select>
                   </Field>
-                  <Field label="Superseded certificate ID" error={errors.supersededCertificateId?.message}>
-                    <input placeholder="e.g., COA-2025-0001" {...register("supersededCertificateId")} />
+                  <Field label="Superseded certificate ID" hint="Required only when status is Superseded." error={errors.supersededCertificateId?.message}>
+                    <input placeholder="Required only for Superseded status" {...register("supersededCertificateId")} />
                   </Field>
-                  <Field label="Certificate notes">
-                    <input placeholder="e.g., Notes about this certificate version" {...register("certificateNotes")} />
+                  <Field label="Certificate notes (optional)">
+                    <input placeholder="Optional - notes about this certificate version" {...register("certificateNotes")} />
                   </Field>
                   <fieldset className="theme-field field--wide">
                     <legend>Certificate template</legend>
@@ -734,20 +748,20 @@ export default function App() {
                       <option>Other</option>
                     </select>
                   </Field>
-                  <Field label="Dimensions">
-                    <input placeholder="e.g. 42 x 31 x 18 mm" {...register("dimensions")} />
+                  <Field label="Dimensions (optional)">
+                    <input placeholder="Optional - e.g., 42 x 31 x 18 mm" {...register("dimensions")} />
                   </Field>
                   <Field label="Number of pieces" error={errors.numberOfPieces?.message}>
                     <input inputMode="numeric" placeholder="e.g., 1" {...register("numberOfPieces")} />
                   </Field>
-                  <Field label="Preparation state">
-                    <input placeholder="e.g., Natural crust with one cut face" {...register("preparationState")} />
+                  <Field label="Preparation state (optional)">
+                    <input placeholder="Optional - e.g., natural crust with one cut face" {...register("preparationState")} />
                   </Field>
-                  <Field label="Identifying marks" wide>
-                    <input placeholder="e.g., Collection label or distinguishing feature" {...register("identifyingMarks")} />
+                  <Field label="Identifying marks (optional)" wide>
+                    <input placeholder="Optional - e.g., collection label or distinguishing feature" {...register("identifyingMarks")} />
                   </Field>
-                  <Field label="Recorded owner" error={errors.recordedOwner?.message}>
-                    <input placeholder="e.g., John Doe" {...register("recordedOwner")} />
+                  <Field label="Recorded owner (optional)" error={errors.recordedOwner?.message}>
+                    <input placeholder="Optional - e.g., John Doe" {...register("recordedOwner")} />
                   </Field>
                 </div>
               </details>
@@ -758,50 +772,50 @@ export default function App() {
                   <Field label="Fall or find status" error={errors.fallStatus?.message}>
                     <input placeholder="e.g., Witnessed fall" {...register("fallStatus")} />
                   </Field>
-                  <Field label="Date" error={errors.fallDate?.message}>
-                    <input type="date" placeholder="e.g., 2024-01-15" {...register("fallDate")} />
+                  <Field label="Fall or find date (optional)" error={errors.fallDate?.message}>
+                    <input type="date" placeholder="Optional - e.g., 2024-01-15" {...register("fallDate")} />
                   </Field>
                   <Field label="Country" error={errors.country?.message}>
                     <input placeholder="e.g., Canada" {...register("country")} />
                   </Field>
-                  <Field label="Region">
-                    <input placeholder="e.g., Ontario" {...register("region")} />
+                  <Field label="Region (optional)">
+                    <input placeholder="Optional - e.g., Ontario" {...register("region")} />
                   </Field>
                   <Field label="Locality" error={errors.locality?.message}>
                     <input placeholder="e.g., Near Example Township" {...register("locality")} />
                   </Field>
-                  <Field label="Meteoritical Bulletin code">
-                    <input placeholder="e.g., 12345" {...register("metbullCode")} />
+                  <Field label="Meteoritical Bulletin code (optional)">
+                    <input placeholder="Optional - e.g., 12345" {...register("metbullCode")} />
                   </Field>
-                  <Field label="Latitude" error={errors.latitude?.message}>
-                    <input placeholder="e.g., 45.4215 N" {...register("latitude")} />
+                  <Field label="Latitude (optional)" error={errors.latitude?.message}>
+                    <input placeholder="Optional - e.g., 45.4215 N" {...register("latitude")} />
                   </Field>
-                  <Field label="Longitude" error={errors.longitude?.message}>
-                    <input placeholder="e.g., 75.6972 W" {...register("longitude")} />
+                  <Field label="Longitude (optional)" error={errors.longitude?.message}>
+                    <input placeholder="Optional - e.g., 75.6972 W" {...register("longitude")} />
                   </Field>
-                  <Field label="Official reference URL" wide error={errors.officialReferenceUrl?.message}>
-                    <input type="url" placeholder="e.g., https://example.org/record/12345" {...register("officialReferenceUrl")} />
+                  <Field label="Official reference URL (optional)" wide error={errors.officialReferenceUrl?.message}>
+                    <input type="url" placeholder="Optional - e.g., https://example.org/record/12345" {...register("officialReferenceUrl")} />
                   </Field>
-                  <Field label="Finder / recovery information" wide>
-                    <textarea rows={3} placeholder="e.g., Describe who recovered the specimen and how" {...register("recoveryInformation")} />
+                  <Field label="Finder / recovery information (optional)" wide>
+                    <textarea rows={3} placeholder="Optional - describe who recovered the specimen and how" {...register("recoveryInformation")} />
                   </Field>
-                  <Field label="Provenance and chain of custody" wide error={errors.provenance?.message}>
-                    <textarea rows={4} placeholder="e.g., Describe the documented custody history" {...register("provenance")} />
+                  <Field label="Provenance and chain of custody (optional)" wide error={errors.provenance?.message}>
+                    <textarea rows={4} placeholder="Optional - describe the documented custody history" {...register("provenance")} />
                   </Field>
-                  <Field label="Previous owner">
-                    <input placeholder="e.g., Previous collector or institution" {...register("previousOwner")} />
+                  <Field label="Previous owner (optional)">
+                    <input placeholder="Optional - e.g., previous collector or institution" {...register("previousOwner")} />
                   </Field>
-                  <Field label="Buyer / transferee">
-                    <input placeholder="e.g., Receiving collector or institution" {...register("buyer")} />
+                  <Field label="Buyer / transferee (optional)">
+                    <input placeholder="Optional - e.g., receiving collector or institution" {...register("buyer")} />
                   </Field>
-                  <Field label="Transfer date">
-                    <input type="date" placeholder="e.g., 2026-07-29" {...register("transferDate")} />
+                  <Field label="Transfer date (optional)" error={errors.transferDate?.message}>
+                    <input type="date" placeholder="Optional - e.g., 2026-07-29" {...register("transferDate")} />
                   </Field>
-                  <Field label="Invoice / reference">
-                    <input placeholder="e.g., INV-2026-0001" {...register("invoiceReference")} />
+                  <Field label="Invoice / reference (optional)">
+                    <input placeholder="Optional - e.g., INV-2026-0001" {...register("invoiceReference")} />
                   </Field>
-                  <Field label="Transfer notes" wide>
-                    <textarea rows={3} placeholder="e.g., Record transfer terms or related notes" {...register("transferNotes")} />
+                  <Field label="Transfer notes (optional)" wide>
+                    <textarea rows={3} placeholder="Optional - record transfer terms or related notes" {...register("transferNotes")} />
                   </Field>
                 </div>
               </details>
@@ -831,8 +845,8 @@ export default function App() {
                           <div className="photo-item__meta"><span>Original {String(index + 1).padStart(2, "0")}</span><strong>{photo.file.name}</strong><small>{(photo.file.size / 1024 / 1024).toFixed(2)} MB</small></div>
                           <button type="button" className="remove-button" onClick={() => removePhoto(photo.id)} aria-label={`Remove ${photo.file.name}`}>Remove</button>
                         </div>
-                        <label>Caption<input placeholder="e.g., Front face" value={photo.caption} onChange={(event) => updatePhoto(photo.id, { caption: event.target.value })} /></label>
-                        <label>Capture date<input type="date" placeholder="e.g., 2026-07-29" value={photo.captureDate} onChange={(event) => updatePhoto(photo.id, { captureDate: event.target.value })} /></label>
+                        <label>Caption (optional)<input placeholder="Optional - e.g., front face" value={photo.caption} onChange={(event) => updatePhoto(photo.id, { caption: event.target.value })} /></label>
+                        <label>Capture date (optional)<input type="date" placeholder="Optional - e.g., 2026-07-29" value={photo.captureDate} onChange={(event) => updatePhoto(photo.id, { captureDate: event.target.value })} /></label>
                         <label className="attestation"><input type="checkbox" checked={photo.isUnmodifiedOriginal} onChange={(event) => updatePhoto(photo.id, { isUnmodifiedOriginal: event.target.checked })} /><span>I attest this is an exact, unmodified photograph of the specimen.</span></label>
                       </div>
                     </article>
@@ -875,7 +889,7 @@ export default function App() {
                   </div>
                 )}
                 <p className="key-status" aria-live="polite">{keyStatus}</p>
-                <div className="security-note"><strong>Private means private.</strong><span>No key, passphrase, image, or form value is sent to a server. This page has no application backend.</span></div>
+                <div className="security-note"><strong>Private means private.</strong><span>Keys, passphrases, images, the COA package, and the full form record stay local. If the optional managed timestamp service is enabled and you explicitly choose it after release, only the certificate reference, manifest digest, delivery email, and consent record are sent.</span></div>
               </section>
 
               <section className="issue-section">
@@ -920,6 +934,16 @@ export default function App() {
             </aside>
           </form>
         </section>
+
+        {timestampServiceConfig ? (
+          <PaidTimestampPanel
+            config={timestampServiceConfig}
+            release={receipt ? {
+              certificateReference: receipt.certificateReference,
+              manifestSha256: receipt.manifestHash,
+            } : undefined}
+          />
+        ) : null}
 
         <section className="verify-section" id="verify">
           <div className="section-heading section-heading--light">

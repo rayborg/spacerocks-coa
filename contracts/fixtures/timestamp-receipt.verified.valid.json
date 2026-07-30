@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "order_reference": "ts_01K1E2Q3R4S5T6V7W8X9Y0Z1AB",
+  "certificate_reference": "AZ-2019-0447-HE",
+  "manifest_sha256": "cf0a31b01661599b8f73cd2dd2830f859e36a00c8ca22b259b33a7ec32c067cc",
+  "proof_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "proof_bytes": 384,
+  "proof_state": "bitcoin_verified",
+  "calendar_submitted_at": "2026-07-30T12:05:00Z",
+  "bitcoin": {
+    "block_height": 900000,
+    "block_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "block_time": "2026-07-30T15:00:00Z",
+    "confirmation_policy": "phase0-fixture-exact-target"
+  },
+  "verification_method": "fixture-exact-digest",
+  "verified_at": "2026-07-30T15:10:00Z",
+  "service_version": "phase0-test"
+}
