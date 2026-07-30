@@ -1316,7 +1316,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('input[name="issueDate"]').fill("2026-07-29");
   await page.locator('input[name="certificateVersion"]').fill("1.0");
   await page.locator('input[name="certificateNotes"]').fill("Complete package compatibility test.");
-  await page.getByRole("radio", { name: /Official/ }).check();
+  await page.getByRole("radio", { name: /Official/ }).evaluate((element: HTMLInputElement) => element.click());
   await page.locator('input[name="meteoriteName"]').fill("Test Meteorite");
   await page.locator('input[name="meteoriteType"]').fill("Chondrite");
   await page.locator('input[name="classification"]').fill("Ordinary chondrite");
@@ -1350,8 +1350,8 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('input[name="invoiceReference"]').fill("INV-2026-0001");
   await page.locator('textarea[name="transferNotes"]').fill("Transferred with supporting records.");
 
-  await page.getByRole("radio", { name: /Royal Amethyst/ }).check();
-  await page.getByRole("radio", { name: /Museum Type/ }).check();
+  await page.getByRole("radio", { name: /Royal Amethyst/ }).evaluate((element: HTMLInputElement) => element.click());
+  await page.getByRole("radio", { name: /Museum Type/ }).evaluate((element: HTMLInputElement) => element.click());
   if (process.env.COA_ARTIFACT_DIR) {
     await page.locator('select[name="certificateStatus"]').selectOption("revoked");
   }
