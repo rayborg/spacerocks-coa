@@ -5,12 +5,43 @@ dist/
 playwright-report/
 test-results/
 
+# Python build, test, type-check, and environment artifacts.
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Local service databases, proof working directories, and generated proofs.
+*.db
+*.sqlite
+*.sqlite3
+timestamp-service/.local/
+timestamp-service/local-data/
+timestamp-service/proofs/
+timestamp-service/**/*.ots
+
 # Never commit signing secrets or environment credentials.
 private/
+.secrets/
+secrets/
 *.key
 *-private.pem
+*.p12
+*.pfx
+*.jks
 .env
 .env.*
+!.env.example
+!**/.env.example
 
 # Local handoff source material is retained outside the public repository.
 Spacerocks_COA_Website_OpenCode_Handoff.zip

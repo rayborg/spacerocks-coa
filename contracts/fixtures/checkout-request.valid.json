@@ -1,0 +1,11 @@
+{
+  "certificate_reference": "AZ-2019-0447-HE",
+  "manifest_sha256": "cf0a31b01661599b8f73cd2dd2830f859e36a00c8ca22b259b33a7ec32c067cc",
+  "email": "customer@example.test",
+  "consent": {
+    "managed_timestamp": true,
+    "terms_version": "phase0-v1",
+    "privacy_version": "phase0-v1",
+    "accepted_at": "2026-07-30T12:00:00Z"
+  }
+}

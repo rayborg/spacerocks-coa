@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spacerocks.example/contracts/timestamp-receipt.schema.json",
+  "title": "Spacerocks managed timestamp receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "order_reference", "certificate_reference", "manifest_sha256", "proof_sha256", "proof_bytes", "proof_state", "calendar_submitted_at", "service_version"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "order_reference": {"type": "string", "pattern": "^ts_[0-9A-HJKMNP-TV-Z]{26}$"},
+    "certificate_reference": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "proof_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "proof_bytes": {"type": "integer", "minimum": 1, "maximum": 262144},
+    "proof_state": {"enum": ["calendar_pending", "bitcoin_verified"]},
+    "calendar_submitted_at": {"type": "string", "format": "date-time"},
+    "bitcoin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_height", "block_hash", "block_time", "confirmation_policy"],
+      "properties": {
+        "block_height": {"type": "integer", "minimum": 0},
+        "block_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "block_time": {"type": "string", "format": "date-time"},
+        "confirmation_policy": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "verification_method": {"type": "string", "minLength": 1, "maxLength": 128},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "service_version": {"type": "string", "minLength": 1, "maxLength": 64}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"proof_state": {"const": "bitcoin_verified"}}, "required": ["proof_state"]},
+      "then": {"required": ["bitcoin", "verification_method", "verified_at"]},
+      "else": {
+        "not": {
+          "anyOf": [
+            {"required": ["bitcoin"]},
+            {"required": ["verification_method"]},
+            {"required": ["verified_at"]}
+          ]
+        }
+      }
+    }
+  ]
+}

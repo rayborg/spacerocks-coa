@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spacerocks.example/contracts/order-status.schema.json",
+  "title": "Phase 0 customer-safe timestamp order status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["order_reference", "certificate_reference", "manifest_sha256", "payment_state", "fulfillment_state", "created_at", "updated_at", "proof_available"],
+  "properties": {
+    "order_reference": {"type": "string", "pattern": "^ts_[0-9A-HJKMNP-TV-Z]{26}$"},
+    "certificate_reference": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "payment_state": {"enum": ["checkout_open", "processing", "paid", "failed", "expired", "refunded", "disputed"]},
+    "fulfillment_state": {"enum": ["awaiting_payment", "queued", "stamping", "calendar_pending", "bitcoin_verified", "delivered", "manual_review"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "calendar_submitted_at": {"type": "string", "format": "date-time"},
+    "bitcoin_verified_at": {"type": "string", "format": "date-time"},
+    "proof_available": {"type": "boolean"},
+    "message_code": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9_]+$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"fulfillment_state": {"enum": ["awaiting_payment", "queued", "stamping", "manual_review"]}}},
+      "then": {
+        "properties": {"proof_available": {"const": false}},
+        "not": {
+          "anyOf": [
+            {"required": ["calendar_submitted_at"]},
+            {"required": ["bitcoin_verified_at"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"fulfillment_state": {"const": "calendar_pending"}}},
+      "then": {
+        "required": ["calendar_submitted_at"],
+        "properties": {"proof_available": {"const": true}},
+        "not": {"required": ["bitcoin_verified_at"]}
+      }
+    },
+    {
+      "if": {"properties": {"fulfillment_state": {"const": "bitcoin_verified"}}},
+      "then": {"required": ["calendar_submitted_at", "bitcoin_verified_at"]}
+    },
+    {
+      "if": {"properties": {"fulfillment_state": {"const": "delivered"}}},
+      "then": {
+        "required": ["calendar_submitted_at", "bitcoin_verified_at"],
+        "properties": {"proof_available": {"const": true}}
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fulfillment_state": {
+            "enum": ["queued", "stamping", "calendar_pending", "bitcoin_verified", "delivered"]
+          }
+        }
+      },
+      "then": {"properties": {"payment_state": {"enum": ["paid", "refunded", "disputed"]}}}
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --limit-concurrency 100 --timeout-keep-alive 5 --no-access-log"
+healthcheckPath = "/health/ready"
+healthcheckTimeout = 10
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+# Create the worker as a separate Railway service from this image and override its start command with:
+# TIMESTAMP_WORKER_FACTORY=app.worker.composition:create_worker python -m app.worker.cli
+# Operator commands use TIMESTAMP_OPERATOR_FACTORY=app.worker.operator:create_operator_commands.

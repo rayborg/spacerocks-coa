@@ -1,0 +1,9 @@
+{
+  "certificate": {
+    "id": "PHASE0-KNOWN-001"
+  },
+  "generation": {
+    "manifestSerialization": "UTF-8, sorted keys, two-space indentation, LF, final newline, no BOM"
+  },
+  "schemaVersion": "1.0.0"
+}

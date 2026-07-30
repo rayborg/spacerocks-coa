@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spacerocks.example/contracts/rotate-token-response.schema.json",
+  "title": "Phase 0 status-token rotation response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status_token"],
+  "properties": {
+    "status_token": {"type": "string", "pattern": "^v[1-9][0-9]*\\.[A-Za-z0-9_-]{43}$"}
+  }
+}

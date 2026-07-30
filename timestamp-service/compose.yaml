@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-timestamp_local}
+      POSTGRES_USER: ${POSTGRES_USER:-timestamp_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD for local integration}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    tmpfs:
+      - /var/run/postgresql
+    volumes:
+      - timestamp-postgres:/var/lib/postgresql/data
+
+  api:
+    build: .
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-timestamp_local}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-timestamp_local}
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-concurrency", "100", "--timeout-keep-alive", "5", "--no-access-log"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: .
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-timestamp_local}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-timestamp_local}
+      TIMESTAMP_WORKER_FACTORY: app.worker.composition:create_worker
+    command: ["python", "-m", "app.worker.cli"]
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  timestamp-postgres:

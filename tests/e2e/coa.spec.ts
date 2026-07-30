@@ -72,7 +72,7 @@ const contentFieldNames = [
   "supersededCertificateId",
   "certificateNotes",
   "meteoriteName",
-  "classification",
+  "suspectedType",
   "weightGrams",
   "weightPrecision",
   "dimensions",
@@ -87,11 +87,38 @@ const contentFieldNames = [
   "locality",
   "latitude",
   "longitude",
-  "metbullCode",
-  "officialReferenceUrl",
+  "finderName",
   "recoveryInformation",
   "provenance",
   "previousOwner",
+  "intermediaryPurchaserName",
+  "buyer",
+  "transferDate",
+  "invoiceReference",
+  "transferNotes",
+] as const;
+
+const optionalContentFieldNames = [
+  "issuerEmail",
+  "issuerPhone",
+  "issuerAddress",
+  "issuerWebsite",
+  "certificateNotes",
+  "dimensions",
+  "preparationState",
+  "identifyingMarks",
+  "recordedOwner",
+  "fallDate",
+  "region",
+  "locality",
+  "latitude",
+  "longitude",
+  "suspectedType",
+  "finderName",
+  "recoveryInformation",
+  "provenance",
+  "previousOwner",
+  "intermediaryPurchaserName",
   "buyer",
   "transferDate",
   "invoiceReference",
@@ -145,6 +172,8 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(specimenForm.locator('option[value=""]')).toHaveAttribute("disabled", "");
   await expect(specimenForm.locator('option[value=""]')).toHaveText("Select specimen form");
   await expect(page.locator('select[name="certificateStatus"]')).toHaveValue("active");
+  await expect(page.getByRole("radio", { name: /Unclassified/ })).toBeChecked();
+  await expect(page.getByRole("radio", { name: /Official/ })).not.toBeChecked();
   const templatePicker = page.getByRole("group", { name: "Certificate template" });
   await expect(templatePicker.getByRole("radio")).toHaveCount(2);
   await expect(templatePicker.getByRole("radio", { name: /Celestial Formal/ })).toBeChecked();
@@ -153,16 +182,27 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(page.getByRole("radio", { name: /Observatory Navy/ })).toBeChecked();
 
   await expect(page.getByLabel("Issuer display or legal name")).toHaveAttribute("placeholder", "e.g., John Doe");
-  await expect(page.getByLabel("Meteorite name")).toHaveAttribute("placeholder", "e.g., Aguas Zarcas");
+  await expect(page.getByLabel("Working specimen name")).toHaveAttribute("placeholder", "e.g., Unclassified specimen 001");
   await expect(page.getByLabel("Weight (grams)")).toHaveAttribute("placeholder", "e.g., 44.7");
   await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("");
-  await expect(page.getByLabel("Meteorite name")).toHaveValue("");
+  await expect(page.getByLabel("Working specimen name")).toHaveValue("");
   await expect(page.getByLabel("Weight (grams)")).toHaveValue("");
+  for (const name of optionalContentFieldNames) {
+    const field = page.locator(`[name="${name}"]`);
+    await expect(field, `${name} marks its placeholder optional`).toHaveAttribute("placeholder", /^Optional -/);
+    await expect(field.locator("xpath=ancestor::label[1]").locator(".field__label"), `${name} marks its label optional`)
+      .toContainText("(optional)");
+  }
+  await expect(page.getByLabel("Logo (optional)")).toHaveCount(1);
+  await expect(page.getByText("Optional - included and hashed in the package.")).toHaveCount(1);
+  await expect(page.locator('input[name="supersededCertificateId"]')).not.toHaveAttribute("placeholder", /^Optional/);
+  await expect(page.locator('input[name="supersededCertificateId"]'))
+    .toHaveAttribute("placeholder", "Required only for Superseded status");
 
   const preview = page.locator(".certificate-preview");
   await expect(preview.locator(".certificate-preview__collection")).toContainText("Collection name");
   await expect(preview.locator(".certificate-preview__title h3")).toHaveText("Meteorite name");
-  await expect(preview.locator(".certificate-preview__title p")).toHaveText("Classification");
+  await expect(preview.locator(".certificate-preview__title p")).toHaveText("Unclassified");
   await expect(preview.locator(".certificate-preview__id")).toContainText("Pending");
   await expect(preview.locator(".certificate-preview__facts")).toContainText("Not entered");
   await expect(preview.locator(".certificate-preview__facts")).toContainText("Specimen form");
@@ -174,7 +214,9 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(specimenSummary).not.toContainText(/--|0 g|Specimen form/);
   await expect(preview.locator(".certificate-preview__signoff strong")).toHaveText("Issuer");
 
-  await page.getByRole("button", { name: "Issue signed COA package" }).click();
+  await expect(page.getByRole("button", { name: "Issue signed COA package" })).toBeDisabled();
+  await expect(page.getByText("Complete these requirements before issuance:")).toBeVisible();
+  await page.getByRole("button", { name: "Review missing form fields" }).click();
   await expect(page.locator(".generation-status")).toHaveText("Review the highlighted required fields.");
   await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("");
 
@@ -184,13 +226,15 @@ test("starts with blank content, provisional preview labels, and readable respon
     buffer: onePixelPng,
     lastModified: Date.UTC(2024, 0, 15),
   });
-  const photoCaption = page.getByLabel("Caption", { exact: true });
-  const photoCaptureDate = page.getByLabel("Capture date", { exact: true });
+  const photoCaption = page.getByLabel("Caption (optional)", { exact: true });
+  const photoCaptureDate = page.getByLabel("Capture date (optional)", { exact: true });
   await expect(page.locator(".photo-item__meta strong")).toHaveText("filename-must-not-become-caption.png");
   await expect(photoCaption).toHaveValue("");
   await expect(photoCaptureDate).toHaveValue("");
-  await expect(photoCaption).toHaveAttribute("placeholder", "e.g., Front face");
-  await expect(photoCaptureDate).toHaveAttribute("placeholder", "e.g., 2026-07-29");
+  await expect(photoCaption).toHaveAttribute("placeholder", "Optional - e.g., front face");
+  await expect(photoCaptureDate).toHaveAttribute("placeholder", "Optional - e.g., 2026-07-29");
+
+  await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
 
   for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
@@ -258,7 +302,135 @@ test("starts with blank content, provisional preview labels, and readable respon
     expect(styles.photoCardFits, `photo card overflow at ${width}px`).toBe(true);
     expect(styles.overflowingControls, `control overflow at ${width}px`).toEqual([]);
     await expect(preview).toBeVisible();
+    if (width === 2048 || width === 390) {
+      const optionalPresentation = await page.evaluate((names) => names.map((name) => {
+        const control = document.querySelector<HTMLElement>(`[name="${name}"]`)!;
+        const wrapper = control.closest("label")!;
+        return {
+          name,
+          visible: wrapper.getClientRects().length > 0,
+          label: wrapper.querySelector(".field__label")?.textContent ?? "",
+          placeholder: control.getAttribute("placeholder") ?? "",
+        };
+      }), optionalContentFieldNames);
+      expect(optionalPresentation, `optional field presentation at ${width}px`).toEqual(
+        optionalContentFieldNames.map((name) => expect.objectContaining({
+          name,
+          visible: true,
+          label: expect.stringContaining("(optional)"),
+          placeholder: expect.stringMatching(/^Optional -/),
+        })),
+      );
+      await expect(photoCaption).toBeVisible();
+      await expect(photoCaptureDate).toBeVisible();
+    }
   }
+});
+
+test("requires a superseded certificate ID only for superseded status", async ({ page }) => {
+  await page.goto("/#builder");
+  const status = page.locator('select[name="certificateStatus"]');
+  const supersededId = page.locator('input[name="supersededCertificateId"]');
+  const review = page.getByRole("button", { name: "Review missing form fields" });
+
+  await status.selectOption("superseded");
+  await review.click();
+  await expect(supersededId.locator("xpath=ancestor::label[1]").locator(".field__error"))
+    .toHaveText("Record the certificate ID this version supersedes.");
+
+  await supersededId.fill("COA-2025-0001");
+  await review.click();
+  await expect(supersededId.locator("xpath=ancestor::label[1]").locator(".field__error")).toHaveCount(0);
+
+  await supersededId.fill("");
+  await status.selectOption("active");
+  await review.click();
+  await expect(supersededId.locator("xpath=ancestor::label[1]").locator(".field__error")).toHaveCount(0);
+});
+
+test("keeps the form before the live preview when the builder stacks", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/#builder");
+
+  const workbench = await page.locator(".workbench").boundingBox();
+  const preview = await page.locator(".preview-column").boundingBox();
+  expect(workbench && preview).toBeTruthy();
+  expect(preview!.y).toBeGreaterThanOrEqual(workbench!.y + workbench!.height);
+});
+
+test("enforces fresh official evidence across value and mode changes and validates location methods", async ({ page }) => {
+  const lpiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().startsWith("https://www.lpi.usra.edu/")) lpiRequests.push(request.url());
+  });
+  await page.goto("/#builder");
+  const provenance = page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" });
+  await provenance.locator("summary").click();
+
+  await page.getByRole("radio", { name: /Official/ }).check();
+  await expect(page.locator('input[name="meteoriteType"]')).toHaveValue("Unclassified");
+  await expect(page.locator('input[name="classification"]')).toHaveValue("Unclassified");
+  await expect(page.locator('input[name="meteoriteSubclass"]')).toHaveValue("Unclassified");
+  await expect(page.getByText("Meteorite type cannot be Unclassified in official mode.")).toBeVisible();
+
+  await page.locator('input[name="meteoriteType"]').fill("Chondrite");
+  await page.locator('input[name="classification"]').fill("Carbonaceous chondrite");
+  await page.locator('input[name="meteoriteSubclass"]').fill("CM2");
+  await page.locator('input[name="metbullCode"]').fill("68063");
+  const officialUrl = page.locator('input[name="officialReferenceUrl"]');
+  await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68064");
+  await expect(page.getByText("Enter the exact Meteoritical Bulletin URL for this code.")).toBeVisible();
+  await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68063");
+  const attestation = page.locator('input[name="officialNameVerified"]');
+  await attestation.check();
+  await expect(attestation).toBeChecked();
+  await expect(page.getByRole("link", { name: "Open official Meteoritical Bulletin entry" }))
+    .toHaveAttribute("href", "https://www.lpi.usra.edu/meteor/metbull.cfm?code=68063");
+  expect(lpiRequests).toEqual([]);
+
+  for (const [name, value] of [
+    ["meteoriteName", "Aguas Zarcas revised"],
+    ["meteoriteType", "Carbonaceous meteorite"],
+    ["classification", "Carbonaceous chondrite revised"],
+    ["meteoriteSubclass", "CM2-an"],
+  ] as const) {
+    await page.locator(`input[name="${name}"]`).fill(value);
+    await expect(attestation, `${name} resets attestation`).not.toBeChecked();
+    await attestation.check();
+    await expect(attestation).toBeChecked();
+  }
+
+  await page.locator('input[name="metbullCode"]').fill("68064");
+  await expect(attestation).not.toBeChecked();
+  await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68064");
+  await attestation.check();
+  await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68065");
+  await expect(attestation).not.toBeChecked();
+  await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68064");
+  await attestation.check();
+
+  await page.getByRole("radio", { name: /Unclassified/ }).check();
+  await expect(page.getByLabel("Suspected type (optional)")).toBeVisible();
+  await page.getByRole("radio", { name: /Official/ }).check();
+  await expect(page.locator('input[name="meteoriteType"]')).toHaveValue("Carbonaceous meteorite");
+  await expect(page.locator('input[name="officialReferenceUrl"]'))
+    .toHaveValue("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68064");
+  await expect(attestation).not.toBeChecked();
+  await expect(page.getByText(/Attest that the official name and classification/)).toBeVisible();
+
+  await page.locator('input[name="country"]').fill("Canada");
+  await page.locator('input[name="locality"]').fill("Ottawa");
+  await page.locator('input[name="region"]').fill("");
+  await expect(page.locator(".certificate-preview__facts dd").nth(1)).toHaveText("Ottawa, Canada");
+  await page.locator('input[name="locality"]').fill("");
+  await page.locator('input[name="region"]').fill("Ontario");
+  await expect(page.locator(".certificate-preview__facts dd").nth(1)).toHaveText("Ontario, Canada");
+  await page.locator('input[name="region"]').fill("");
+  await page.locator('input[name="latitude"]').fill("45.4215 N");
+  await expect(page.getByText("Enter both latitude and longitude, or leave both blank.")).toBeVisible();
+  await page.locator('input[name="longitude"]').fill("75.6972 W");
+  await expect(page.getByText("Enter both latitude and longitude, or leave both blank.")).toHaveCount(0);
+  await expect(page.locator(".certificate-preview__facts dd").nth(1)).toHaveText("Canada");
 });
 
 test("makes vertical continuation obvious and accessible from the hero", async ({ page }) => {
@@ -370,8 +542,8 @@ test("renders coherent specimen states and complete responsive certificate headi
   await expect(summary.locator("strong")).toHaveText("Half stone / end cut");
   await expect(summary).not.toContainText(/--|0 g|Awaiting/);
 
-  await page.getByLabel("Meteorite name").fill("Northwest Africa 15000");
-  await page.getByLabel("Classification").fill("Lunar feldspathic breccia");
+  await page.getByLabel("Working specimen name").fill("Northwest Africa 15000");
+  await page.getByLabel("Suspected type (optional)").fill("Lunar feldspathic breccia");
   await page.locator('input[name="certificateId"]').fill("MUS-2026-0042");
   await page.getByLabel("Collection or business").fill("Natural History Research Collection");
   await page.getByLabel("Weight (grams)").fill("18.25");
@@ -636,7 +808,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);
   expect(Number.parseFloat(museumSignature.sealRadius)).toBeGreaterThanOrEqual(10);
   expect(Number.parseFloat(museumSignature.sealBorder)).toBeGreaterThanOrEqual(4);
-  expect(museumSignature.catalogNote).toContain("No additional catalog notes supplied.");
+  expect(museumSignature.catalogNote).toContain("Not recorded");
 
   if (artifactDirectory) {
     await page.setViewportSize({ width: 1280, height: 1000 });
@@ -931,8 +1103,13 @@ test("keeps unbroken Museum Type export notes inside their ruled panel", async (
     certificateTheme: "observatory-navy",
     supersededCertificateId: "",
     certificateNotes: "",
+    meteoriteIdentity: "unclassified",
     meteoriteName: "Test Meteorite",
-    classification: "L5 chondrite",
+    meteoriteType: "Unclassified",
+    classification: "Unclassified",
+    meteoriteSubclass: "Unclassified",
+    suspectedType: "Possible L5 chondrite",
+    officialNameVerified: false,
     weightGrams: "12.3",
     weightPrecision: "0.1",
     specimenForm: "Fragment",
@@ -950,9 +1127,11 @@ test("keeps unbroken Museum Type export notes inside their ruled panel", async (
     longitude: "75.6972 W",
     metbullCode: "",
     officialReferenceUrl: "",
+    finderName: "",
     recoveryInformation: "R".repeat(3000),
     provenance: "P".repeat(5000),
     previousOwner: "",
+    intermediaryPurchaserName: "",
     buyer: "",
     transferDate: "",
     invoiceReference: "",
@@ -1006,32 +1185,173 @@ test("keeps unbroken Museum Type export notes inside their ruled panel", async (
   }
 });
 
+test("issues and verifies a minimal package without optional PII", async ({ page }) => {
+  const mutatingRequests: string[] = [];
+  page.on("request", (request) => {
+    if (!["GET", "HEAD"].includes(request.method())) mutatingRequests.push(`${request.method()} ${request.url()}`);
+  });
+  await page.goto("/#builder");
+
+  await page.locator('input[name="issuerName"]').fill("Minimal Test Issuer");
+  await page.locator('input[name="collectionName"]').fill("Minimal Test Collection");
+  await page.locator('input[name="certificateId"]').fill("MINIMAL-COA-0001");
+  await page.locator('input[name="issueDate"]').fill("2026-07-30");
+  await page.locator('input[name="certificateVersion"]').fill("1.0");
+  await page.locator('input[name="meteoriteName"]').fill("Minimal Meteorite");
+  await page.locator('input[name="weightGrams"]').fill("12.3");
+  await page.locator('input[name="weightPrecision"]').fill("0.1");
+  await page.locator('select[name="specimenForm"]').selectOption({ label: "Fragment" });
+  await page.locator('input[name="numberOfPieces"]').fill("1");
+  await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
+  await page.locator('input[name="fallStatus"]').fill("Find");
+  await page.locator('input[name="country"]').fill("Canada");
+  await page.locator('input[name="locality"]').fill("Example Township");
+  await page.getByRole("radio", { name: /Official/ }).check();
+  await page.locator('input[name="meteoriteType"]').fill("Stale type");
+  await page.locator('input[name="classification"]').fill("Stale class");
+  await page.locator('input[name="meteoriteSubclass"]').fill("Stale subclass");
+  await page.locator('input[name="metbullCode"]').fill("99999");
+  await page.locator('input[name="officialReferenceUrl"]').fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=99999");
+  await page.locator('input[name="officialNameVerified"]').check();
+  await page.getByRole("radio", { name: /Unclassified/ }).check();
+  await page.locator('input[name="suspectedType"]').fill("Possible L5 chondrite");
+  const issueButton = page.getByRole("button", { name: "Issue signed COA package" });
+  await expect(issueButton).toBeDisabled();
+  await expect(page.getByText("Generate or import a signing identity.")).toBeVisible();
+
+  const createKey = page.locator(".key-option").first();
+  await createKey.getByLabel("Passphrase", { exact: true }).fill("minimal package passphrase");
+  await createKey.getByLabel("Confirm passphrase").fill("minimal package passphrase");
+  await createKey.getByRole("button", { name: "Generate Ed25519 key" }).click();
+  await expect(page.getByText("Key loaded", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(issueButton).toBeDisabled();
+  await expect(page.getByText("Download the encrypted signing-key backup.")).toBeVisible();
+  const backupDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download encrypted key backup" }).click();
+  await backupDownload;
+  await expect(issueButton).toBeDisabled();
+  await expect(page.getByText("Add at least one exact specimen photograph.")).toBeVisible();
+
+  await page.locator(".photo-drop input[type=file]").setInputFiles({
+    name: "minimal-exact-specimen.png",
+    mimeType: "image/png",
+    buffer: onePixelPng,
+  });
+  await expect(issueButton).toBeDisabled();
+  await expect(page.getByText("Attest every photograph is an unmodified original.")).toBeVisible();
+  await page.getByLabel(/I attest this is an exact/).check();
+  await expect(issueButton).toBeEnabled();
+
+  const packageDownload = page.waitForEvent("download", { timeout: 90_000 });
+  await issueButton.click();
+  const packagePath = await (await packageDownload).path();
+  expect(packagePath).toBeTruthy();
+  expect(mutatingRequests).toEqual([]);
+
+  const archive = await JSZip.loadAsync(await readFile(packagePath!));
+  const manifestName = Object.keys(archive.files).find((name) => name.endsWith("/manifest.json"));
+  expect(manifestName).toBeTruthy();
+  const root = manifestName!.slice(0, -"manifest.json".length);
+  const manifest = JSON.parse(await archive.file(manifestName!)!.async("text")) as Record<string, any>;
+  const record = JSON.parse(await archive.file(`${root}certificate-record.json`)!.async("text")) as Record<string, any>;
+
+  expect(manifest).toEqual(expect.objectContaining({
+    $schema: "coa-manifest-v2.schema.json",
+    schemaVersion: "2.0.0",
+    packageVersion: 2,
+  }));
+  expect(manifest.issuer).toEqual(expect.objectContaining({
+    name: "Minimal Test Issuer",
+    collection: "Minimal Test Collection",
+  }));
+  for (const key of ["email", "phone", "address", "website", "logoFile"]) expect(manifest.issuer).not.toHaveProperty(key);
+  for (const key of ["notes", "supersedes"]) expect(manifest.certificate).not.toHaveProperty(key);
+  for (const key of ["dimensions", "preparationState", "identifyingMarks", "recordedOwner"]) {
+    expect(manifest.specimen).not.toHaveProperty(key);
+  }
+  expect(manifest.specimen).toEqual(expect.objectContaining({
+    meteoriteIdentity: "unclassified",
+    meteoriteType: "Unclassified",
+    classification: "Unclassified",
+    meteoriteSubclass: "Unclassified",
+    suspectedType: "Possible L5 chondrite",
+  }));
+  expect(manifest.specimen).not.toHaveProperty("officialNameVerified");
+  expect(manifest.specimen.fall).toEqual({ status: "Find", country: "Canada", locality: "Example Township" });
+  expect(manifest.specimen.fall).not.toHaveProperty("metbullCode");
+  expect(manifest.specimen.fall).not.toHaveProperty("officialReferenceUrl");
+  expect(manifest.specimen.provenance).toEqual({});
+  expect(manifest.photographs[0]).not.toHaveProperty("caption");
+  expect(manifest.photographs[0]).not.toHaveProperty("captureDate");
+  expect(record.issuer).toEqual(manifest.issuer);
+  expect(record.specimen).toEqual(manifest.specimen);
+  expect(record.photographs).toEqual(manifest.photographs);
+
+  const certificateText = await archive.file(`${root}certificate.txt`)!.async("text");
+  expect(certificateText).toContain("Recorded owner: Not recorded");
+  expect(certificateText).toContain("Date: Not recorded");
+  expect(certificateText).toContain("Region: Not recorded");
+  expect(certificateText).toContain("Coordinates: Not recorded");
+  expect(certificateText).toContain("PROVENANCE\nNot recorded");
+  expect(certificateText).not.toContain("99999");
+  expect(certificateText).not.toContain("Official reference:");
+  expect(certificateText).not.toContain("Official name verified:");
+
+  await page.locator(".verifier input[type=file]").setInputFiles(packagePath!);
+  await expect(page.locator(".check", { hasText: "Manifest schema" })).toHaveClass(/check--pass/, { timeout: 60_000 });
+  await expect(page.locator(".check", { hasText: "Official meteorite identity" })).toHaveClass(/check--pass/);
+  await expect(page.locator(".verifier__report-head").getByText("PASS")).toBeVisible();
+});
+
 test("generates, downloads, verifies, and rejects tampering", async ({ page }, testInfo) => {
   await page.goto("/#builder");
 
   await page.locator('input[name="issuerName"]').fill("Test Issuer");
   await page.locator('input[name="collectionName"]').fill("Test Meteorite Collection");
+  await page.locator('input[name="issuerEmail"]').fill("issuer@example.com");
+  await page.locator('input[name="issuerPhone"]').fill("+1 555 010 0123");
+  await page.locator('input[name="issuerAddress"]').fill("123 Example Street, Ottawa, Canada");
+  await page.locator('input[name="issuerWebsite"]').fill("https://example.com");
   await page.locator('input[name="certificateId"]').fill("TEST-COA-0001");
   await page.locator('input[name="issueDate"]').fill("2026-07-29");
   await page.locator('input[name="certificateVersion"]').fill("1.0");
+  await page.locator('input[name="certificateNotes"]').fill("Complete package compatibility test.");
+  await page.getByRole("radio", { name: /Official/ }).evaluate((element: HTMLInputElement) => element.click());
   await page.locator('input[name="meteoriteName"]').fill("Test Meteorite");
-  await page.locator('input[name="classification"]').fill("L5 chondrite");
+  await page.locator('input[name="meteoriteType"]').fill("Chondrite");
+  await page.locator('input[name="classification"]').fill("Ordinary chondrite");
+  await page.locator('input[name="meteoriteSubclass"]').fill("L5");
   await page.locator('input[name="weightGrams"]').fill("12.3");
   await page.locator('input[name="weightPrecision"]').fill("0.1");
   await page.locator('select[name="specimenForm"]').selectOption({ label: "Fragment" });
+  await page.locator('input[name="dimensions"]').fill("20 x 15 x 10 mm");
   await page.locator('input[name="numberOfPieces"]').fill("1");
+  await page.locator('input[name="preparationState"]').fill("Natural crust with one cut face");
+  await page.locator('input[name="identifyingMarks"]').fill("Test collection label 42");
   await page.locator('input[name="recordedOwner"]').fill("Test Owner");
   await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
   await page.locator('input[name="fallStatus"]').fill("Find");
   await page.locator('input[name="fallDate"]').fill("2024-01-15");
   await page.locator('input[name="country"]').fill("Canada");
+  await page.locator('input[name="region"]').fill("Ontario");
   await page.locator('input[name="locality"]').fill("Example Township");
   await page.locator('input[name="latitude"]').fill("45.4215 N");
   await page.locator('input[name="longitude"]').fill("75.6972 W");
+  await page.locator('input[name="metbullCode"]').fill("12345");
+  await page.locator('input[name="officialReferenceUrl"]').fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
+  await page.locator('input[name="officialNameVerified"]').check();
+  await page.locator('input[name="finderName"]').fill("Documented Finder");
+  await page.locator('textarea[name="recoveryInformation"]').fill("Recovered by the documented finder.");
   await page.locator('textarea[name="provenance"]').fill("Documented test custody from recovery through issuance.");
+  await page.locator('input[name="previousOwner"]').fill("Previous Test Owner");
+  await page.locator('input[name="intermediaryPurchaserName"]').fill("Intermediary Test Dealer");
+  await page.locator('input[name="buyer"]').fill("Receiving Test Collector");
+  await page.locator('input[name="transferDate"]').fill("2026-07-28");
+  await page.locator('input[name="invoiceReference"]').fill("INV-2026-0001");
+  await page.locator('textarea[name="transferNotes"]').fill("Transferred with supporting records.");
 
-  await page.getByRole("radio", { name: /Royal Amethyst/ }).check();
-  await page.getByRole("radio", { name: /Museum Type/ }).check();
+  await page.getByRole("radio", { name: /Royal Amethyst/ }).evaluate((element: HTMLInputElement) => element.click());
+  await page.getByRole("radio", { name: /Museum Type/ }).evaluate((element: HTMLInputElement) => element.click());
   if (process.env.COA_ARTIFACT_DIR) {
     await page.locator('select[name="certificateStatus"]').selectOption("revoked");
   }
@@ -1051,7 +1371,21 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     mimeType: "image/png",
     buffer: onePixelPng,
   });
+  await page.getByLabel("Caption (optional)", { exact: true }).fill("Front face");
+  await page.getByLabel("Capture date (optional)", { exact: true }).fill("2026-07-29");
   await page.getByLabel(/I attest this is an exact/).check();
+  const issueButton = page.getByRole("button", { name: "Issue signed COA package" });
+  await expect(issueButton).toBeEnabled();
+  await page.locator('input[name="meteoriteName"]').fill("Test Meteorite revised");
+  await expect(page.locator('input[name="officialNameVerified"]')).not.toBeChecked();
+  await expect(issueButton).toBeDisabled();
+  await page.locator('input[name="officialNameVerified"]').check();
+  await expect(issueButton).toBeEnabled();
+  await page.getByLabel("Logo (optional)").setInputFiles({
+    name: "issuer-logo.png",
+    mimeType: "image/png",
+    buffer: onePixelPng,
+  });
   const removeBox = await page.getByRole("button", { name: "Remove exact-specimen.png" }).boundingBox();
   const metadataBox = await page.locator(".photo-item__meta").boundingBox();
   expect(removeBox && metadataBox).toBeTruthy();
@@ -1091,7 +1425,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   });
 
   const packageDownload = page.waitForEvent("download", { timeout: 90_000 });
-  await page.getByRole("button", { name: "Issue signed COA package" }).click();
+  await issueButton.click();
   const download = await packageDownload;
   const packagePath = await download.path();
   expect(packagePath).toBeTruthy();
@@ -1119,14 +1453,55 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   const root = manifestName!.slice(0, -"manifest.json".length);
   const manifest = JSON.parse(await archive.file(manifestName!)!.async("text")) as {
     certificate: { visualStyle?: string; visualTheme?: string };
+    issuer: { email?: string; phone?: string; address?: string; website?: string; logoFile?: string };
+    specimen: {
+      meteoriteIdentity: string;
+      meteoriteType: string;
+      classification: string;
+      meteoriteSubclass: string;
+      officialNameVerified?: boolean;
+      recordedOwner?: string;
+      fall: { date?: string; latitude?: string; longitude?: string; finderName?: string };
+      provenance: { statement?: string; intermediaryPurchaserName?: string };
+    };
+    photographs: Array<{ caption?: string; captureDate?: string }>;
     files: Array<{ path: string }>;
   };
   expect(manifest.certificate.visualStyle).toBe("museum-type");
+  expect(manifest).toEqual(expect.objectContaining({
+    $schema: "coa-manifest-v2.schema.json",
+    schemaVersion: "2.0.0",
+    packageVersion: 2,
+  }));
   expect(manifest.certificate.visualTheme).toBe("royal-amethyst");
+  expect(manifest.issuer).toEqual(expect.objectContaining({
+    email: "issuer@example.com",
+    phone: "+1 555 010 0123",
+    address: "123 Example Street, Ottawa, Canada",
+    website: "https://example.com",
+    logoFile: "issuer-assets/issuer-logo.png",
+  }));
+  expect(manifest.specimen.recordedOwner).toBe("Test Owner");
+  expect(manifest.specimen).toEqual(expect.objectContaining({
+    meteoriteIdentity: "official",
+    meteoriteType: "Chondrite",
+    classification: "Ordinary chondrite",
+    meteoriteSubclass: "L5",
+    officialNameVerified: true,
+  }));
+  expect(manifest.specimen.fall).toEqual(expect.objectContaining({
+    date: "2024-01-15",
+    latitude: "45.4215 N",
+    longitude: "75.6972 W",
+    finderName: "Documented Finder",
+  }));
+  expect(manifest.specimen.provenance.statement).toBe("Documented test custody from recovery through issuance.");
+  expect(manifest.specimen.provenance.intermediaryPurchaserName).toBe("Intermediary Test Dealer");
+  expect(manifest.photographs[0]).toEqual(expect.objectContaining({ caption: "Front face", captureDate: "2026-07-29" }));
   const signedPaths = manifest.files.map((entry) => entry.path);
   expect(signedPaths).toEqual(expect.arrayContaining([
     "README-FIRST.txt",
-    "coa-manifest-v1.schema.json",
+    "coa-manifest-v2.schema.json",
     "public-key.pem",
     "verification-instructions.txt",
     "verify.py",
@@ -1168,13 +1543,17 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   }
   const certificateRecord = JSON.parse(await archive.file(`${root}certificate-record.json`)!.async("text")) as {
     certificate: { visualStyle?: string; visualTheme?: string };
+    specimen: unknown;
   };
   expect(certificateRecord.certificate.visualStyle).toBe("museum-type");
   expect(certificateRecord.certificate.visualTheme).toBe("royal-amethyst");
+  expect(certificateRecord.specimen).toEqual(manifest.specimen);
   const certificateText = await archive.file(`${root}certificate.txt`)!.async("text");
   expect(certificateText).toContain("Certificate layout style: Museum Type");
   expect(certificateText).toContain("Certificate color scheme: Royal Amethyst");
-  const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v1.schema.json`)!.async("text")) as {
+  expect(certificateText).toContain("Official name verified: Yes - issuer attestation");
+  expect(certificateText).toContain("Official reference: https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
+  const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v2.schema.json`)!.async("text")) as {
     properties: {
       certificate: {
         required: string[];
@@ -1217,6 +1596,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator(".verifier input[type=file]").setInputFiles(packagePath!);
   await expect(page.locator(".verifier__report-head").getByText("PASS")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("All required cryptographic checks passed.")).toBeVisible();
+  await expect(page.locator(".check", { hasText: "Official meteorite identity" })).toHaveClass(/check--pass/);
 
   const tamperedArchive = await JSZip.loadAsync(packageBuffer);
   const tamperedVerify = `${verifySource}\n# unauthorized change\n`;

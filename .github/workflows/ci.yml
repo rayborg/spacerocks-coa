@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend unit, type, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm test
+      - name: Run TypeScript checks
+        run: npm run typecheck
+      - name: Build without timestamp service configuration
+        run: npm run build
+      - name: Build with synthetic HTTPS timestamp service configuration
+        env:
+          VITE_TIMESTAMP_API_URL: https://timestamp-api.example.test/api
+        run: npm run build
+
+  browser:
+    name: Browser (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop-chrome, desktop-firefox, desktop-webkit]
+        include:
+          - project: desktop-chrome
+            browser: chromium
+          - project: desktop-firefox
+            browser: firefox
+          - project: desktop-webkit
+            browser: webkit
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set up Python for the packaged offline verifier
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Install browser and offline-verifier dependency
+        run: |
+          npx playwright install --with-deps ${{ matrix.browser }}
+          python -m pip install 'cryptography==45.0.5'
+      - name: Run full browser suite with timestamp service absent
+        run: npm run test:e2e -- --project=${{ matrix.project }}
+      - name: Run mocked timestamp browser suite with synthetic HTTPS API
+        env:
+          VITE_TIMESTAMP_API_URL: https://timestamp-api.example.test/api
+        run: npm run test:e2e -- --project=${{ matrix.project }} tests/e2e/timestamp-service.spec.ts
+
+  backend:
+    name: Backend Python 3.12 and PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_DB: timestamp_ci
+          POSTGRES_USER: timestamp_ci
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U timestamp_ci -d timestamp_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: timestamp-service
+    env:
+      TEST_POSTGRES_URL: postgresql+psycopg://timestamp_ci:ci-only-not-a-secret@127.0.0.1:5432/timestamp_ci
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: timestamp-service/requirements.lock
+      - name: Install pinned backend dependencies
+        run: |
+          python -m pip install --require-hashes --no-deps -r requirements.lock
+          python -m pip check
+      - name: Run Ruff
+        run: ruff check app migrations scripts tests
+      - name: Run strict Mypy
+        run: mypy
+      - name: Apply PostgreSQL migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://timestamp_ci:ci-only-not-a-secret@127.0.0.1:5432/timestamp_ci
+        run: alembic upgrade head
+      - name: Run full backend test suite with PostgreSQL migration coverage
+        run: pytest
+
+  container:
+    name: Container and Compose validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate Compose without provider credentials
+        working-directory: timestamp-service
+        env:
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+        run: docker compose config --quiet
+      - name: Build service image
+        working-directory: timestamp-service
+        run: docker build --tag spacerocks-timestamp-service:ci .
+      - name: Confirm non-root image user
+        run: test "$(docker image inspect --format '{{.Config.User}}' spacerocks-timestamp-service:ci)" = "10001:10001"

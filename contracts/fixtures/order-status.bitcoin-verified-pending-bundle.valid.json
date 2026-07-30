@@ -1,0 +1,13 @@
+{
+  "order_reference": "ts_01K1E2Q3R4S5T6V7W8X9Y0Z1AB",
+  "certificate_reference": "AZ-2019-0447-HE",
+  "manifest_sha256": "cf0a31b01661599b8f73cd2dd2830f859e36a00c8ca22b259b33a7ec32c067cc",
+  "payment_state": "paid",
+  "fulfillment_state": "bitcoin_verified",
+  "created_at": "2026-07-30T12:00:00Z",
+  "updated_at": "2026-07-30T15:10:00Z",
+  "calendar_submitted_at": "2026-07-30T12:05:00Z",
+  "bitcoin_verified_at": "2026-07-30T15:10:00Z",
+  "proof_available": false,
+  "message_code": "bitcoin_verified"
+}

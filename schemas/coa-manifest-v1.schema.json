@@ -29,6 +29,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "issueDate", "version", "status", "recordFile", "recordSha256"],
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "superseded" } }, "required": ["status"] },
+          "then": { "required": ["supersedes"] }
+        }
+      ],
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 120 },
         "issueDate": { "type": "string", "format": "date" },
@@ -70,10 +76,10 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "collection": { "type": "string", "minLength": 1 },
-        "email": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
         "phone": { "type": "string" },
         "address": { "type": "string" },
-        "website": { "type": "string" },
+        "website": { "type": "string", "format": "uri" },
         "logoFile": { "type": "string" },
         "publicKeyAlgorithm": { "const": "Ed25519" },
         "publicKeyFile": { "const": "public-key.pem" },
@@ -91,7 +97,6 @@
         "weightPrecision",
         "form",
         "numberOfPieces",
-        "recordedOwner",
         "fall",
         "provenance"
       ],
@@ -109,7 +114,7 @@
         "fall": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status", "date", "country", "region", "locality", "latitude", "longitude"],
+          "required": ["status", "country", "locality"],
           "properties": {
             "status": { "type": "string", "minLength": 1 },
             "date": { "type": "string", "format": "date" },
@@ -119,19 +124,18 @@
             "latitude": { "type": "string", "minLength": 1 },
             "longitude": { "type": "string", "minLength": 1 },
             "metbullCode": { "type": "string" },
-            "officialReferenceUrl": { "type": "string" },
+            "officialReferenceUrl": { "type": "string", "format": "uri" },
             "recoveryInformation": { "type": "string" }
           }
         },
         "provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["statement"],
           "properties": {
             "statement": { "type": "string", "minLength": 1 },
             "previousOwner": { "type": "string" },
             "buyer": { "type": "string" },
-            "transferDate": { "type": "string" },
+            "transferDate": { "type": "string", "format": "date" },
             "invoiceReference": { "type": "string" },
             "transferNotes": { "type": "string" }
           }
@@ -144,7 +148,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["path", "originalFilename", "caption", "mediaType", "bytes", "sha256", "captureDate", "isUnmodifiedOriginal"],
+        "required": ["path", "originalFilename", "mediaType", "bytes", "sha256", "isUnmodifiedOriginal"],
         "properties": {
           "path": { "type": "string", "pattern": "^original-photographs/" },
           "originalFilename": { "type": "string", "minLength": 1 },
@@ -152,7 +156,13 @@
           "mediaType": { "type": "string", "minLength": 1 },
           "bytes": { "type": "integer", "minimum": 0 },
           "sha256": { "$ref": "#/$defs/sha256" },
-          "captureDate": { "type": "string" },
+          "captureDate": {
+            "type": "string",
+            "anyOf": [
+              { "format": "date" },
+              { "const": "" }
+            ]
+          },
           "isUnmodifiedOriginal": { "const": true }
         }
       }

@@ -3098,37 +3098,349 @@ footer > div:last-child a {
 
 
 
+.timestamp-recovery-launch {
+  display: flex;
+  min-height: 84px;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 20px 5vw;
+  color: var(--muted);
+  background: #fbf8f0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
 
+.timestamp-section {
+  padding: 96px 7vw 110px;
+  color: var(--ink);
+  background:
+    linear-gradient(115deg, rgba(225, 189, 112, 0.1), transparent 42%),
+    #f8f4ea;
+  border-top: 1px solid var(--line);
+}
 
+.timestamp-section__heading {
+  display: flex;
+  max-width: 1180px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 30px;
+  margin: 0 auto 30px;
+}
 
+.timestamp-section__heading .eyebrow {
+  margin-bottom: 16px;
+}
 
+.timestamp-section__heading h2 {
+  margin: 0;
+  color: var(--navy);
+  font-family: var(--serif);
+  font-size: clamp(38px, 4.2vw, 64px);
+  font-weight: 400;
+  letter-spacing: -0.025em;
+}
 
+.timestamp-test-badge {
+  flex: 0 0 auto;
+  padding: 10px 13px;
+  color: #7a5218;
+  background: #f5e4b9;
+  border: 1px solid #c4933f;
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
 
+.timestamp-explainer,
+.timestamp-order,
+.timestamp-checkout-form,
+.timestamp-manual-recovery {
+  max-width: 1180px;
+  margin-inline: auto;
+  border: 1px solid var(--line);
+}
 
+.timestamp-explainer {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.55);
+}
 
+.timestamp-explainer p {
+  margin: 0;
+  padding: 22px;
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.65;
+}
 
+.timestamp-explainer p:last-child {
+  border-right: 0;
+}
 
+.timestamp-explainer strong {
+  color: var(--navy);
+}
 
+.timestamp-explainer code,
+.timestamp-order code,
+.timestamp-release-binding code {
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 11px;
+}
 
+.timestamp-checkout-form,
+.timestamp-manual-recovery,
+.timestamp-order {
+  padding: 28px;
+  background: #fffdf8;
+}
 
+.timestamp-checkout-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(280px, 1fr);
+  align-items: end;
+  gap: 22px;
+}
 
+.timestamp-release-binding,
+.timestamp-order__identity {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
 
+.timestamp-release-binding > span,
+.timestamp-order__identity > span,
+.timestamp-field > span,
+.timestamp-recovery-code > label {
+  color: #475564;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
 
+.timestamp-release-binding strong,
+.timestamp-order__identity strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--navy);
+  font-family: var(--serif);
+  font-size: 19px;
+}
 
+.timestamp-field,
+.timestamp-recovery-code {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
 
+.timestamp-field input,
+.timestamp-recovery-code input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: white;
+  border: 1px solid rgba(18, 34, 54, 0.28);
+  border-radius: 1px;
+  font-size: 14px;
+}
 
+.timestamp-order > *,
+.timestamp-checkout-form > * {
+  min-width: 0;
+}
 
+.timestamp-recovery-code input {
+  font-family: var(--mono);
+}
 
+.timestamp-field small,
+.timestamp-recovery-code small,
+.timestamp-proof-note,
+.timestamp-manual-recovery p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
 
+.timestamp-field__error {
+  color: #9d3030;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.45;
+  text-transform: none;
+}
 
+.timestamp-consent {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  color: #475564;
+  background: #f4eee1;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.55;
+}
 
+.timestamp-consent input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+}
 
+.timestamp-checkout-form > .button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
 
+.timestamp-order {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(280px, 1.3fr);
+  gap: 24px;
+}
 
+.timestamp-order__identity small {
+  color: var(--muted);
+}
 
+.timestamp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
 
+.timestamp-actions--order,
+.timestamp-status,
+.timestamp-checkout-ready,
+.timestamp-proof-note {
+  grid-column: 1 / -1;
+}
 
+.timestamp-checkout-ready {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 24px;
+  padding: 20px;
+  color: white;
+  background: var(--navy);
+}
 
+.timestamp-checkout-ready strong {
+  font-family: var(--serif);
+  font-size: 20px;
+}
+
+.timestamp-checkout-ready p {
+  grid-column: 1;
+  margin: 0;
+  color: #b9c4cf;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.timestamp-checkout-ready .button {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+
+.timestamp-status {
+  padding: 18px 20px;
+  background: #eef2f3;
+  border-left: 5px solid #71808d;
+}
+
+.timestamp-status--pending { border-left-color: #bd8730; }
+.timestamp-status--confirmed { border-left-color: #327452; background: #edf5ef; }
+.timestamp-status--warning { border-left-color: #a96b24; background: #fbf0dc; }
+.timestamp-status--error { border-left-color: #9d3030; background: #fbebeb; }
+
+.timestamp-status span {
+  color: var(--navy);
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.timestamp-status p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.timestamp-status small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.timestamp-proof-note {
+  margin: -8px 0 0;
+}
+
+.timestamp-manual-recovery {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(280px, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+}
+
+.timestamp-manual-recovery h3,
+.timestamp-manual-recovery p {
+  grid-column: 1;
+  margin: 0;
+}
+
+.timestamp-manual-recovery h3 {
+  color: var(--navy);
+  font-family: var(--serif);
+  font-size: 23px;
+}
+
+.timestamp-manual-recovery .timestamp-field {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+
+.timestamp-manual-recovery > .button {
+  grid-column: 3;
+  grid-row: 1 / 3;
+}
+
+.timestamp-live-message,
+.timestamp-privacy-note {
+  max-width: 1180px;
+  margin: 14px auto 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.timestamp-live-message {
+  min-height: 17px;
+  color: var(--navy);
+  font-weight: 700;
+}
+
+.timestamp-privacy-note strong {
+  color: #327452;
+}
 
 @media (max-width: 1700px) {
   .builder-grid {
@@ -3138,7 +3450,6 @@ footer > div:last-child a {
   .preview-column {
     position: relative;
     top: auto;
-    grid-row: 1;
     width: 100%;
     max-width: 900px;
   }
@@ -3169,7 +3480,6 @@ footer > div:last-child a {
   .preview-column {
     position: relative;
     top: auto;
-    grid-row: 1;
     max-width: 900px;
   }
 
@@ -3268,8 +3578,75 @@ footer > div:last-child a {
 
   .builder-section,
   .method-section,
-  .verify-section {
+  .verify-section,
+  .timestamp-section {
     padding: 80px 16px;
+  }
+
+  .timestamp-recovery-launch,
+  .timestamp-section__heading,
+  .timestamp-actions,
+  .timestamp-checkout-ready {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .timestamp-section__heading {
+    display: flex;
+  }
+
+  .timestamp-test-badge {
+    align-self: flex-start;
+  }
+
+  .timestamp-explainer,
+  .timestamp-checkout-form,
+  .timestamp-order,
+  .timestamp-manual-recovery,
+  .timestamp-checkout-ready {
+    grid-template-columns: 1fr;
+  }
+
+  .timestamp-explainer p {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .timestamp-explainer p:last-child {
+    border-bottom: 0;
+  }
+
+  .timestamp-checkout-form,
+  .timestamp-order,
+  .timestamp-manual-recovery {
+    padding: 20px 18px;
+  }
+
+  .timestamp-field input,
+  .timestamp-recovery-code input {
+    font-size: 16px;
+  }
+
+  .timestamp-consent,
+  .timestamp-checkout-form > .button,
+  .timestamp-actions--order,
+  .timestamp-status,
+  .timestamp-checkout-ready,
+  .timestamp-proof-note,
+  .timestamp-manual-recovery h3,
+  .timestamp-manual-recovery p,
+  .timestamp-manual-recovery .timestamp-field,
+  .timestamp-manual-recovery > .button,
+  .timestamp-checkout-ready .button,
+  .timestamp-checkout-ready p {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .timestamp-actions .button,
+  .timestamp-actions .text-button,
+  .timestamp-checkout-ready .button {
+    width: 100%;
   }
 
   .section-heading {

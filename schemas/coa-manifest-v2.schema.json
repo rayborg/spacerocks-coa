@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:spacerocks:coa:manifest:v2",
+  "title": "Spacerocks self-contained COA manifest v2",
+  "description": "Version 2 manifest for a signed, offline-verifiable meteorite certificate package.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "packageFormat",
+    "packageVersion",
+    "recordType",
+    "certificate",
+    "issuer",
+    "specimen",
+    "photographs",
+    "files",
+    "signature",
+    "generation"
+  ],
+  "properties": {
+    "$schema": { "const": "coa-manifest-v2.schema.json" },
+    "schemaVersion": { "const": "2.0.0" },
+    "packageFormat": { "const": "Spacerocks Self-Contained COA Package" },
+    "packageVersion": { "const": 2 },
+    "recordType": { "const": "meteorite-certificate-of-authenticity" },
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "issueDate", "version", "status", "recordFile", "recordSha256"],
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "superseded" } }, "required": ["status"] },
+          "then": { "required": ["supersedes"] }
+        }
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "issueDate": { "type": "string", "format": "date" },
+        "version": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["active", "superseded", "revoked", "transferred"] },
+        "visualStyle": {
+          "enum": ["regal-archive", "museum-ledger", "celestial-formal", "museum-type"]
+        },
+        "visualTheme": {
+          "enum": [
+            "observatory-navy",
+            "museum-burgundy",
+            "field-archive",
+            "charcoal-gold",
+            "desert-copper",
+            "celestial-teal",
+            "royal-amethyst",
+            "arctic-slate",
+            "monochrome-ink"
+          ]
+        },
+        "recordFile": { "const": "certificate-record.json" },
+        "recordSha256": { "$ref": "#/$defs/sha256" },
+        "supersedes": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "collection",
+        "publicKeyAlgorithm",
+        "publicKeyFile",
+        "publicKeyFingerprint",
+        "publicKeyFingerprintMethod"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "collection": { "type": "string", "minLength": 1 },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "website": { "type": "string", "format": "uri" },
+        "logoFile": { "type": "string" },
+        "publicKeyAlgorithm": { "const": "Ed25519" },
+        "publicKeyFile": { "const": "public-key.pem" },
+        "publicKeyFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "publicKeyFingerprintMethod": { "const": "SHA-256 of SubjectPublicKeyInfo DER" }
+      }
+    },
+    "specimen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "meteorite",
+        "meteoriteIdentity",
+        "meteoriteType",
+        "classification",
+        "meteoriteSubclass",
+        "weightGrams",
+        "weightPrecision",
+        "form",
+        "numberOfPieces",
+        "fall",
+        "provenance"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "meteoriteIdentity": { "const": "official" } },
+            "required": ["meteoriteIdentity"]
+          },
+          "then": {
+            "required": ["officialNameVerified"],
+            "properties": {
+              "meteoriteType": { "$ref": "#/$defs/officialClassification" },
+              "classification": { "$ref": "#/$defs/officialClassification" },
+              "meteoriteSubclass": { "$ref": "#/$defs/officialClassification" },
+              "officialNameVerified": { "const": true },
+              "suspectedType": false,
+              "fall": {
+                "required": ["metbullCode", "officialReferenceUrl"]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "meteoriteType": { "const": "Unclassified" },
+              "classification": { "const": "Unclassified" },
+              "meteoriteSubclass": { "const": "Unclassified" },
+              "officialNameVerified": false,
+              "fall": {
+                "properties": {
+                  "metbullCode": false,
+                  "officialReferenceUrl": false
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "meteorite": { "type": "string", "minLength": 1 },
+        "meteoriteIdentity": { "enum": ["official", "unclassified"] },
+        "meteoriteType": { "type": "string", "minLength": 1 },
+        "classification": { "type": "string", "minLength": 1 },
+        "meteoriteSubclass": { "type": "string", "minLength": 1 },
+        "suspectedType": { "type": "string", "minLength": 1 },
+        "officialNameVerified": { "type": "boolean" },
+        "weightGrams": { "type": "number", "exclusiveMinimum": 0 },
+        "weightPrecision": { "type": "number", "minimum": 0 },
+        "form": { "type": "string", "minLength": 1 },
+        "dimensions": { "type": "string" },
+        "numberOfPieces": { "type": "integer", "minimum": 1 },
+        "preparationState": { "type": "string" },
+        "identifyingMarks": { "type": "string" },
+        "recordedOwner": { "type": "string", "minLength": 1 },
+        "fall": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "country"],
+          "dependentRequired": {
+            "latitude": ["longitude"],
+            "longitude": ["latitude"]
+          },
+          "anyOf": [
+            { "required": ["locality"] },
+            { "required": ["region"] },
+            { "required": ["latitude", "longitude"] }
+          ],
+          "properties": {
+            "status": { "type": "string", "minLength": 1 },
+            "date": { "type": "string", "format": "date" },
+            "country": { "type": "string", "minLength": 1 },
+            "region": { "type": "string", "minLength": 1 },
+            "locality": { "type": "string", "minLength": 1 },
+            "latitude": { "$ref": "#/$defs/latitude" },
+            "longitude": { "$ref": "#/$defs/longitude" },
+            "metbullCode": { "type": "string", "pattern": "^[0-9]+$" },
+            "officialReferenceUrl": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://www\\.lpi\\.usra\\.edu/meteor/metbull\\.cfm\\?code=[0-9]+$"
+            },
+            "finderName": { "type": "string", "minLength": 1 },
+            "recoveryInformation": { "type": "string" }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "statement": { "type": "string", "minLength": 1 },
+            "previousOwner": { "type": "string" },
+            "intermediaryPurchaserName": { "type": "string" },
+            "buyer": { "type": "string" },
+            "transferDate": { "type": "string", "format": "date" },
+            "invoiceReference": { "type": "string" },
+            "transferNotes": { "type": "string" }
+          }
+        }
+      }
+    },
+    "photographs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "originalFilename", "mediaType", "bytes", "sha256", "isUnmodifiedOriginal"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^original-photographs/" },
+          "originalFilename": { "type": "string", "minLength": 1 },
+          "caption": { "type": "string" },
+          "mediaType": { "type": "string", "pattern": "^image/" },
+          "bytes": { "type": "integer", "minimum": 0, "maximum": 104857600 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "captureDate": { "type": "string", "format": "date" },
+          "isUnmodifiedOriginal": { "const": true }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "signedFile", "signatureFile", "signatureEncoding"],
+      "properties": {
+        "algorithm": { "const": "Ed25519" },
+        "signedFile": { "const": "manifest.json" },
+        "signatureFile": { "const": "signature.sig" },
+        "signatureEncoding": { "const": "raw 64-byte Ed25519 signature" }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["application", "version", "generatedAt", "manifestSerialization"],
+      "properties": {
+        "application": { "const": "Spacerocks COA Studio" },
+        "version": { "type": "string", "minLength": 1 },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "manifestSerialization": { "const": "UTF-8, sorted keys, two-space indentation, LF, final newline, no BOM" }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^([A-F0-9]{2}:){31}[A-F0-9]{2}$"
+    },
+    "officialClassification": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "not": { "pattern": "^\\s*[Uu][Nn][Cc][Ll][Aa][Ss][Ss][Ii][Ff][Ii][Ee][Dd]\\s*$" }
+    },
+    "latitude": {
+      "type": "string",
+      "pattern": "^(?:[+-]?(?:90(?:\\.0+)?|(?:[0-8]?[0-9])(?:\\.[0-9]+)?)|(?:90(?:\\.0+)?|(?:[0-8]?[0-9])(?:\\.[0-9]+)?)\\s*[NSns])$"
+    },
+    "longitude": {
+      "type": "string",
+      "pattern": "^(?:[+-]?(?:180(?:\\.0+)?|(?:1[0-7][0-9]|[0-9]?[0-9])(?:\\.[0-9]+)?)|(?:180(?:\\.0+)?|(?:1[0-7][0-9]|[0-9]?[0-9])(?:\\.[0-9]+)?)\\s*[EWew])$"
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "mediaType", "bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}
