@@ -247,7 +247,11 @@ function CertificatePreview({
             </div>
             <div className="certificate-preview__photo">
               {photo ? <img src={photo.previewUrl} alt={photo.caption || "Uploaded specimen"} /> : <span>Exact specimen photo required</span>}
-              {isMuseumLedger || isMuseumType ? <small className="certificate-preview__photo-caption">Exact specimen / photo record 01</small> : null}
+              {isMuseumLedger || isMuseumType ? (
+                <small className="certificate-preview__photo-caption">
+                  {isMuseumType ? "Specimen photo 01" : "Exact specimen / photo record 01"}
+                </small>
+              ) : null}
             </div>
             <dl className="certificate-preview__facts">
               <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>

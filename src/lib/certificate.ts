@@ -7,6 +7,7 @@ import { displayDate } from "./core";
 
 const WIDTH = 2200;
 const HEIGHT = 1700;
+const CELESTIAL_PHOTO_ASPECT_RATIO = 560 / 455;
 export const CERTIFICATE_EXPORT_FONT_FLOOR = 16;
 
 export interface CertificateRenderInput {
@@ -520,7 +521,12 @@ async function drawMuseumTypeCertificate(
   context.fillStyle = accent;
   context.fillRect(110, 420, 1980, 4);
 
-  const photoFrame = { x: 110, y: 466, width: 1150, height: 578 };
+  const photoFrame = {
+    x: 110,
+    y: 466,
+    width: Math.round(578 * CELESTIAL_PHOTO_ASPECT_RATIO),
+    height: 578,
+  };
   context.fillStyle = `${paper}ee`;
   roundedRect(context, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height, 18);
   context.fill();
@@ -550,9 +556,9 @@ async function drawMuseumTypeCertificate(
   context.font = "800 18px ui-monospace, SFMono-Regular, Menlo, monospace";
   context.fillText("EXACT SPECIMEN / PHOTO RECORD 01", photoFrame.x + 26, photoFrame.y + photoFrame.height - 21);
 
-  const panelX = 1300;
+  const panelX = photoFrame.x + photoFrame.width + 40;
   const panelY = 466;
-  const panelWidth = 790;
+  const panelWidth = 2090 - panelX;
   const panelHeight = 578;
   context.fillStyle = `${paper}ee`;
   roundedRect(context, panelX, panelY, panelWidth, panelHeight, 18);
@@ -596,9 +602,10 @@ async function drawMuseumTypeCertificate(
     context.font = "800 18px Arial, sans-serif";
     context.fillText(label, panelX + 28, rowY + 45);
     context.fillStyle = ink;
-    const valueSize = fitFontSize(context, value, 440, 24, "Arial, sans-serif", "700");
+    const valueWidth = panelWidth - 360;
+    const valueSize = fitFontSize(context, value, valueWidth, 24, "Arial, sans-serif", "700");
     context.font = `700 ${valueSize}px Arial, sans-serif`;
-    context.fillText(fitTextWithEllipsis(context, value, 440), panelX + 320, rowY + 45);
+    context.fillText(fitTextWithEllipsis(context, value, valueWidth), panelX + 320, rowY + 45);
   });
 
   const measurementY = 1082;

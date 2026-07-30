@@ -381,6 +381,7 @@ test("renders coherent specimen states and complete responsive certificate headi
 
   for (const width of [2048, 1280, 760, 390, 320]) {
     await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+    let celestialPhotoAspectRatio: number | undefined;
     for (const [name, id] of certificateStyleCases) {
       await selectCertificateStyle(stylePicker, preview, name, id);
       const geometry = await preview.evaluate((element) => {
@@ -407,6 +408,7 @@ test("renders coherent specimen states and complete responsive certificate headi
           fontSizes.push(Number.parseFloat(generatedFactsStyle.fontSize));
         }
         const minimumFontSize = Math.min(...fontSizes);
+        const photo = box(".certificate-preview__photo");
         return {
           headingText: heading.textContent,
           recordTypeText: recordType.textContent,
@@ -445,7 +447,8 @@ test("renders coherent specimen states and complete responsive certificate headi
             signoff: fontSize(".certificate-preview__signoff strong"),
           },
           id: box(".certificate-preview__id"),
-          photo: box(".certificate-preview__photo"),
+          photo,
+          photoAspectRatio: photo.width / photo.height,
           facts: box(".certificate-preview__facts"),
           summary: box(".certificate-preview__weight"),
           signoff: box(".certificate-preview__signoff"),
@@ -473,6 +476,8 @@ test("renders coherent specimen states and complete responsive certificate headi
       expect(geometry.canonicalFrame.scale, `${id} scale at ${width}px`).toBeLessThanOrEqual(1);
       expect(geometry.canonicalFrame.minimumFontSize, `${id} canonical font floor at ${width}px`).toBeGreaterThanOrEqual(16);
       expect(geometry.canonicalFrame.effectiveMinimumFontSize, `${id} rendered font floor at ${width}px`).toBeGreaterThanOrEqual(12);
+      if (id === "celestial-formal") celestialPhotoAspectRatio = geometry.photoAspectRatio;
+      else expect(geometry.photoAspectRatio, `${id} photo ratio at ${width}px`).toBeCloseTo(celestialPhotoAspectRatio!, 2);
       for (const [level, size, minimum, maximum] of [
         ["record type", geometry.fontSizes.recordType, 16, 16],
         ["certificate heading", geometry.fontSizes.heading, 30, 30],
@@ -625,7 +630,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
   expect(museumSignature.factLabelColor).not.toBe("rgb(0, 0, 0)");
-  expect(museumSignature.photoCaption).toContain("photo record 01");
+  expect(museumSignature.photoCaption).toContain("Specimen photo 01");
   expect(museumSignature.photoCaptionFits).toBe(true);
   expect(museumSignature.photoCaptionWhiteSpace).toBe("nowrap");
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);

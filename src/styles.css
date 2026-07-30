@@ -2087,7 +2087,7 @@ a {
   top: 19%;
   right: auto;
   left: 4.5%;
-  width: 56%;
+  width: 32%;
   height: 44%;
   padding: 12px 12px 8%;
   color: var(--certificate-muted);
@@ -2123,8 +2123,8 @@ a {
 
 .certificate-preview--museum-type .certificate-preview__facts {
   top: 19%;
-  left: 61.5%;
-  width: 34%;
+  left: 38.5%;
+  width: 57%;
   overflow: hidden;
   background: color-mix(in srgb, var(--certificate-paper) 83%, white);
   border: 2px solid var(--certificate-dark);
@@ -2177,7 +2177,7 @@ a {
   top: 49%;
   right: 4.5%;
   display: grid;
-  width: 34%;
+  width: 57%;
   height: 14%;
   align-content: start;
   gap: 7px;
