@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import manifestSchema from "../../schemas/coa-manifest-v1.schema.json";
+import manifestSchema from "../../schemas/coa-manifest-v2.schema.json";
 import type { FormValues, ManifestFile, PhotoInput, SigningIdentity } from "../types";
 import {
   displayDate,
@@ -14,9 +14,12 @@ import { signBytes } from "./crypto";
 import { renderCertificate } from "./certificate";
 import { getCertificateTheme } from "../certificateThemes";
 import { getCertificateStyle } from "../certificateStyles";
+import { isValidIsoDate, validateFormValues } from "./form-validation";
+import { assertV2Manifest } from "./manifest-validation";
 
 const APPLICATION_VERSION = "1.0.0";
 const MAX_PHOTO_COUNT = 100;
+const MAX_PHOTO_BYTES = 100 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 200 * 1024 * 1024;
 
 interface PackageInput {
@@ -59,9 +62,15 @@ function recordedCoordinates(latitude: string, longitude: string): string {
 }
 
 function buildSpecimen(values: FormValues) {
+  const official = values.meteoriteIdentity === "official";
   return {
     meteorite: values.meteoriteName.trim(),
-    classification: values.classification.trim(),
+    meteoriteIdentity: values.meteoriteIdentity,
+    meteoriteType: official ? values.meteoriteType.trim() : "Unclassified",
+    classification: official ? values.classification.trim() : "Unclassified",
+    meteoriteSubclass: official ? values.meteoriteSubclass.trim() : "Unclassified",
+    suspectedType: official ? undefined : optional(values.suspectedType),
+    officialNameVerified: official ? true : undefined,
     weightGrams: Number(values.weightGrams),
     weightPrecision: Number(values.weightPrecision),
     form: values.specimenForm.trim(),
@@ -75,16 +84,18 @@ function buildSpecimen(values: FormValues) {
       date: optional(values.fallDate),
       country: values.country.trim(),
       region: optional(values.region),
-      locality: values.locality.trim(),
+      locality: optional(values.locality),
       latitude: optional(values.latitude),
       longitude: optional(values.longitude),
-      metbullCode: optional(values.metbullCode),
-      officialReferenceUrl: optional(values.officialReferenceUrl),
+      metbullCode: official ? values.metbullCode.trim() : undefined,
+      officialReferenceUrl: official ? values.officialReferenceUrl.trim() : undefined,
+      finderName: optional(values.finderName),
       recoveryInformation: optional(values.recoveryInformation),
     },
     provenance: {
       statement: optional(values.provenance),
       previousOwner: optional(values.previousOwner),
+      intermediaryPurchaserName: optional(values.intermediaryPurchaserName),
       buyer: optional(values.buyer),
       transferDate: optional(values.transferDate),
       invoiceReference: optional(values.invoiceReference),
@@ -115,6 +126,10 @@ function buildCertificateText(
   recordHash: string,
   photoCount: number,
 ) {
+  const official = values.meteoriteIdentity === "official";
+  const meteoriteType = official ? values.meteoriteType.trim() : "Unclassified";
+  const classification = official ? values.classification.trim() : "Unclassified";
+  const meteoriteSubclass = official ? values.meteoriteSubclass.trim() : "Unclassified";
   return `${values.collectionName.toUpperCase()}
 CERTIFICATE OF AUTHENTICITY - PLAIN-TEXT ARCHIVAL DUPLICATE
 
@@ -127,7 +142,11 @@ Issue date: ${displayDate(values.issueDate)}
 
 SPECIMEN
 Meteorite: ${values.meteoriteName}
-Classification: ${values.classification}
+Identity mode: ${official ? "Official" : "Unclassified"}
+Meteorite type: ${meteoriteType}
+Meteorite class: ${classification}
+Meteorite subclass: ${meteoriteSubclass}
+${official ? "Official name verified: Yes - issuer attestation" : `Suspected type: ${recorded(values.suspectedType)}`}
 Recorded weight: ${values.weightGrams} g
 Weight precision: ${values.weightPrecision} g
 Specimen form: ${values.specimenForm}
@@ -142,13 +161,17 @@ Status: ${values.fallStatus}
 Date: ${displayDate(values.fallDate)}
 Country: ${values.country}
 Region: ${recorded(values.region)}
-Locality: ${values.locality}
+Locality / city: ${recorded(values.locality)}
 Coordinates: ${recordedCoordinates(values.latitude, values.longitude)}
-Meteoritical Bulletin code: ${recorded(values.metbullCode)}
-Official reference: ${recorded(values.officialReferenceUrl)}
+${official ? `Meteoritical Bulletin code: ${values.metbullCode.trim()}\nOfficial reference: ${values.officialReferenceUrl.trim()}` : ""}
+Finder name: ${recorded(values.finderName)}
+Recovery information: ${recorded(values.recoveryInformation)}
 
 PROVENANCE
 ${recorded(values.provenance)}
+Previous owner: ${recorded(values.previousOwner)}
+Intermediary purchaser: ${recorded(values.intermediaryPurchaserName)}
+Buyer / transferee: ${recorded(values.buyer)}
 
 DIGITAL ATTESTATION
 Issuer: ${values.issuerName}
@@ -398,10 +421,34 @@ async function addEvidenceFile(
 }
 
 export async function buildCertificatePackage(input: PackageInput): Promise<PackageResult> {
-  const { values, photos, logo, identity } = input;
+  const validatedValues = validateFormValues(input.values);
+  const values: FormValues = validatedValues.meteoriteIdentity === "unclassified"
+    ? {
+        ...validatedValues,
+        meteoriteType: "Unclassified",
+        classification: "Unclassified",
+        meteoriteSubclass: "Unclassified",
+        officialNameVerified: false,
+        metbullCode: "",
+        officialReferenceUrl: "",
+      }
+    : validatedValues;
+  const { photos, logo, identity } = input;
   if (photos.length === 0) throw new Error("Add at least one exact specimen photograph.");
   if (photos.length > MAX_PHOTO_COUNT) {
     throw new Error(`A package can contain at most ${MAX_PHOTO_COUNT} original photographs.`);
+  }
+  for (const photo of photos) {
+    if (!photo.file.type.startsWith("image/")) {
+      throw new Error(`Specimen photograph ${photo.file.name} must have an image MIME type.`);
+    }
+    if (photo.file.size > MAX_PHOTO_BYTES) {
+      throw new Error(`Specimen photograph ${photo.file.name} exceeds the 100 MB per-photo limit.`);
+    }
+    const captureDate = photo.captureDate.trim();
+    if (captureDate && !isValidIsoDate(captureDate)) {
+      throw new Error(`Specimen photograph ${photo.file.name} has an invalid capture date; use YYYY-MM-DD.`);
+    }
   }
   const sourceBytes = photos.reduce((total, photo) => total + photo.file.size, logo?.size ?? 0);
   if (sourceBytes > MAX_SOURCE_BYTES) {
@@ -463,7 +510,7 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
   const recordBytes = utf8(recordText);
   const recordHash = await sha256Hex(recordBytes);
   const qrPayload = [
-    "SPACEROCKS-COA-V1",
+    "SPACEROCKS-COA-V2",
     `ID:${values.certificateId.trim()}`,
     `RECORD-SHA256:${recordHash}`,
     `KEY-FP:${identity.fingerprint}`,
@@ -534,7 +581,7 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
   await addEvidenceFile(
     packageFiles,
     manifestFiles,
-    "coa-manifest-v1.schema.json",
+    "coa-manifest-v2.schema.json",
     "manifest JSON Schema",
     "application/schema+json",
     utf8(stableStringify(manifestSchema)),
@@ -566,10 +613,10 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
 
   manifestFiles.sort((left, right) => left.path.localeCompare(right.path));
   const manifest = {
-    $schema: "coa-manifest-v1.schema.json",
-    schemaVersion: "1.0.0",
+    $schema: "coa-manifest-v2.schema.json",
+    schemaVersion: "2.0.0",
     packageFormat: "Spacerocks Self-Contained COA Package",
-    packageVersion: 1,
+    packageVersion: 2,
     recordType: "meteorite-certificate-of-authenticity",
     certificate: {
       id: values.certificateId.trim(),
@@ -600,6 +647,7 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
       manifestSerialization: "UTF-8, sorted keys, two-space indentation, LF, final newline, no BOM",
     },
   };
+  assertV2Manifest(manifest as Record<string, unknown>);
   const manifestBytes = utf8(stableStringify(manifest));
   const signature = await signBytes(identity.privateKey, manifestBytes);
   const manifestHash = await sha256Hex(manifestBytes);

@@ -18,8 +18,13 @@ export interface FormValues {
   certificateTheme: CertificateThemeId;
   supersededCertificateId: string;
   certificateNotes: string;
+  meteoriteIdentity: "official" | "unclassified";
   meteoriteName: string;
+  meteoriteType: string;
   classification: string;
+  meteoriteSubclass: string;
+  suspectedType: string;
+  officialNameVerified: boolean;
   weightGrams: string;
   weightPrecision: string;
   specimenForm: string;
@@ -37,9 +42,11 @@ export interface FormValues {
   longitude: string;
   metbullCode: string;
   officialReferenceUrl: string;
+  finderName: string;
   recoveryInformation: string;
   provenance: string;
   previousOwner: string;
+  intermediaryPurchaserName: string;
   buyer: string;
   transferDate: string;
   invoiceReference: string;

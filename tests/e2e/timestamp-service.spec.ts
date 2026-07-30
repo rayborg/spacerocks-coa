@@ -48,7 +48,6 @@ async function issueLocalRelease(page: Page): Promise<void> {
   await page.locator('input[name="issueDate"]').fill("2026-07-30");
   await page.locator('input[name="certificateVersion"]').fill("1.0");
   await page.locator('input[name="meteoriteName"]').fill("Test Meteorite");
-  await page.locator('input[name="classification"]').fill("L5 chondrite");
   await page.locator('input[name="weightGrams"]').fill("12.3");
   await page.locator('input[name="weightPrecision"]').fill("0.1");
   await page.locator('select[name="specimenForm"]').selectOption({ label: "Fragment" });

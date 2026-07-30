@@ -1,14 +1,9 @@
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
 import JSZip from "jszip";
-import manifestSchema from "../../schemas/coa-manifest-v1.schema.json";
 import type { VerificationCheck, VerificationResult } from "../types";
 import { publicKeyFingerprint, pemToDer } from "./crypto";
 import { sha256Hex, utf8 } from "./core";
+import { validateManifestVersion, validateOfficialMeteoriteIdentity } from "./manifest-validation";
 
-const ajv = new Ajv2020({ allErrors: true, strict: false });
-addFormats(ajv);
-const validateManifest = ajv.compile(manifestSchema);
 const MAX_ZIP_BYTES = 300 * 1024 * 1024;
 const MAX_FILE_COUNT = 250;
 const MAX_ENTRY_BYTES = 200 * 1024 * 1024;
@@ -136,23 +131,38 @@ export async function verifyCertificateZip(file: File): Promise<VerificationResu
     throw new Error("manifest.json is not valid JSON.");
   }
 
-  if (manifest.schemaVersion === "1.0.0") {
-    const schemaValid = validateManifest(manifest);
+  const manifestValidation = validateManifestVersion(manifest);
+  if (manifestValidation.version === "v1" || manifestValidation.version === "v2") {
     checks.push({
       label: "Manifest schema",
-      status: schemaValid ? "pass" : "fail",
-      detail: schemaValid
-        ? "The manifest conforms to coa-manifest-v1."
-        : (validateManifest.errors ?? [])
+      status: manifestValidation.valid ? "pass" : "fail",
+      detail: manifestValidation.valid
+        ? `The manifest conforms to coa-manifest-${manifestValidation.version}.`
+        : (manifestValidation.errors ?? [])
             .slice(0, 3)
             .map((item) => `${item.instancePath || "/"} ${item.message}`)
             .join("; "),
+    });
+  } else if (manifestValidation.version === "mismatch") {
+    checks.push({
+      label: "Manifest schema",
+      status: "fail",
+      detail: "The manifest uses a mismatched known $schema, schemaVersion, or packageVersion identifier.",
     });
   } else {
     checks.push({
       label: "Manifest schema",
       status: "warning",
-      detail: "This package predates coa-manifest-v1; cryptographic checks will still be performed.",
+      detail: "This manifest version is unknown; cryptographic checks will still be performed.",
+    });
+  }
+
+  if (manifestValidation.version === "v2") {
+    const identityCheck = validateOfficialMeteoriteIdentity(manifest.specimen);
+    checks.push({
+      label: "Official meteorite identity",
+      status: identityCheck.valid ? "pass" : "fail",
+      detail: identityCheck.detail,
     });
   }
 
@@ -218,7 +228,7 @@ export async function verifyCertificateZip(file: File): Promise<VerificationResu
         : `Failed: ${failedEvidence.slice(0, 5).join(", ")}${failedEvidence.length > 5 ? "..." : ""}`,
   });
 
-  if (manifest.schemaVersion === "1.0.0") {
+  if (manifestValidation.version === "v1" || manifestValidation.version === "v2") {
     const expectedFiles = new Set<string>([
       ...listedFiles.map((entry: { path?: unknown }) => String(entry?.path ?? "")),
       ...STRUCTURAL_FILES,

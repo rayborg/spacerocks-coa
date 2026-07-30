@@ -1,7 +1,6 @@
 import { startTransition, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
-import { z } from "zod";
 import type {
   FormValues,
   PhotoInput,
@@ -11,107 +10,16 @@ import type {
 import { downloadBlob, sanitizeFileName } from "./lib/core";
 import { generateSigningIdentity, importSigningIdentity } from "./lib/crypto";
 import {
-  certificateThemeIds,
   certificateThemes,
   getCertificateTheme,
 } from "./certificateThemes";
 import {
-  certificateStyleIds,
   certificateStyles,
   getCertificateStyle,
 } from "./certificateStyles";
 import PaidTimestampPanel from "./components/PaidTimestampPanel";
 import { timestampServiceConfig } from "./lib/timestamp-service";
-
-const requiredText = (label: string) => z.string().trim().min(1, `${label} is required.`);
-const optionalEmail = z
-  .string()
-  .trim()
-  .refine((value) => !value || z.string().email().safeParse(value).success, "Enter a valid email address.");
-const optionalUrl = z
-  .string()
-  .trim()
-  .refine((value) => !value || z.string().url().safeParse(value).success, "Enter a complete URL, including https://.");
-const optionalDate = z
-  .string()
-  .trim()
-  .refine(
-    (value) => {
-      if (!value) return true;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-      const parsed = new Date(`${value}T00:00:00Z`);
-      return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
-    },
-    "Enter a valid date.",
-  );
-const positiveNumber = z
-  .string()
-  .trim()
-  .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0, "Enter a number greater than zero.");
-const nonNegativeNumber = z
-  .string()
-  .trim()
-  .refine((value) => Number.isFinite(Number(value)) && Number(value) >= 0, "Enter zero or a positive number.");
-const positiveInteger = z
-  .string()
-  .trim()
-  .refine((value) => /^\d+$/.test(value) && Number(value) >= 1, "Enter a whole number of at least one.");
-
-const formSchema = z
-  .object({
-    issuerName: requiredText("Issuer name"),
-    collectionName: requiredText("Collection or business name"),
-    issuerEmail: optionalEmail,
-    issuerPhone: z.string(),
-    issuerAddress: z.string(),
-    issuerWebsite: optionalUrl,
-    certificateId: z
-      .string()
-      .trim()
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,119}$/, "Use 2-120 letters, numbers, periods, underscores, or hyphens."),
-    issueDate: requiredText("Issue date"),
-    certificateVersion: requiredText("Certificate version"),
-    certificateStatus: z.enum(["active", "superseded", "revoked", "transferred"]),
-    certificateStyle: z.enum(certificateStyleIds),
-    certificateTheme: z.enum(certificateThemeIds),
-    supersededCertificateId: z.string(),
-    certificateNotes: z.string(),
-    meteoriteName: requiredText("Meteorite name"),
-    classification: requiredText("Classification"),
-    weightGrams: positiveNumber,
-    weightPrecision: nonNegativeNumber,
-    specimenForm: requiredText("Specimen form"),
-    dimensions: z.string(),
-    numberOfPieces: positiveInteger,
-    preparationState: z.string(),
-    identifyingMarks: z.string(),
-    recordedOwner: z.string(),
-    fallStatus: requiredText("Fall or find status"),
-    fallDate: optionalDate,
-    country: requiredText("Country"),
-    region: z.string(),
-    locality: requiredText("Locality"),
-    latitude: z.string(),
-    longitude: z.string(),
-    metbullCode: z.string(),
-    officialReferenceUrl: optionalUrl,
-    recoveryInformation: z.string(),
-    provenance: z.string(),
-    previousOwner: z.string(),
-    buyer: z.string(),
-    transferDate: optionalDate,
-    invoiceReference: z.string(),
-    transferNotes: z.string(),
-  })
-  .superRefine((values, context) => {
-    if (values.certificateStatus === "superseded" && !values.supersededCertificateId.trim()) {
-      context.addIssue({
-        code: "custom",
-        path: ["supersededCertificateId"],
-        message: "Record the certificate ID this version supersedes.",
-      });
-    }
-  });
+import { formSchema } from "./lib/form-validation";
 
 const defaultValues: FormValues = {
   issuerName: "",
@@ -128,8 +36,13 @@ const defaultValues: FormValues = {
   certificateTheme: "observatory-navy",
   supersededCertificateId: "",
   certificateNotes: "",
+  meteoriteIdentity: "unclassified",
   meteoriteName: "",
-  classification: "",
+  meteoriteType: "Unclassified",
+  classification: "Unclassified",
+  meteoriteSubclass: "Unclassified",
+  suspectedType: "",
+  officialNameVerified: false,
   weightGrams: "",
   weightPrecision: "",
   specimenForm: "",
@@ -147,14 +60,33 @@ const defaultValues: FormValues = {
   longitude: "",
   metbullCode: "",
   officialReferenceUrl: "",
+  finderName: "",
   recoveryInformation: "",
   provenance: "",
   previousOwner: "",
+  intermediaryPurchaserName: "",
   buyer: "",
   transferDate: "",
   invoiceReference: "",
   transferNotes: "",
 };
+
+function classificationSummary(values: FormValues): string {
+  if (values.meteoriteIdentity === "unclassified") {
+    return values.suspectedType.trim() ? `Unclassified - suspected ${values.suspectedType.trim()}` : "Unclassified";
+  }
+  return [values.meteoriteType, values.classification, values.meteoriteSubclass]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(" / ") || "Official classification";
+}
+
+function locationSummary(values: FormValues): string {
+  const parts = [values.locality, values.region, values.country]
+    .map((value) => value.trim())
+    .filter((value, index, all) => value && all.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
+  return parts.join(", ") || "Not entered";
+}
 
 function Field({
   label,
@@ -257,7 +189,7 @@ function CertificatePreview({
           <div className="certificate-preview__body">
             <div className="certificate-preview__title">
               <h3>{values.meteoriteName || "Meteorite name"}</h3>
-              <p>{values.classification || "Classification"}</p>
+              <p>{classificationSummary(values)}</p>
             </div>
             <div className="certificate-preview__photo">
               {photo ? <img src={photo.previewUrl} alt={photo.caption || "Uploaded specimen"} /> : <span>Exact specimen photo required</span>}
@@ -269,7 +201,7 @@ function CertificatePreview({
             </div>
             <dl className="certificate-preview__facts">
               <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>
-              <div><dt>Locality</dt><dd>{values.locality || "Not entered"}</dd></div>
+              <div><dt>Location</dt><dd>{locationSummary(values)}</dd></div>
               <div><dt>Specimen form</dt><dd>{values.specimenForm || "Not recorded"}</dd></div>
               <div><dt>Recorded owner</dt><dd>{values.recordedOwner.trim() || "Not recorded"}</dd></div>
             </dl>
@@ -388,14 +320,40 @@ export default function App() {
     control,
     handleSubmit,
     getValues,
-    formState: { errors },
+    setValue,
+    trigger,
+    formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues,
-    mode: "onBlur",
+    mode: "onChange",
   });
   const watchedValues = useWatch({ control });
+  const meteoriteIdentity = watchedValues.meteoriteIdentity ?? defaultValues.meteoriteIdentity;
   const previewValues = useDeferredValue({ ...defaultValues, ...watchedValues } as FormValues);
+  const resetOfficialAttestation = () => {
+    if (getValues("officialNameVerified")) {
+      setValue("officialNameVerified", false, { shouldDirty: true, shouldValidate: true });
+    }
+  };
+  useEffect(() => {
+    if (meteoriteIdentity === "official") {
+      void trigger([
+        "meteoriteType",
+        "classification",
+        "meteoriteSubclass",
+        "metbullCode",
+        "officialReferenceUrl",
+        "officialNameVerified",
+      ]);
+    }
+  }, [meteoriteIdentity, trigger]);
+  useEffect(() => {
+    void trigger(["locality", "region", "latitude", "longitude"]);
+  }, [watchedValues.locality, watchedValues.region, watchedValues.latitude, watchedValues.longitude, trigger]);
+  useEffect(() => {
+    if (meteoriteIdentity === "official") void trigger("officialReferenceUrl");
+  }, [meteoriteIdentity, watchedValues.metbullCode, trigger]);
 
   const [photos, setPhotos] = useState<PhotoInput[]>([]);
   const [logo, setLogo] = useState<File>();
@@ -413,6 +371,8 @@ export default function App() {
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationBusy, setGenerationBusy] = useState(false);
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string; certificateReference: string }>();
+  const allPhotosAttested = photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal);
+  const issueReady = isValid && Boolean(identity) && backupDownloaded && allPhotosAttested;
   useEffect(() => {
     if (!logo) {
       setLogoPreviewUrl(undefined);
@@ -629,10 +589,10 @@ export default function App() {
                 <summary><span>01</span><div><strong>Issuer identity</strong><small>Who is authorizing this record</small></div></summary>
                 <div className="workbench-section__body field-grid">
                   <Field label="Issuer display or legal name" error={errors.issuerName?.message}>
-                    <input placeholder="e.g., John Doe" {...register("issuerName")} />
+                    <input required aria-required="true" placeholder="e.g., John Doe" {...register("issuerName")} />
                   </Field>
                   <Field label="Collection or business" error={errors.collectionName?.message}>
-                    <input placeholder="e.g., Example Meteorite Collection" {...register("collectionName")} />
+                    <input required aria-required="true" placeholder="e.g., Example Meteorite Collection" {...register("collectionName")} />
                   </Field>
                   <Field label="Email (optional)" error={errors.issuerEmail?.message}>
                     <input type="email" placeholder="Optional - e.g., issuer@example.com" {...register("issuerEmail")} />
@@ -656,13 +616,13 @@ export default function App() {
                 <summary><span>02</span><div><strong>Certificate identity</strong><small>Versioned, traceable, never silently overwritten</small></div></summary>
                 <div className="workbench-section__body field-grid">
                   <Field label="Certificate ID" hint="Portable characters only" error={errors.certificateId?.message}>
-                    <input placeholder="e.g., COA-2026-0001" {...register("certificateId")} />
+                    <input required aria-required="true" placeholder="e.g., COA-2026-0001" {...register("certificateId")} />
                   </Field>
                   <Field label="Issue date" error={errors.issueDate?.message}>
-                    <input type="date" placeholder="e.g., 2026-07-29" {...register("issueDate")} />
+                    <input required aria-required="true" type="date" placeholder="e.g., 2026-07-29" {...register("issueDate")} />
                   </Field>
                   <Field label="Version" error={errors.certificateVersion?.message}>
-                    <input placeholder="e.g., 1.0" {...register("certificateVersion")} />
+                    <input required aria-required="true" placeholder="e.g., 1.0" {...register("certificateVersion")} />
                   </Field>
                   <Field label="Status" error={errors.certificateStatus?.message}>
                     <select {...register("certificateStatus")}>
@@ -723,20 +683,48 @@ export default function App() {
               <details className="workbench-section" open>
                 <summary><span>03</span><div><strong>Specimen record</strong><small>Physical identity and classification</small></div></summary>
                 <div className="workbench-section__body field-grid">
-                  <Field label="Meteorite name" error={errors.meteoriteName?.message}>
-                    <input placeholder="e.g., Aguas Zarcas" {...register("meteoriteName")} />
+                  <fieldset className="theme-field field--wide">
+                    <legend>Meteorite identity</legend>
+                    <span className="theme-field__hint">Choose Official only when you have checked the canonical Meteoritical Bulletin entry.</span>
+                    <div className="style-picker">
+                      <label className="style-option">
+                        <input required type="radio" value="unclassified" {...register("meteoriteIdentity", { onChange: resetOfficialAttestation })} />
+                        <span className="style-option__body"><strong>Unclassified</strong><small>Working specimen identity; official evidence is not exported.</small></span>
+                      </label>
+                      <label className="style-option">
+                        <input required type="radio" value="official" {...register("meteoriteIdentity", { onChange: resetOfficialAttestation })} />
+                        <span className="style-option__body"><strong>Official</strong><small>Canonical name and classification verified by the issuer.</small></span>
+                      </label>
+                    </div>
+                  </fieldset>
+                  <Field label={meteoriteIdentity === "official" ? "Official canonical meteorite name" : "Working specimen name"} error={errors.meteoriteName?.message}>
+                    <input required aria-required="true" placeholder={meteoriteIdentity === "official" ? "e.g., Aguas Zarcas" : "e.g., Unclassified specimen 001"} {...register("meteoriteName", { onChange: resetOfficialAttestation })} />
                   </Field>
-                  <Field label="Classification" error={errors.classification?.message}>
-                    <input placeholder="e.g., CM2 carbonaceous chondrite" {...register("classification")} />
-                  </Field>
+                  {meteoriteIdentity === "official" ? (
+                    <>
+                      <Field label="Meteorite type" error={errors.meteoriteType?.message}>
+                        <input required aria-required="true" placeholder="e.g., Chondrite" {...register("meteoriteType", { onChange: resetOfficialAttestation })} />
+                      </Field>
+                      <Field label="Meteorite class" error={errors.classification?.message}>
+                        <input required aria-required="true" placeholder="e.g., Carbonaceous chondrite" {...register("classification", { onChange: resetOfficialAttestation })} />
+                      </Field>
+                      <Field label="Meteorite subclass" error={errors.meteoriteSubclass?.message}>
+                        <input required aria-required="true" placeholder="e.g., CM2" {...register("meteoriteSubclass", { onChange: resetOfficialAttestation })} />
+                      </Field>
+                    </>
+                  ) : (
+                    <Field label="Suspected type (optional)" hint="A working opinion only; exported classification remains Unclassified." wide>
+                      <input placeholder="Optional - e.g., possible ordinary chondrite" {...register("suspectedType")} />
+                    </Field>
+                  )}
                   <Field label="Weight (grams)" error={errors.weightGrams?.message}>
-                    <input inputMode="decimal" placeholder="e.g., 44.7" {...register("weightGrams")} />
+                    <input required aria-required="true" inputMode="decimal" placeholder="e.g., 44.7" {...register("weightGrams")} />
                   </Field>
                   <Field label="Weight precision (grams)" error={errors.weightPrecision?.message}>
-                    <input inputMode="decimal" placeholder="e.g., 0.1" {...register("weightPrecision")} />
+                    <input required aria-required="true" inputMode="decimal" placeholder="e.g., 0.1" {...register("weightPrecision")} />
                   </Field>
                   <Field label="Specimen form" error={errors.specimenForm?.message}>
-                    <select {...register("specimenForm")}>
+                    <select required aria-required="true" {...register("specimenForm")}>
                       <option value="" disabled>Select specimen form</option>
                       <option>Complete individual</option>
                       <option>Partial individual</option>
@@ -752,7 +740,7 @@ export default function App() {
                     <input placeholder="Optional - e.g., 42 x 31 x 18 mm" {...register("dimensions")} />
                   </Field>
                   <Field label="Number of pieces" error={errors.numberOfPieces?.message}>
-                    <input inputMode="numeric" placeholder="e.g., 1" {...register("numberOfPieces")} />
+                    <input required aria-required="true" inputMode="numeric" placeholder="e.g., 1" {...register("numberOfPieces")} />
                   </Field>
                   <Field label="Preparation state (optional)">
                     <input placeholder="Optional - e.g., natural crust with one cut face" {...register("preparationState")} />
@@ -770,31 +758,57 @@ export default function App() {
                 <summary><span>04</span><div><strong>Fall, find, and provenance</strong><small>Origin and chain of custody</small></div></summary>
                 <div className="workbench-section__body field-grid">
                   <Field label="Fall or find status" error={errors.fallStatus?.message}>
-                    <input placeholder="e.g., Witnessed fall" {...register("fallStatus")} />
+                    <input required aria-required="true" placeholder="e.g., Witnessed fall" {...register("fallStatus")} />
                   </Field>
                   <Field label="Fall or find date (optional)" error={errors.fallDate?.message}>
                     <input type="date" placeholder="Optional - e.g., 2024-01-15" {...register("fallDate")} />
                   </Field>
                   <Field label="Country" error={errors.country?.message}>
-                    <input placeholder="e.g., Canada" {...register("country")} />
+                    <input required aria-required="true" placeholder="e.g., Canada" {...register("country")} />
                   </Field>
                   <Field label="Region (optional)">
                     <input placeholder="Optional - e.g., Ontario" {...register("region")} />
                   </Field>
-                  <Field label="Locality" error={errors.locality?.message}>
-                    <input placeholder="e.g., Near Example Township" {...register("locality")} />
-                  </Field>
-                  <Field label="Meteoritical Bulletin code (optional)">
-                    <input placeholder="Optional - e.g., 12345" {...register("metbullCode")} />
+                  <Field label="Locality / city (optional)" error={errors.locality?.message}>
+                    <input placeholder="Optional - e.g., Near Example Township" {...register("locality")} />
                   </Field>
                   <Field label="Latitude (optional)" error={errors.latitude?.message}>
-                    <input placeholder="Optional - e.g., 45.4215 N" {...register("latitude")} />
+                    <input placeholder="Optional - decimal degrees, e.g., 45.4215 N or 45.4215" {...register("latitude")} />
                   </Field>
                   <Field label="Longitude (optional)" error={errors.longitude?.message}>
-                    <input placeholder="Optional - e.g., 75.6972 W" {...register("longitude")} />
+                    <input placeholder="Optional - decimal degrees, e.g., 75.6972 W or -75.6972" {...register("longitude")} />
                   </Field>
-                  <Field label="Official reference URL (optional)" wide error={errors.officialReferenceUrl?.message}>
-                    <input type="url" placeholder="Optional - e.g., https://example.org/record/12345" {...register("officialReferenceUrl")} />
+                  {meteoriteIdentity === "official" ? (
+                    <>
+                      <Field label="Meteoritical Bulletin code" error={errors.metbullCode?.message}>
+                        <input required aria-required="true" inputMode="numeric" placeholder="e.g., 12345" {...register("metbullCode", { onChange: resetOfficialAttestation })} />
+                      </Field>
+                      <Field label="Official Meteoritical Bulletin URL" wide error={errors.officialReferenceUrl?.message}>
+                        <input required aria-required="true" type="url" placeholder="https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345" {...register("officialReferenceUrl", { onChange: resetOfficialAttestation })} />
+                      </Field>
+                      <Field
+                        label="Official name verification"
+                        wide
+                        error={errors.officialNameVerified?.message}
+                        hint="No lookup is performed. Open the official record and make this attestation yourself."
+                      >
+                        <span className="attestation">
+                          <input required aria-required="true" type="checkbox" {...register("officialNameVerified")} />
+                          <span>I attest that the canonical name, type, class, and subclass match the linked Meteoritical Bulletin entry.</span>
+                        </span>
+                        {/^[0-9]+$/.test((watchedValues.metbullCode ?? "").trim()) ? (
+                          <a
+                            className="text-link"
+                            href={`https://www.lpi.usra.edu/meteor/metbull.cfm?code=${(watchedValues.metbullCode ?? "").trim()}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >Open official Meteoritical Bulletin entry</a>
+                        ) : null}
+                      </Field>
+                    </>
+                  ) : null}
+                  <Field label="Finder name (optional)">
+                    <input placeholder="Optional - person credited with the find or recovery" {...register("finderName")} />
                   </Field>
                   <Field label="Finder / recovery information (optional)" wide>
                     <textarea rows={3} placeholder="Optional - describe who recovered the specimen and how" {...register("recoveryInformation")} />
@@ -804,6 +818,9 @@ export default function App() {
                   </Field>
                   <Field label="Previous owner (optional)">
                     <input placeholder="Optional - e.g., previous collector or institution" {...register("previousOwner")} />
+                  </Field>
+                  <Field label="Intermediary purchaser name (optional)">
+                    <input placeholder="Optional - e.g., dealer or interim purchaser" {...register("intermediaryPurchaserName")} />
                   </Field>
                   <Field label="Buyer / transferee (optional)">
                     <input placeholder="Optional - e.g., receiving collector or institution" {...register("buyer")} />
@@ -898,7 +915,34 @@ export default function App() {
                   <h3>Build, sign, and package</h3>
                   <p>Creates PDF, PNG, text, deterministic JSON, original photos, hashes, signature, public key, schema, audit log, and offline verifier.</p>
                 </div>
-                <button className="button button--gold button--issue" type="submit" disabled={generationBusy}>{generationBusy ? "Building package..." : "Issue signed COA package"}</button>
+                <div id="issuance-readiness" aria-live="polite">
+                  <strong>{issueReady ? "Ready to issue." : "Complete these requirements before issuance:"}</strong>
+                  {!issueReady ? (
+                    <ul>
+                      {!isValid ? <li>Complete the required form fields.</li> : null}
+                      {!identity ? <li>Generate or import a signing identity.</li> : null}
+                      {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
+                      {photos.length === 0 ? <li>Add at least one exact specimen photograph.</li> : null}
+                      {photos.length > 0 && !allPhotosAttested ? <li>Attest every photograph is an unmodified original.</li> : null}
+                    </ul>
+                  ) : null}
+                </div>
+                {!isValid ? (
+                  <button
+                    className="button button--outline button--small"
+                    type="button"
+                    onClick={() => {
+                      void trigger();
+                      setGenerationStatus("Review the highlighted required fields.");
+                    }}
+                  >Review missing form fields</button>
+                ) : null}
+                <button
+                  className="button button--gold button--issue"
+                  type="submit"
+                  aria-describedby="issuance-readiness"
+                  disabled={generationBusy || !issueReady}
+                >{generationBusy ? "Building package..." : "Issue signed COA package"}</button>
                 <p className="generation-status" aria-live="polite">{generationStatus}</p>
                 {receipt ? (
                   <div className="release-receipt">
@@ -927,7 +971,7 @@ export default function App() {
               <div className="preview-checks">
                 <span className={identity ? "complete" : ""}><i />Signing identity</span>
                 <span className={photos.length ? "complete" : ""}><i />Original evidence</span>
-                <span className={photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal) ? "complete" : ""}><i />Photo attestation</span>
+                <span className={allPhotosAttested ? "complete" : ""}><i />Photo attestation</span>
                 <span><i />Offline verifier included</span>
               </div>
               <div className="preview-note"><strong>PDF/A note</strong><p>The browser export is a standard PDF and is not represented as PDF/A until independently validated with veraPDF. PNG and UTF-8 text archival copies are included.</p></div>
