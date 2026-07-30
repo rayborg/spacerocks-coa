@@ -348,6 +348,16 @@ test("requires a superseded certificate ID only for superseded status", async ({
   await expect(supersededId.locator("xpath=ancestor::label[1]").locator(".field__error")).toHaveCount(0);
 });
 
+test("keeps the form before the live preview when the builder stacks", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/#builder");
+
+  const workbench = await page.locator(".workbench").boundingBox();
+  const preview = await page.locator(".preview-column").boundingBox();
+  expect(workbench && preview).toBeTruthy();
+  expect(preview!.y).toBeGreaterThanOrEqual(workbench!.y + workbench!.height);
+});
+
 test("enforces fresh official evidence across value and mode changes and validates location methods", async ({ page }) => {
   const lpiRequests: string[] = [];
   page.on("request", (request) => {

@@ -3450,7 +3450,6 @@ footer > div:last-child a {
   .preview-column {
     position: relative;
     top: auto;
-    grid-row: 1;
     width: 100%;
     max-width: 900px;
   }
@@ -3481,7 +3480,6 @@ footer > div:last-child a {
   .preview-column {
     position: relative;
     top: auto;
-    grid-row: 1;
     max-width: 900px;
   }
 
