@@ -104,7 +104,6 @@ jobs:
       run:
         working-directory: timestamp-service
     env:
-      DATABASE_URL: postgresql+psycopg://timestamp_ci:ci-only-not-a-secret@127.0.0.1:5432/timestamp_ci
       TEST_POSTGRES_URL: postgresql+psycopg://timestamp_ci:ci-only-not-a-secret@127.0.0.1:5432/timestamp_ci
     steps:
       - name: Check out source without persisted credentials
@@ -126,6 +125,8 @@ jobs:
       - name: Run strict Mypy
         run: mypy
       - name: Apply PostgreSQL migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://timestamp_ci:ci-only-not-a-secret@127.0.0.1:5432/timestamp_ci
         run: alembic upgrade head
       - name: Run full backend test suite with PostgreSQL migration coverage
         run: pytest
