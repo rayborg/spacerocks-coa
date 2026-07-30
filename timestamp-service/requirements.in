@@ -1,6 +1,7 @@
 alembic==1.16.4
 email-validator==2.2.0
 fastapi==0.116.1
+greenlet==3.5.4
 httpx==0.28.1
 jsonschema[format]==4.25.0
 mypy==1.17.0
