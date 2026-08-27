@@ -136,9 +136,20 @@ The frontend and policies are public. The managed timestamp form appears after a
 4. Create a Resend sending key, add a newline-free secret version, add/verify a sending subdomain in Bluehost DNS, create the webhook, and store its signing secret.
 5. Deploy and schedule the notification worker, then verify signed `email.delivered`, bounce, complaint, retry, and two-stage message behavior.
 6. Wait for Bitcoin Core `initialblockdownload=false`, rerun the application RPC canary, then reduce the VM size/cache.
-7. Redeploy the API with Stripe live and Resend webhook modes enabled, while keeping checkout disabled.
-8. Run owner-controlled low-value live payment, webhook, calendar, proof, one-confirmation email, six-confirmation email, and full-refund canaries.
-9. Run an independent launch audit, then enable checkout and public customer traffic only if every canary passes.
+7. Resolve the checkout-gating gap described below before configuring public Stripe live mode.
+8. Redeploy the API with Stripe live and Resend webhook modes enabled while the independent checkout gate remains disabled.
+9. Run owner-controlled low-value live payment, webhook, calendar, proof, one-confirmation email, six-confirmation email, and full-refund canaries.
+10. Run an independent launch audit, then enable checkout and public customer traffic only if every canary passes.
+
+## Deferred Launch-Safety Change
+
+- The current application uses `PAYMENT_MODE=disabled` as the checkout kill switch.
+- There is no independent default-off `CHECKOUT_ENABLED` setting in the committed code.
+- Switching the public API directly to `PAYMENT_MODE=stripe_live` would therefore expose checkout immediately rather than allowing credentials and webhooks to be configured first with checkout still blocked.
+- Before public live-mode deployment, add and test an independent default-off checkout gate, or document and independently validate an equally strong staged-access control.
+- The preferred source change is a `CHECKOUT_ENABLED=false` setting that refuses checkout before order reservation or provider calls, rejects `true` while `PAYMENT_MODE=disabled`, and has focused settings/service/API tests.
+- This change was identified but intentionally not implemented in the previous session after the owner instructed the agent to stop implementation work.
+- Do not work around this gap by trusting browser redirects, briefly exposing live checkout, using an unreviewed edge rule, or creating real customer orders before the controlled canary gate.
 
 ## Secret Handling
 
