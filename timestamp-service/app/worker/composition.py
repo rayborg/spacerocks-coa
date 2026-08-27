@@ -9,12 +9,13 @@ from typing import Protocol
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.bitcoin.disabled import DisabledVerifier
-from app.config.settings import AppEnvironment, FixtureGate, Settings
+from app.bitcoin.rpc import BitcoinCoreRpcTransport, BitcoinCoreRpcVerifier
+from app.config.settings import AppEnvironment, BitcoinMode, CalendarMode, Settings
 from app.db.fulfillment_adapters import SqlFulfillmentAdapters, create_sql_fulfillment_adapters
 from app.db.session import create_database_engine, create_session_factory
 from app.domain.order import FulfillmentState
 from app.fulfillment.errors import ConfirmationPending
-from app.fulfillment.handlers import DeliveryHandler, StampHandler, UpgradeHandler
+from app.fulfillment.handlers import ConfirmationHandler, DeliveryHandler, StampHandler, UpgradeHandler
 from app.fulfillment.terminal import TerminalFailureHandler
 from app.jobs.claims import JobClaimStore
 from app.jobs.models import JobSpec
@@ -22,14 +23,17 @@ from app.ports.bitcoin import BitcoinVerifier
 from app.ports.system import Clock, RandomSource
 from app.ports.timestamping import Timestamper
 from app.proofs.factory import create_proof_bundler
+from app.timestamping.calendars import CalendarConfiguration, HardenedCalendarTransport, MultiCalendarTimestamper
 from app.timestamping.fixture import DisabledTimestamper, FixtureTimestamper
 from app.worker.runner import JobHandler, Worker
 
 STAMP_JOB = "stamp_manifest_digest"
 UPGRADE_JOB = "upgrade_timestamp"
 DELIVERY_JOB = "deliver_timestamp"
+CONFIRMATION_JOB = "monitor_bitcoin_confirmations"
 PENDING_POLL_INTERVAL = timedelta(hours=6)
 PENDING_POLL_MINIMUM_WINDOW = timedelta(days=7)
+CONFIRMATION_POLL_INTERVAL = timedelta(minutes=15)
 
 
 class Handler(Protocol):
@@ -93,6 +97,46 @@ class UpgradeJobHandler:
             )
 
 
+@dataclass(slots=True)
+class DeliveryJobHandler:
+    handler: Handler
+    jobs: JobClaimStore
+    clock: Clock
+
+    async def __call__(self, order_id: str) -> None:
+        await self.handler(order_id)
+        first_poll = self.clock.now() + CONFIRMATION_POLL_INTERVAL
+        await self.jobs.enqueue_once(
+            JobSpec(
+                job_key=f"confirmation-poll:{order_id}:{int(first_poll.timestamp())}",
+                kind=CONFIRMATION_JOB,
+                order_id=order_id,
+            ),
+            first_poll,
+        )
+
+
+@dataclass(slots=True)
+class ConfirmationJobHandler:
+    handler: Handler
+    jobs: JobClaimStore
+    clock: Clock
+
+    async def __call__(self, order_id: str) -> None:
+        try:
+            await self.handler(order_id)
+        except ConfirmationPending:
+            next_poll = self.clock.now() + CONFIRMATION_POLL_INTERVAL
+            await self.jobs.enqueue_once(
+                JobSpec(
+                    job_key=f"confirmation-poll:{order_id}:{int(next_poll.timestamp())}",
+                    kind=CONFIRMATION_JOB,
+                    order_id=order_id,
+                ),
+                next_poll,
+            )
+
+
 def build_worker(
     settings: Settings,
     session_factory: sessionmaker[Session],
@@ -116,6 +160,7 @@ def build_worker(
         configured_timestamper,
         configured_bitcoin,
         adapters.verifications,
+        adapters.observations,
     )
     delivery = DeliveryHandler(
         adapters.orders,
@@ -123,13 +168,23 @@ def build_worker(
         create_proof_bundler(),
         adapters.bundles,
         adapters.verifications,
+        adapters.observations,
         adapters.outbox,
         settings.product_version,
+    )
+    confirmation = ConfirmationHandler(
+        adapters.orders,
+        adapters.proofs,
+        configured_bitcoin,
+        adapters.verifications,
+        adapters.observations,
+        adapters.outbox,
     )
     handlers: dict[str, JobHandler] = {
         STAMP_JOB: StampJobHandler(stamp, adapters.jobs, configured_clock),
         UPGRADE_JOB: UpgradeJobHandler(upgrade, adapters, configured_clock),
-        DELIVERY_JOB: delivery,
+        DELIVERY_JOB: DeliveryJobHandler(delivery, adapters.jobs, configured_clock),
+        CONFIRMATION_JOB: ConfirmationJobHandler(confirmation, adapters.jobs, configured_clock),
     }
     return Worker(
         worker_id=worker_id,
@@ -152,18 +207,42 @@ def create_worker() -> Worker:
 
 
 def _timestamper(settings: Settings) -> Timestamper:
-    if settings.calendar_mode == FixtureGate.FIXTURE:
+    if settings.calendar_mode == CalendarMode.FIXTURE:
         if settings.app_env != AppEnvironment.TEST:
             raise RuntimeError("fixture_calendar_forbidden")
         return FixtureTimestamper()
+    if settings.calendar_mode == CalendarMode.PUBLIC:
+        configuration = CalendarConfiguration(
+            allowlist=tuple(settings.calendar_allowlist),
+            enabled=True,
+            timeout_seconds=settings.calendar_timeout_seconds,
+        )
+        return MultiCalendarTimestamper(
+            configuration,
+            HardenedCalendarTransport(settings.calendar_timeout_seconds),
+        )
     return DisabledTimestamper()
 
 
 def _bitcoin_verifier(settings: Settings) -> BitcoinVerifier:
-    if settings.bitcoin_verifier == FixtureGate.FIXTURE:
+    if settings.bitcoin_verifier == BitcoinMode.FIXTURE:
         if settings.app_env != AppEnvironment.TEST:
             raise RuntimeError("fixture_bitcoin_verifier_forbidden")
         from app.bitcoin.fixture import FixtureBitcoinVerifier
 
         return FixtureBitcoinVerifier()
+    if settings.bitcoin_verifier == BitcoinMode.BITCOIN_CORE:
+        if (
+            settings.bitcoin_rpc_url is None
+            or settings.bitcoin_rpc_username is None
+            or settings.bitcoin_rpc_password is None
+        ):
+            raise RuntimeError("validated_bitcoin_rpc_configuration_unavailable")
+        transport = BitcoinCoreRpcTransport(
+            settings.bitcoin_rpc_url,
+            settings.bitcoin_rpc_username.get_secret_value(),
+            settings.bitcoin_rpc_password.get_secret_value(),
+            timeout_seconds=settings.bitcoin_rpc_timeout_seconds,
+        )
+        return BitcoinCoreRpcVerifier(transport, minimum_confirmations=1)
     return DisabledVerifier()

@@ -2,25 +2,30 @@
 
 ## Status and authority
 
-This runbook describes Phase 0 sandbox procedures. It is not authorization to enable public calendars, email delivery, live payments, or production. Use synthetic data only. A pending proof, a browser return, or payment UI success must never be reported as Bitcoin-confirmed.
+This runbook covers implemented MVP operations. It is not authorization to alter Neon, Stripe, Resend, DNS, deployment infrastructure, Bitcoin Core, public calendars, payments, or production. Production is not publicly live and real customer payments are unavailable.
 
-Only authorized operators may run migrations, mutate jobs, rotate service credentials, restore data, refund payments, or change checkout availability. Use least-privilege accounts and audited provider consoles. Enter secrets directly into the target secret manager or provider dashboard, never into chat, Git, command history, tickets, screenshots, logs, or frontend variables.
+A Stripe-test sandbox was previously deployed and checkout/refund canaries were recorded working. That recovered state has not been freshly verified; confirm every current environment fact before relying on it. Never invent missing cloud state or URLs.
+
+Only authorized operators may run migrations, restore data, mutate jobs, rotate credentials, enable modes, submit a calendar digest, refund a payment, or communicate with customers. Secrets go directly into approved secret managers/provider consoles, never chat, Git, commands, logs, tickets, screenshots, or frontend variables.
 
 ## Preflight
 
 Before any operation:
 
-1. Confirm the environment, deployment revision, database target, payment mode, calendar mode, and Bitcoin verifier mode.
-2. Confirm Phase 0 remains sandbox-only and `stripe_live` is absent.
-3. Record a non-sensitive incident/change reference and the opaque order or job IDs involved. Do not record bearer recovery tokens or secret values.
-4. Pause conflicting deploys and ensure one operator owns each order mutation.
-5. Verify a current backup exists for database-affecting work. For restore or migration work, use an isolated restore target first.
+1. Record the environment, immutable deployment revision, non-sensitive change/incident ID, and responsible operator.
+2. Confirm the actual Neon database target, schema revision, API revision, payment/calendar/Bitcoin/Resend modes, and worker revisions.
+3. Confirm production public access and real payments remain disabled unless the owner has explicitly authorized the exact operation.
+4. Pause conflicting deploys and assign one operator to each mutable order/job/provider action.
+5. Verify current backups and perform database-affecting validation on an isolated restore first.
+6. Confirm logs and evidence omit bearer tokens, emails, digests linked to PII, request bodies, provider signatures, secrets, RPC credentials, and database URLs.
 
-Public calendar operation is not available in the current runtime. Settings/composition expose only disabled or pytest-only fixture modes, and the dormant public transport refuses construction until pinned-public-IP TLS/SNI handling is implemented and reviewed. Do not attempt to enable it with undocumented variables or direct adapter construction.
+Safe mode defaults are `PAYMENT_MODE=disabled`, `CALENDAR_MODE=disabled`, `BITCOIN_VERIFIER=disabled`, `RESEND_SENDER_MODE=disabled`, and `RESEND_WEBHOOK_MODE=disabled`.
 
-## Migrations
+## Migration and Neon restore gate
 
-Run migrations as a serialized release task before starting the new API and worker revision:
+Neon is the current PostgreSQL target. Migration `20260827_0002` adds append-only Bitcoin confirmation observations, durable notification attempts, Resend webhook events, and delivery-evidence constraints.
+
+Run one serialized migration task, never one per replica:
 
 ```bash
 cd timestamp-service
@@ -29,25 +34,41 @@ alembic upgrade head
 alembic current
 ```
 
-`DATABASE_URL` must come from the environment's secret store. Do not pass it on the command line. Review the migration and its downgrade behavior before execution, capture only non-sensitive output, and verify `/health/ready` plus schema revision afterward. Never let every API replica race to migrate. If a migration fails, keep the new revision stopped, preserve evidence, restore only according to the tested rollback plan, and do not improvise a destructive downgrade.
+The final revision must be `20260827_0002`. `DATABASE_URL` must come from the secret store, not the command line.
 
-## Backup and restore gate
+Before provider-backed or live use:
 
-No provider-backed sandbox or live operation may begin until all of the following pass:
+- restore a current Neon backup into a clean isolated target;
+- disable checkout, API provider modes, both workers, webhooks, and all provider egress on the restore;
+- apply/verify the migration there first;
+- compare row counts and immutable order/certificate/digest/payment bindings;
+- verify every proof length/checksum/target/version and matching bundle;
+- verify Bitcoin observation monotonicity and binding to stored verification metadata;
+- verify outbox, attempt, provider acceptance, and Resend webhook evidence;
+- reverify restored proofs under the approved private verifier/reorganization policy; and
+- record recovery-point/time results without customer data or secrets.
 
-- scheduled Railway Postgres backups are enabled and monitored;
-- encrypted off-provider backups include database rows and all proof bytes/versions;
-- backup access uses a separate least-privilege identity and retention policy;
-- restore has succeeded into a clean, isolated environment at the expected schema revision;
-- restored row counts, immutable order bindings, job history, proof checksums, and exact target digests are verified;
-- restored pending proofs remain pending and restored verified proofs pass independent reverification under an approved verifier/reorganization policy; and
-- recovery point, recovery time, deletion, legal hold, and proof-retention requirements are approved.
+Never restore over the source database. If migration or restore validation fails, leave the new revision and payment path stopped; preserve evidence and do not improvise destructive downgrade or row edits.
 
-Never test a restore over the source database. Prevent restored workers, webhooks, outbox consumers, and checkout endpoints from contacting providers. Rotate restored credentials or use disabled adapters before network access. Document the drill without customer data or secrets.
+## Process commands
 
-## Job replay, upgrade, and reverification
+Timestamp worker:
 
-Set the operator factory only in the controlled operator process:
+```bash
+export TIMESTAMP_WORKER_FACTORY=app.worker.composition:create_worker
+python -m app.worker.cli --once
+```
+
+Notification worker:
+
+```bash
+export NOTIFICATION_WORKER_FACTORY=app.notifications.worker:create_notification_worker
+python -m app.notifications.cli --once
+```
+
+Continuous processes omit `--once`. Optional instance identities are `TIMESTAMP_WORKER_ID` and `NOTIFICATION_WORKER_ID`. IDs must be opaque; do not include hostnames, emails, credentials, or customer data.
+
+Operator commands:
 
 ```bash
 export TIMESTAMP_OPERATOR_FACTORY=app.worker.operator:create_operator_commands
@@ -56,116 +77,101 @@ python -m scripts.upgrade_order ORDER_UUID --confirm UPGRADE:ORDER_UUID
 python -m scripts.reverify_order ORDER_UUID --request-id CHANGE_ID --confirm REVERIFY:ORDER_UUID:CHANGE_ID
 ```
 
-Required checks:
+Inspect state, immutable binding, attempts, lease, proof versions, observations, and safe error first. Replay only an ordinary retry with no active lease. Upgrade only `calendar_pending`. Reverify only `bitcoin_verified` or `delivered`. Manual review is a refusal state: current operator code validates limited invariants and then refuses terminal recovery; never edit the state directly or replay around that guard.
 
-- inspect immutable digest/order binding, current state, attempts, lease, existing proof versions, and safe error code first;
-- replay only an ordinary job in retry state and confirm no healthy worker owns a live lease;
-- upgrade only `calendar_pending`; retain every prior proof version;
-- reverify only `bitcoin_verified` or a future `delivered` order, compare the proof target to the stored 32-byte digest, and apply the approved verification and Bitcoin-reorganization policy;
-- do not mark an order confirmed because a command exited successfully; inspect the durable resulting state and evidence; and
-- send target mismatch, corrupt/truncated proof, missing Bitcoin metadata, exhausted retries, or uncertain results to `manual_review`/incident handling rather than forcing success.
+## Timestamp lifecycle
 
-Manual review is a safe refusal state, not an operator retry queue. For a manual-review or dead-letter job, the current replay command may validate limited proof invariants but then raises `terminal_recovery_requires_ws1_state_transition`; no audited transition back to fulfillment exists. Keep the order unavailable and escalate for code/policy review rather than editing state or replaying around the refusal.
+- Calendar submission uses `CALENDAR_MODE=public`, `MultiCalendarTimestamper`, and `HardenedCalendarTransport` only after allowlist review and explicit pilot/production authorization.
+- At least two independent HTTPS calendar hosts must be configured. A successful initial stamp can include one or more responding calendars.
+- Calendar acceptance cannot transact with PostgreSQL proof append. A crash in between may cause at-least-once resubmission of the same immutable 32-byte digest.
+- The initial pending proof is append-only. Upgrades append new proof versions and retain the original submission time.
+- Ordinary Bitcoin pending schedules another durable upgrade in six hours; it is not an error attempt or short dead-letter path.
+- `BITCOIN_VERIFIER=bitcoin_core` requires a private authenticated synchronized mainnet node. RPC must never be public.
+- Initial verification requires at least one confirmation and exact digest/block evidence. It records an append-only observation and moves to `bitcoin_verified`.
+- The delivery job persists the matching bundle, enqueues the initial `bitcoin-confirmed-initial` notice at `>=1`, and starts 15-minute confirmation monitoring.
+- Monitoring enqueues `bitcoin-confirmed-final` at `>=6`.
+- A missing attestation after prior verification, decreased confirmation count, or changed block hash/height/time/method/policy is unsafe reorganization/conflict evidence. Terminal handling moves the order to `manual_review`; proof download remains suppressed pending reviewed recovery.
 
-Ordinary Bitcoin confirmation pending follows a separate path from failures: each successful pending check completes and schedules a durable successor six hours later. It does not consume a short retry budget or dead-letter solely because confirmation is still pending, including beyond seven days. Outages, invalid data, and unexpected errors still use bounded retry/manual-review behavior. Maximum polling duration, proof/token/data retention, customer escalation, and eventual disposition must be approved before live operation.
+Never claim exactly-once calendar submission, a unique Bitcoin transaction, or Bitcoin confirmation based on payment, redirect, calendar response, fixture result, proof possession, or email.
 
-The Phase 0 fixture adapters run only inside `pytest` and are not public evidence. Public-calendar replay and production reverification remain blocked until transport and policy gates pass review. Current successful reverification can reject changed immutable block metadata, but live use additionally requires a typed append-only record for every reverification request/result, verifier and policy versions, confirmation depth, reorganization observations, previous/current evidence, and operator reason. Generic state evidence is not sufficient live history.
+## Resend delivery
 
-## Calendar crash semantics
+`RESEND_SENDER_MODE=resend` enables `ResendEmailSender` in the separate notification worker. `RESEND_WEBHOOK_MODE=resend` enables `POST /v1/webhooks/resend`. They are independent gates.
 
-Calendar acceptance and the local Postgres proof append cannot share a transaction. If the response proof is already durably appended, replay validates and reuses it. If the calendar accepted the request but the worker crashed before append, no local artifact proves acceptance; recovery may at-least-once resubmit the same immutable 32-byte digest. Record this as an expected recovery ambiguity, preserve all returned proof versions, and never describe submission as exactly once or as a unique Bitcoin transaction. A repeated commitment of the same digest does not alter the digest binding.
+The notification worker leases durable outbox records, sends fixed text templates with only the order reference, uses a stable provider idempotency key, records provider acceptance, retries retryable failures with bounded exponential delay, and records terminal/dead-letter outcomes. Never include a bearer token, digest, certificate data, or proof bytes in email.
+
+Resend API acceptance is not delivery. The webhook verifies `svix-id`, `svix-timestamp`, `svix-signature`, raw-body HMAC, timestamp tolerance, event/payload bounds, and event idempotency. Configure and test:
+
+- `email.delivered`;
+- `email.bounced`;
+- `email.failed`;
+- `email.complained`;
+- duplicate and conflicting event IDs;
+- stale/invalid signatures and oversized/malformed bodies; and
+- delivery arriving before local provider acceptance.
+
+Only matching delivery evidence for the initial notice at `>=1`, current proof/bundle, current confirmation observation, and immutable verification can move `bitcoin_verified` to `delivered`. A final notice requires `>=6`; its delivery records evidence but does not change fulfillment state again.
+
+Before enabling sender/webhook modes, verify the approved sending domain and SPF, DKIM, Return-Path, DMARC, sender address, webhook secret, bounce/complaint handling, quotas, and monitored support procedure. These external gates are currently incomplete.
 
 ## Durable proof and download rules
 
-- A raw `.ots` proof must be 1-262,144 bytes. Parser, domain object, database constraint, and receipt contract use this same cap.
-- Every proof version is append-only with target digest, checksum, byte length, state, and original calendar-submission time. Upgrades append a successor; they never overwrite historical bytes.
-- The highest valid version is the current cryptographic proof artifact. Current state and matching bundle readiness separately determine whether it may be projected or downloaded; durable historical rows do not override order state.
-- `stamping` projects `proof_available=false` and no calendar-submission or Bitcoin-verification timestamps, even if historical artifact rows exist.
-- Pending download generation selects the latest metadata, builds outside the transaction, then rechecks token validity, immutable order binding, `calendar_pending`, and unchanged latest metadata before recording/returning the artifact.
-- Verification may transition the order to `bitcoin_verified` before the separate bundle job finishes. During that interval `proof_available=false`; readiness becomes true only after a persisted bundle is bound to the current verified proof version and passes length/checksum validation. A future `delivered` state may use the same invariant.
-- `manual_review` makes `proof_available` false and blocks download even when historical proof/verification/bundle rows remain. Do not delete those rows or serve around the refusal.
-- Without an email sender, bundle and outbox creation does not prove delivery and does not transition the order beyond `bitcoin_verified`.
+- Raw `.ots` proofs contain 1-262,144 bytes.
+- Proof versions are append-only with target digest, checksum, length, state, and original calendar time.
+- `stamping` reports no proof or calendar/Bitcoin time, even if historical rows exist.
+- `calendar_pending` may expose the latest pending proof after a second token/state/version check; it is not Bitcoin-confirmed.
+- `bitcoin_verified` can temporarily have `proof_available=false` until its matching persisted bundle passes length/checksum checks.
+- `delivered` means the initial Resend message has matching verified `email.delivered` evidence; it does not strengthen Bitcoin evidence.
+- `manual_review` reports no proof/download. Historical rows remain evidence, not authorization.
 
-## Recovery token rotation
+## Pause and recovery
 
-Customer bearer tokens belong only in the `Authorization` header. They must not appear in URLs, logs, analytics, email subjects, support records, or filenames.
+To pause new checkout:
 
-For a customer token, use the authenticated `POST /v1/orders/rotate-token` flow. The previous token is revoked atomically. Return the replacement once through the authenticated response and advise private storage; support must never ask a customer to disclose it through chat or email.
+1. Block checkout at the edge while retaining health and authenticated recovery endpoints.
+2. Deploy `PAYMENT_MODE=disabled` and remove Stripe settings, because disabled mode rejects Stripe configuration.
+3. Decide and record whether already-paid timestamp jobs, confirmation monitoring, and notification delivery continue.
+4. Reconcile every open, processing, paid, queued, leased, accepted, delivered, refund, and dispute record.
+5. Do not assume existing Stripe sessions were canceled; expire/reconcile them through an authorized environment-specific procedure.
 
-For a hashing-pepper rotation:
+Calendar commitments already accepted cannot be canceled. Stopping workers only prevents new external work.
 
-1. Generate a new random secret in the environment secret manager and assign a new positive `TOKEN_PEPPERS__N` version.
-2. Keep every still-needed old version configured and set `ACTIVE_TOKEN_PEPPER_VERSION` to the new version.
-3. Deploy API, worker, and operator processes consistently and validate status/rotation with synthetic tokens.
-4. Rotate active customer tokens or wait for old tokens to expire under the approved policy.
-5. Remove an old pepper only when no valid token depends on it; premature removal revokes access.
+Checkout idempotency uses a 5-300 second processing/grace lease (default 60). A concurrent identical retry may receive HTTP `425` without a token. Wait and retry the identical body and idempotency key; never change keys to bypass the lease.
 
-Suspected token disclosure requires immediate token rotation, sanitized log review, scope assessment, and customer notification under the approved incident policy.
+## Token and secret rotation
 
-## Pause checkout
+Customer tokens travel only in `Authorization`. Use authenticated `POST /v1/orders/rotate-token`; the old token is atomically revoked and the replacement is returned once in the body. Support must never request a token by email/chat.
 
-Pause new checkout at the API edge first, leaving health and authenticated status/proof recovery available. Then deploy `PAYMENT_MODE=disabled` and remove Stripe-specific variables because settings reject Stripe configuration in disabled mode. Preserve `DATABASE_URL`, token peppers, and status/proof access. Do not infer that already-created Stripe sessions are canceled; expire or reconcile them through the authorized Stripe sandbox procedure.
+For pepper rotation, add a new strong `TOKEN_PEPPERS__N`, retain old versions still needed, update `ACTIVE_TOKEN_PEPPER_VERSION`, deploy all consumers consistently, rotate/expire dependent customer tokens, then remove an old pepper only when no valid token needs it.
 
-Decide separately whether already-paid durable jobs should continue or pause. Calendar submission is irreversible once accepted, so stopping workers does not retract existing commitments. Record the cutoff and reconcile every open, processing, paid, and queued order before resuming.
-
-Checkout reservations use a committed provider-processing lease and post-completion credential grace interval, configured from 5 through 300 seconds (60 seconds by default). A concurrent identical retry can receive HTTP `425` with no status token. Preserve the same body and idempotency key, wait for the lease/grace interval, and retry; do not create a new key to bypass the lease. Monitor repeated `425` responses separately from provider failure.
+Rotate Stripe keys/webhook secrets, Resend key/webhook secret, Neon credentials, Bitcoin RPC credentials, deployment access, and GitHub App access one class at a time under an approved plan. Pause the corresponding path, validate with synthetic evidence, revoke the old credential, and reconcile. Never place service secrets in `VITE_*`.
 
 ## Incident response
 
-Severity examples:
+Critical examples include secret/PII exposure, unauthorized fulfillment, wrong-digest proof, false confirmation, unsafe reorganization handling, database compromise, or destructive loss. High examples include unqueued paid orders, webhook bypass, repeat corruption, token disclosure, missing backup, or initial delivery without matching evidence.
 
-- Critical: secret/private-data exposure, unauthorized fulfillment, wrong-digest proof, false Bitcoin confirmation, database compromise, or destructive loss.
-- High: paid orders not durably queued, webhook verification bypass, repeated proof corruption, backup failure beyond tolerance, or status-token leakage.
-- Moderate: provider outage, pending proofs beyond the approved escalation age, exhausted error retries, readiness degradation, or email/outbox backlog in a future approved integration. Ordinary pending itself is not dead-letter exhaustion.
+1. Declare an incident and assign an owner.
+2. Pause checkout and affected timestamp/notification workers; revoke affected access.
+3. Preserve append-only payment, proof, observation, job, consent, notification, refund, and dispute evidence.
+4. Scope by opaque IDs without exporting unnecessary PII.
+5. Restore only into isolation; reverify immutable bindings and proof/notification state before returning service.
+6. Communicate only verified facts. Pending remains pending; `delivered` is email-delivery state, not stronger Bitcoin confirmation.
+7. Obtain account-owner approval for customer/provider/legal communication and any changed launch gate.
 
-Response sequence:
+## Monitoring and rollback
 
-1. Declare the incident, assign an incident owner, and preserve timestamps and sanitized evidence.
-2. Pause checkout and affected workers; block compromised credentials and access paths.
-3. Do not delete immutable order, payment, proof, job, consent, outbox/future-delivery, refund, or dispute evidence.
-4. Determine affected orders by opaque ID and immutable digest binding without exporting unnecessary PII.
-5. Rotate/revoke credentials, tokens, GitHub App access, and provider sessions according to scope.
-6. Restore only from verified backups into isolation; reverify proof targets and states before service restoration.
-7. Communicate only verified facts. Pending remains pending, and payment or calendar acceptance is not Bitcoin confirmation.
-8. Obtain account-owner approval for customer/provider/legal notifications and document corrective actions and gate changes.
+Monitor API health/error/latency, Neon readiness/connections/storage/backups, migration revision, checkout `425` age, Stripe webhook failures/reconciliation, timestamp job leases/retries/manual review, six-hour upgrade gaps, 15-minute confirmation gaps, paid-to-stamped and pending age, Bitcoin Core sync/RPC errors, confirmation decreases/conflicts, notification leases/retries/dead letters, Resend acceptance/delivery/bounce/complaint, DNS/TLS, restore drills, costs, refunds, and disputes.
 
-## Secret rotation
+`/health/live` proves only API process response. `/health/ready` proves a configured database query. Neither proves workers or providers.
 
-Rotate one credential class at a time with overlap only when the provider supports safe overlap:
+Rollback only to a schema-compatible immutable revision. Pause checkout, drain/stop workers, preserve all durable evidence, and prefer forward repair over database downgrade. Refund, dispute, rollback, restore, token revocation, or account closure cannot erase a public OpenTimestamps/Bitcoin commitment.
 
-- Stripe sandbox restricted key: create a least-privilege replacement, update staging, validate a synthetic checkout, revoke the old key, and reconcile events.
-- Stripe sandbox webhook secret: support both endpoints during a controlled transition or stop checkout, update the endpoint secret, validate signed sandbox events, then remove the old endpoint.
-- Railway/database credentials: pause mutations as needed, update every consumer atomically, verify readiness and worker claims, and revoke the old credential.
-- email provider key, if later approved: pause outbox delivery, replace the sending-only key, test an approved synthetic recipient, revoke the old key, and inspect bounces.
-- GitHub App: review installation scope and repository access; revoke and reinstall only with account-owner authorization.
+## Neon validation record
 
-Never put service secrets in `VITE_*` variables. Frontend configuration is public.
+On 2026-08-27, two expiring, non-primary Neon branches were cloned from production at the same parent LSN. Production remained idle with zero reported writes. The test branch reached `20260827_0002` and passed all 270 backend tests, including online upgrade/downgrade, trigger, reconciliation, and concurrency coverage. A separate clean branch started with zero application tables, reached head with 16 tables and eight application triggers, and retained zero business/evidence rows. Both validation computes were suspended and the branches were configured to expire on 2026-08-28.
 
-## Refund and dispute evidence
+This validates migration mechanics against the current empty production source. It does not validate customer-data recovery, proof checksum comparison, or customer-proof reverification because production contained no application data. Continue backup monitoring and repeat the isolated restore drill when representative data exists.
 
-Refunds and disputes change the commercial state but cannot erase a calendar or Bitcoin commitment. Preserve:
+## Remaining operational gates
 
-- immutable order/digest/certificate binding and server-controlled amount, currency, product version, and mode;
-- consent and policy versions/timestamp;
-- canonical Checkout Session, PaymentIntent, signed webhook event references, and checkout processing/grace lease evidence;
-- idempotent state transitions, job attempts, proof versions/checksums, verification and reverification history, outbox/future-delivery, and download audit evidence permitted by policy; and
-- refund/dispute decisions and provider references without card data or bearer tokens.
-
-Use the approved account-owner policy and Stripe dashboard/API procedure. Do not promise deletion of append-only timestamp evidence, and do not claim a refund withdrew a commitment.
-
-## Health and monitoring
-
-- `/health/live` proves only that the API process responds.
-- `/health/ready` proves configured store availability and a database query; it does not test Stripe, calendars, Bitcoin verification, email, backups, or workers.
-- Monitor API error/latency rates, readiness, checkout `425`/lease age, Postgres connections/storage, migration revision, worker heartbeat/lease age, queued/retry/exhausted error jobs, six-hour successor scheduling gaps, paid-to-stamped age, pending-proof age, target mismatches, webhook rejects, rate limiting, outbox backlog, backup success, restore drills, and budget/storage thresholds.
-- Alert separately on refund/dispute events and invalid webhook spikes. Logs must use allowlisted paths and opaque IDs, never request bodies, authorization headers, emails, digests joined with PII, or secrets.
-
-## Rollback
-
-Application rollback is allowed only when the old revision is schema-compatible and still enforces the current security gates. Stop new checkout, stop or drain workers, deploy the reviewed prior image by immutable digest, verify migration compatibility, then check liveness, readiness, token authentication, and existing order states with synthetic records.
-
-Database downgrade is not the default rollback. Preserve append-only events and proof versions. Never roll back by deleting proof or payment evidence. If compatibility cannot be guaranteed, remain paused and restore forward through a corrected release.
-
-## Irreversible commitments
-
-An OpenTimestamps calendar submission can be aggregated and later committed to Bitcoin. It cannot be recalled, deleted from Bitcoin, or undone by refund, dispute, database restore, token revocation, account closure, or application rollback. Avoid submitting PII: only the 32-byte digest target is used. A crash before local proof append may cause at-least-once resubmission of that same digest. Treat even synthetic digest submission as irreversible and require explicit authorization plus reviewed pinned-public-IP TLS/SNI transport before any public-calendar pilot.
+Neon backup monitoring and a future customer-data restore drill, Resend domain/DNS/webhook, private deployment controls, calendar pilot approval, private Bitcoin Core checks and reorganization policy, fresh Stripe-test canaries, Stripe tax/live webhook, production DNS/TLS, owner live canaries, policies, monitoring, and explicit launch approval remain incomplete. Keep corresponding modes disabled until the owner authorizes and evidence records each gate.

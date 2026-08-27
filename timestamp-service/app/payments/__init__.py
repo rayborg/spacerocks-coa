@@ -1,4 +1,9 @@
-from app.payments.gateway import FixturePaymentProvider, PaymentProvider, StripeTestPaymentProvider
+from app.payments.gateway import (
+    FixturePaymentProvider,
+    PaymentProvider,
+    StripePaymentProvider,
+    StripeTestPaymentProvider,
+)
 from app.payments.models import CanonicalCheckout, HostedCheckoutRequest, HostedCheckoutResult, ProviderEvent
 
 __all__ = [
@@ -8,5 +13,6 @@ __all__ = [
     "HostedCheckoutResult",
     "PaymentProvider",
     "ProviderEvent",
+    "StripePaymentProvider",
     "StripeTestPaymentProvider",
 ]

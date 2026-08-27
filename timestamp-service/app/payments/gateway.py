@@ -7,12 +7,15 @@ import json
 import sys
 import time
 from collections.abc import Mapping
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 
 import stripe
 
-from app.config.settings import AppEnvironment
+from app.config.settings import AppEnvironment, PaymentMode
 from app.payments.models import CanonicalCheckout, HostedCheckoutRequest, HostedCheckoutResult, ProviderEvent
+
+STRIPE_API_VERSION = "2026-07-29.dahlia"
+STRIPE_INTEGRATION_IDENTIFIER = "spacerocks_timestamp_checkout_qjvkmzrx"
 
 
 class PaymentSignatureError(ValueError):
@@ -24,6 +27,8 @@ class PaymentProviderError(RuntimeError):
 
 
 class PaymentProvider(Protocol):
+    payment_mode: PaymentMode
+
     async def create_checkout(self, request: HostedCheckoutRequest, idempotency_key: str) -> HostedCheckoutResult: ...
 
     def verify_event(self, raw_body: bytes, signature: str, tolerance_seconds: int) -> ProviderEvent: ...
@@ -33,34 +38,52 @@ class PaymentProvider(Protocol):
     async def retrieve_checkout(self, session_id: str) -> CanonicalCheckout: ...
 
 
-class StripeTestPaymentProvider:
-    def __init__(self, secret_key: str, webhook_secret: str, timeout_seconds: float = 10.0) -> None:
-        if not secret_key.startswith("sk_test_") or not webhook_secret.startswith("whsec_"):
-            raise ValueError("Stripe test provider requires test-only credentials")
-        self.secret_key = secret_key
+class StripePaymentProvider:
+    def __init__(
+        self,
+        secret_key: str,
+        webhook_secret: str,
+        *,
+        payment_mode: PaymentMode,
+        timeout_seconds: float = 10.0,
+    ) -> None:
+        if payment_mode not in {PaymentMode.STRIPE_TEST, PaymentMode.STRIPE_LIVE}:
+            raise ValueError("Stripe provider requires an explicit Stripe payment mode")
+        key_mode = "live" if payment_mode == PaymentMode.STRIPE_LIVE else "test"
+        if not secret_key.startswith((f"sk_{key_mode}_", f"rk_{key_mode}_")):
+            raise ValueError("Stripe credential does not match the configured payment mode")
+        if not webhook_secret.startswith("whsec_"):
+            raise ValueError("Stripe provider requires a webhook signing secret")
+        self.payment_mode = payment_mode
+        self.livemode = payment_mode == PaymentMode.STRIPE_LIVE
         self.webhook_secret = webhook_secret
         self.timeout_seconds = timeout_seconds
+        self.client = stripe.StripeClient(secret_key, stripe_version=STRIPE_API_VERSION)
 
     async def create_checkout(self, request: HostedCheckoutRequest, idempotency_key: str) -> HostedCheckoutResult:
         try:
             session = await self._run(
-                lambda: stripe.checkout.Session.create(
-                    api_key=self.secret_key,
-                    idempotency_key=idempotency_key,
-                    mode="payment",
-                    payment_method_types=["card"],
-                    customer_email=request.customer_email,
-                    line_items=[{"price": request.price_id, "quantity": 1}],
-                    success_url=request.success_url,
-                    cancel_url=request.cancel_url,
-                    metadata={"order_id": request.internal_order_id},
-                    payment_intent_data={"metadata": {"order_id": request.internal_order_id}},
+                lambda: self.client.v1.checkout.sessions.create(
+                    {
+                        "mode": "payment",
+                        "automatic_tax": {"enabled": False},
+                        "integration_identifier": STRIPE_INTEGRATION_IDENTIFIER,
+                        "customer_email": request.customer_email,
+                        "line_items": [{"price": request.price_id, "quantity": 1}],
+                        "success_url": request.success_url,
+                        "cancel_url": request.cancel_url,
+                        "metadata": {"order_id": request.internal_order_id},
+                        "payment_intent_data": {"metadata": {"order_id": request.internal_order_id}},
+                    },
+                    {"idempotency_key": idempotency_key},
                 )
             )
         except (TimeoutError, stripe.StripeError) as error:
             raise PaymentProviderError("Stripe checkout creation failed") from error
-        session_id = _required_string(session, "id")
-        checkout_url = _required_string(session, "url")
+        session_data = _stripe_mapping(session)
+        self._require_object_mode(session_data, "checkout creation")
+        session_id = _required_string(session_data, "id")
+        checkout_url = _required_string(session_data, "url")
         return HostedCheckoutResult(session_id=session_id, checkout_url=checkout_url)
 
     def verify_event(self, raw_body: bytes, signature: str, tolerance_seconds: int) -> ProviderEvent:
@@ -73,36 +96,50 @@ class StripeTestPaymentProvider:
             )
         except (ValueError, stripe.SignatureVerificationError) as error:
             raise PaymentSignatureError("invalid webhook signature") from error
-        return _provider_event(cast(Mapping[str, Any], event))
+        try:
+            event_data = _stripe_mapping(event)
+        except PaymentProviderError as error:
+            raise PaymentSignatureError("invalid webhook event shape") from error
+        provider_event = _provider_event(event_data)
+        if provider_event.livemode != self.livemode:
+            raise PaymentSignatureError("webhook event mode does not match the configured payment mode")
+        return provider_event
 
     async def retrieve_checkout(self, session_id: str) -> CanonicalCheckout:
         try:
             session = await self._run(
-                lambda: stripe.checkout.Session.retrieve(
+                lambda: self.client.v1.checkout.sessions.retrieve(
                     session_id,
-                    api_key=self.secret_key,
-                    expand=[
-                        "line_items.data.price",
-                        "payment_intent.latest_charge.refunds",
-                    ],
+                    {
+                        "expand": [
+                            "line_items.data.price",
+                            "payment_intent.latest_charge.refunds",
+                        ]
+                    },
                 )
             )
         except (TimeoutError, stripe.StripeError) as error:
             raise PaymentProviderError("Stripe checkout retrieval failed") from error
-        return _canonical_checkout(cast(Mapping[str, Any], session))
+        session_data = _stripe_mapping(session)
+        self._require_object_mode(session_data, "checkout retrieval")
+        return _canonical_checkout(session_data)
 
     async def resolve_internal_order_id(self, event: ProviderEvent) -> str | None:
+        if event.livemode != self.livemode:
+            raise PaymentProviderError("Stripe event mode does not match the configured payment mode")
         if event.internal_order_id is not None:
             return event.internal_order_id
         if event.payment_intent_id is None:
             return None
         try:
             payment_intent = await self._run(
-                lambda: stripe.PaymentIntent.retrieve(event.payment_intent_id, api_key=self.secret_key)
+                lambda: self.client.v1.payment_intents.retrieve(event.payment_intent_id)
             )
         except (TimeoutError, stripe.StripeError) as error:
             raise PaymentProviderError("Stripe PaymentIntent retrieval failed") from error
-        metadata = payment_intent.get("metadata")
+        payment_intent_data = _stripe_mapping(payment_intent)
+        self._require_object_mode(payment_intent_data, "PaymentIntent retrieval")
+        metadata = payment_intent_data.get("metadata")
         if not isinstance(metadata, Mapping) or not metadata.get("order_id"):
             return None
         return str(metadata["order_id"])
@@ -112,6 +149,15 @@ class StripeTestPaymentProvider:
             return await asyncio.wait_for(asyncio.to_thread(operation), timeout=self.timeout_seconds)
         except TimeoutError as error:
             raise PaymentProviderError("Stripe request timed out") from error
+
+    def _require_object_mode(self, value: Mapping[str, Any], operation: str) -> None:
+        livemode = value.get("livemode")
+        if type(livemode) is not bool or livemode != self.livemode:
+            raise PaymentProviderError(f"Stripe {operation} returned an object from the wrong mode")
+
+
+# Keep imports stable while composition migrates to the explicit mode-aware constructor.
+StripeTestPaymentProvider = StripePaymentProvider
 
 
 class FixturePaymentProvider:
@@ -128,6 +174,7 @@ class FixturePaymentProvider:
         if len(signing_secret) < 32:
             raise ValueError("fixture signing secret must contain at least 32 bytes")
         self.app_env = app_env
+        self.payment_mode = PaymentMode.FIXTURE
         self.signing_secret = signing_secret
         self.checkouts: dict[str, CanonicalCheckout] = {}
 
@@ -173,7 +220,10 @@ class FixturePaymentProvider:
             raise PaymentSignatureError("invalid webhook payload") from error
         if not isinstance(payload, dict):
             raise PaymentSignatureError("invalid webhook payload")
-        return _provider_event(payload)
+        event = _provider_event(payload)
+        if event.livemode:
+            raise PaymentSignatureError("webhook event mode does not match the configured payment mode")
+        return event
 
     async def retrieve_checkout(self, session_id: str) -> CanonicalCheckout:
         try:
@@ -254,7 +304,8 @@ def _canonical_checkout(session: Mapping[str, Any]) -> CanonicalCheckout:
     price = item.get("price")
     price_id = _reference_id(price)
     metadata = session.get("metadata")
-    if not isinstance(metadata, Mapping) or price_id is None:
+    livemode = session.get("livemode")
+    if not isinstance(metadata, Mapping) or price_id is None or type(livemode) is not bool:
         raise PaymentProviderError("canonical checkout is incomplete")
     try:
         payment_intent = session.get("payment_intent")
@@ -276,7 +327,7 @@ def _canonical_checkout(session: Mapping[str, Any]) -> CanonicalCheckout:
         return CanonicalCheckout(
             session_id=str(session["id"]),
             payment_intent_id=_reference_id(session.get("payment_intent")),
-            livemode=cast(bool, session["livemode"]),
+            livemode=livemode,
             mode=str(session["mode"]),
             status=str(session["status"]),
             payment_status=str(session["payment_status"]),
@@ -305,3 +356,13 @@ def _required_string(value: Mapping[str, Any], key: str) -> str:
     if not isinstance(result, str) or not result:
         raise PaymentProviderError("Stripe response is incomplete")
     return result
+
+
+def _stripe_mapping(value: object) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, stripe.StripeObject):
+        result = value.to_dict()
+        if isinstance(result, Mapping):
+            return result
+    raise PaymentProviderError("Stripe response has an invalid shape")

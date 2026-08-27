@@ -12,6 +12,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
+    BitcoinConfirmationObservation,
     Order,
     ProofBundle,
     ProofVerification,
@@ -21,6 +22,7 @@ from app.db.models import (
 from app.db.models import (
     OutboxMessage as OutboxRecord,
 )
+from app.db.notification_adapters import SqlBitcoinConfirmationObservations, SqlNotificationOutbox
 from app.db.repositories import SqlJobClaimStore
 from app.domain.digest import ManifestDigest
 from app.domain.identifiers import CertificateReference, OrderReference
@@ -123,6 +125,23 @@ class SqlProofStore:
                 ProofVerification.proof_version == proof.version,
             )
         )
+        observation = (
+            session.scalar(
+                select(BitcoinConfirmationObservation)
+                .where(
+                    BitcoinConfirmationObservation.order_id == order.id,
+                    BitcoinConfirmationObservation.proof_version == proof.version,
+                )
+                .order_by(
+                    BitcoinConfirmationObservation.observed_at.desc(),
+                    BitcoinConfirmationObservation.created_at.desc(),
+                    BitcoinConfirmationObservation.id.desc(),
+                )
+                .limit(1)
+            )
+            if verification is not None
+            else None
+        )
         project_verification = order.fulfillment_state in {
             FulfillmentState.BITCOIN_VERIFIED.value,
             FulfillmentState.DELIVERED.value,
@@ -131,6 +150,7 @@ class SqlProofStore:
             proof,
             order.order_reference,
             verification,
+            confirmation_count=observation.observed_confirmations if observation is not None else None,
             project_verification=project_verification,
         )
 
@@ -290,20 +310,40 @@ class SqlVerificationRepository:
                 )
             )
             if existing is not None:
-                if _verification(existing) != result:
+                if not _stored_verification_matches(existing, result):
                     raise ValueError("verification_conflict")
                 return
             _insert_verification(session, order_uuid, proof_version, result)
 
     async def get_verified(self, order_id: str, proof_version: int) -> BitcoinVerification | None:
         with self.session_factory() as session:
+            order_uuid = _uuid(order_id)
             value = session.scalar(
                 select(ProofVerification).where(
-                    ProofVerification.order_id == _uuid(order_id),
+                    ProofVerification.order_id == order_uuid,
                     ProofVerification.proof_version == proof_version,
                 )
             )
-            return _verification(value) if value is not None else None
+            if value is None:
+                return None
+            observation = session.scalar(
+                select(BitcoinConfirmationObservation)
+                .where(
+                    BitcoinConfirmationObservation.order_id == order_uuid,
+                    BitcoinConfirmationObservation.proof_version == proof_version,
+                )
+                .order_by(
+                    BitcoinConfirmationObservation.observed_at.desc(),
+                    BitcoinConfirmationObservation.created_at.desc(),
+                    BitcoinConfirmationObservation.id.desc(),
+                )
+                .limit(1)
+            )
+            if observation is None:
+                raise ValueError("verification_confirmation_observation_missing")
+            if not _observation_matches_verification(observation, value):
+                raise ValueError("verification_confirmation_observation_mismatch")
+            return _verification(value, observation.observed_confirmations)
 
 
 class SqlBundleRepository:
@@ -444,7 +484,8 @@ class SqlFulfillmentAdapters:
     proofs: SqlProofStore
     verifications: SqlVerificationRepository
     bundles: SqlBundleRepository
-    outbox: SqlOutbox
+    observations: SqlBitcoinConfirmationObservations
+    outbox: SqlNotificationOutbox
     jobs: SqlJobClaimStore
 
 
@@ -454,7 +495,8 @@ def create_sql_fulfillment_adapters(session_factory: sessionmaker[Session]) -> S
         proofs=SqlProofStore(session_factory),
         verifications=SqlVerificationRepository(session_factory),
         bundles=SqlBundleRepository(session_factory),
-        outbox=SqlOutbox(session_factory),
+        observations=SqlBitcoinConfirmationObservations(session_factory),
+        outbox=SqlNotificationOutbox(session_factory),
         jobs=SqlJobClaimStore(session_factory),
     )
 
@@ -475,9 +517,14 @@ def _stored_proof(
     order_reference: str,
     separate_verification: ProofVerification | None,
     *,
+    confirmation_count: int | None = None,
     project_verification: bool = True,
 ) -> StoredProof:
-    verification = _verification(separate_verification) if separate_verification and project_verification else None
+    verification = (
+        _verification(separate_verification, confirmation_count)
+        if separate_verification and confirmation_count is not None and project_verification
+        else None
+    )
     if project_verification and verification is None and value.verification_metadata is not None:
         verification = _verification_from_payload(value.verification_metadata)
     state = ProofState.BITCOIN_VERIFIED if verification is not None else ProofState.CALENDAR_PENDING
@@ -556,7 +603,7 @@ def _insert_verification(
     )
 
 
-def _verification(value: ProofVerification) -> BitcoinVerification:
+def _verification(value: ProofVerification, confirmations: int) -> BitcoinVerification:
     return BitcoinVerification(
         verified=True,
         method=value.method,
@@ -565,6 +612,7 @@ def _verification(value: ProofVerification) -> BitcoinVerification:
         block_hash=value.block_hash,
         block_time=_aware(value.block_time),
         confirmation_policy=value.confirmation_policy,
+        confirmations=confirmations,
     )
 
 
@@ -578,6 +626,7 @@ def _verification_payload(value: BitcoinVerification) -> dict[str, object]:
             "block_hash": value.block_hash,
             "block_time": value.block_time.isoformat(),
             "confirmation_policy": value.confirmation_policy,
+            "confirmations": value.confirmations,
         },
         "verification_method": value.method,
         "verified_at": value.verified_at.isoformat(),
@@ -597,6 +646,7 @@ def _verification_from_payload(value: dict[str, object]) -> BitcoinVerification:
             block_hash=str(bitcoin["block_hash"]),
             block_time=datetime.fromisoformat(str(bitcoin["block_time"]).replace("Z", "+00:00")),
             confirmation_policy=str(bitcoin["confirmation_policy"]),
+            confirmations=int(bitcoin["confirmations"]),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError("stored_verification_metadata_invalid") from error
@@ -619,6 +669,30 @@ def _validate_verified(value: BitcoinVerification) -> None:
         raise ValueError("verification_block_hash_invalid") from error
     if not 1 <= len(value.method) <= 128 or not value.confirmation_policy or len(value.confirmation_policy) > 128:
         raise ValueError("verification_method_or_policy_invalid")
+    if value.confirmations is None or value.confirmations < 1:
+        raise ValueError("verification_confirmation_count_invalid")
+
+
+def _stored_verification_matches(stored: ProofVerification, result: BitcoinVerification) -> bool:
+    return bool(
+        stored.method == result.method
+        and stored.block_height == result.block_height
+        and stored.block_hash == result.block_hash
+        and _aware(stored.block_time) == _aware(result.block_time)  # type: ignore[arg-type]
+        and stored.confirmation_policy == result.confirmation_policy
+    )
+
+
+def _observation_matches_verification(
+    observation: BitcoinConfirmationObservation,
+    verification: ProofVerification,
+) -> bool:
+    return bool(
+        observation.block_height == verification.block_height
+        and observation.block_hash == verification.block_hash
+        and observation.method == verification.method
+        and observation.confirmation_policy == verification.confirmation_policy
+    )
 
 
 def _uuid(value: str) -> uuid.UUID:

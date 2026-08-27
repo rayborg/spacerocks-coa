@@ -9,10 +9,17 @@ from typing import Annotated, Never, cast
 from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 
 from app.api.schemas import CheckoutRequest, CheckoutResponse, OrderStatusResponse, RotateTokenResponse
 from app.db.fulfillment_adapters import ProofMetadata, SqlProofStore
-from app.db.models import Order, OutboxMessage, ProofBundle
+from app.db.models import (
+    BitcoinConfirmationObservation,
+    Order,
+    OutboxMessage,
+    ProofBundle,
+    ResendWebhookEvent,
+)
 from app.db.repositories import OrderStore
 from app.domain.digest import ManifestDigest
 from app.domain.identifiers import CertificateReference, OrderReference
@@ -141,10 +148,10 @@ async def order_status(
                         select(OutboxMessage).where(
                             OutboxMessage.order_id == order.id,
                             OutboxMessage.message_key
-                            == f"timestamp-complete-v{proof.version}-{order.order_reference}",
+                            == f"bitcoin-confirmed-initial-v{proof.version}-{order.order_reference}",
                         )
                     )
-                    if not proof_available or not _valid_delivery_sender(sender):
+                    if not proof_available or not _valid_delivery_sender(session, sender, order.id, proof.version):
                         raise HTTPException(status_code=503, detail="status unavailable")
         message = _message_code(order.fulfillment_state)
         return OrderStatusResponse(
@@ -335,13 +342,39 @@ def _valid_bundle(record: ProofBundle) -> bool:
     )
 
 
-def _valid_delivery_sender(record: OutboxMessage | None) -> bool:
-    return (
-        record is not None
-        and record.kind == "timestamp-complete"
-        and record.state == "delivered"
-        and record.provider_message_id is not None
-        and record.delivered_at is not None
+def _valid_delivery_sender(
+    session: Session,
+    record: OutboxMessage | None,
+    order_id: object,
+    proof_version: int,
+) -> bool:
+    if (
+        record is None
+        or record.kind != "bitcoin-confirmed-initial"
+        or record.state != "delivered"
+        or record.order_id != order_id
+        or record.proof_version != proof_version
+        or record.confirmation_count is None
+        or record.confirmation_count < 1
+        or record.confirmation_observation_id is None
+        or record.provider_message_id is None
+        or record.accepted_at is None
+        or record.delivered_at is None
+    ):
+        return False
+    observation = session.get(BitcoinConfirmationObservation, record.confirmation_observation_id)
+    delivered_event = session.scalar(
+        select(ResendWebhookEvent).where(
+            ResendWebhookEvent.provider_message_id == record.provider_message_id,
+            ResendWebhookEvent.event_type == "email.delivered",
+        )
+    )
+    return bool(
+        observation is not None
+        and observation.order_id == order_id
+        and observation.proof_version == proof_version
+        and observation.observed_confirmations == record.confirmation_count
+        and delivered_event is not None
     )
 
 

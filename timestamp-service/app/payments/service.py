@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -13,11 +14,14 @@ from app.config.settings import PaymentMode, Settings
 from app.db.models import DurableJob, IdempotencyRequest, Order, StripeEvent
 from app.db.repositories import OrderStore, enqueue_fulfillment_once, enqueue_outbox_once, record_stripe_event
 from app.domain.order import FulfillmentState, PaymentState
-from app.payments.gateway import PaymentProvider, PaymentProviderError
+from app.payments.gateway import PaymentProvider, PaymentProviderError, PaymentSignatureError
 from app.payments.models import CanonicalCheckout, HostedCheckoutRequest, HostedCheckoutResult, ProviderEvent
 from app.security.idempotency import IdempotencyBinding
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_STRIPE_SESSION_ID_PATTERN = re.compile(r"cs_(test|live)_[A-Za-z0-9]{1,500}")
+_STRIPE_FRAGMENT_PATTERN = re.compile(r"fid[A-Za-z0-9._~-]{16,1536}")
+_UNSAFE_URL_PATTERN = re.compile(r"[\\\x00-\x20\x7f]")
 
 
 class CheckoutUnavailable(RuntimeError):
@@ -91,11 +95,18 @@ class CheckoutService:
     ) -> CheckoutOutput:
         if self.settings.payment_mode == PaymentMode.DISABLED:
             raise CheckoutUnavailable("checkout is disabled")
+        if (
+            request.terms_version != self.settings.expected_terms_version
+            or request.privacy_version != self.settings.expected_privacy_version
+        ):
+            raise ValueError("checkout policy version mismatch")
+        if self.provider.payment_mode != self.settings.payment_mode:
+            raise CheckoutUnavailable("payment provider mode does not match checkout mode")
         reserved = self._reserve(request, binding, now, random_bytes)
         if isinstance(reserved, CheckoutOutput):
             return reserved
         result = await self._call_provider(reserved)
-        _validate_checkout_url(result.checkout_url)
+        _validate_checkout_url(result.checkout_url, result.session_id, self.settings.payment_mode)
         return self._finalize(reserved, binding, result, datetime.now(UTC))
 
     def _reserve(
@@ -223,6 +234,8 @@ class CheckoutService:
             order = session.scalar(select(Order).where(Order.id == reservation.order_id).with_for_update())
             if order is None:
                 raise IdempotencyConflict("idempotent order is unavailable")
+            if order.payment_mode != self.settings.payment_mode.value:
+                raise IdempotencyConflict("reserved order payment mode does not match checkout mode")
             if order.checkout_session_id not in {None, result.session_id}:
                 raise IdempotencyConflict("provider session conflicts with reserved order")
             order.checkout_session_id = result.session_id
@@ -248,6 +261,15 @@ class CheckoutService:
         binding: IdempotencyBinding,
         now: datetime,
     ) -> CheckoutPlan | CheckoutOutput:
+        from sqlalchemy.orm import Session
+
+        if not isinstance(session, Session):
+            raise TypeError("invalid database session")
+        order = session.get(Order, reservation.order_id)
+        if order is None:
+            raise IdempotencyConflict("reserved order is unavailable")
+        if order.payment_mode != self.settings.payment_mode.value:
+            raise IdempotencyConflict("reserved order payment mode does not match checkout mode")
         lease_expires_at = reservation.checkout_lease_expires_at
         if lease_expires_at is not None and _aware(lease_expires_at) > _aware(now):
             raise CheckoutInProgress("checkout credential is in its grace period")
@@ -304,13 +326,18 @@ class CheckoutService:
             raise IdempotencyConflict("idempotent request is still incomplete")
         order_reference = str(existing.response_body["order_reference"])
         order = session.scalar(select(Order).where(Order.order_reference == order_reference).with_for_update())
-        if order is None:
+        if order is None or order.checkout_session_id is None:
             raise IdempotencyConflict("idempotent order is unavailable")
+        checkout_url = str(existing.response_body["checkout_url"])
+        try:
+            _validate_checkout_url(checkout_url, order.checkout_session_id, self.settings.payment_mode)
+        except PaymentProviderError as error:
+            raise IdempotencyConflict("idempotent checkout URL is invalid") from error
         raw_token = self.store.issue_token(session, order, now, revoke_existing=True)
         return CheckoutOutput(
             order_reference=order.order_reference,
             status_token=raw_token,
-            checkout_url=str(existing.response_body["checkout_url"]),
+            checkout_url=checkout_url,
             payment_state=str(existing.response_body["payment_state"]),
             fulfillment_state=str(existing.response_body["fulfillment_state"]),
         )
@@ -323,7 +350,12 @@ class WebhookService:
         self.provider = provider
 
     async def process(self, raw_body: bytes, signature: str, now: datetime) -> WebhookResult:
+        if self.provider.payment_mode != self.settings.payment_mode:
+            raise PaymentProviderError("payment provider mode does not match webhook mode")
         event = self.provider.verify_event(raw_body, signature, self.settings.stripe_signature_tolerance_seconds)
+        expected_livemode = self.settings.payment_mode == PaymentMode.STRIPE_LIVE
+        if event.livemode != expected_livemode:
+            raise PaymentSignatureError("webhook event mode does not match the configured payment mode")
         payload_hash = hashlib.sha256(raw_body).digest()
         with self.store.session_factory() as duplicate_session:
             duplicate = duplicate_session.scalar(
@@ -424,10 +456,11 @@ class WebhookService:
 
     def _valid_binding(self, order: Order, event: ProviderEvent, canonical: CanonicalCheckout) -> bool:
         expected_price = self.settings.stripe_price_id or "fixture_price"
+        expected_livemode = self.settings.payment_mode == PaymentMode.STRIPE_LIVE
         base_valid = all(
             (
-                not event.livemode,
-                not canonical.livemode,
+                event.livemode == expected_livemode,
+                canonical.livemode == expected_livemode,
                 canonical.mode == "payment",
                 canonical.metadata == {"order_id": str(order.id)},
                 canonical.session_id == order.checkout_session_id,
@@ -439,7 +472,8 @@ class WebhookService:
                 canonical.currency == order.currency,
                 canonical.quantity == 1,
                 order.payment_mode == self.settings.payment_mode.value,
-                self.settings.payment_mode in {PaymentMode.FIXTURE, PaymentMode.STRIPE_TEST},
+                self.settings.payment_mode
+                in {PaymentMode.FIXTURE, PaymentMode.STRIPE_TEST, PaymentMode.STRIPE_LIVE},
             )
         )
         if not base_valid:
@@ -510,15 +544,35 @@ class WebhookService:
         )
 
 
-def _validate_checkout_url(value: str) -> None:
-    parsed = urlsplit(value)
+def _validate_checkout_url(value: str, session_id: str, payment_mode: PaymentMode) -> None:
+    session_match = _STRIPE_SESSION_ID_PATTERN.fullmatch(session_id)
+    if payment_mode == PaymentMode.STRIPE_LIVE:
+        expected_session_mode = "live"
+    elif payment_mode in {PaymentMode.FIXTURE, PaymentMode.STRIPE_TEST}:
+        expected_session_mode = "test"
+    else:
+        raise PaymentProviderError("provider returned an unsafe checkout URL")
+    try:
+        parsed = urlsplit(value)
+    except ValueError as error:
+        raise PaymentProviderError("provider returned an unsafe checkout URL") from error
+    # Stripe's API contract does not require browser-state fragments, so the exact
+    # session path is also valid without one. When present, only bounded fid data is accepted.
+    fragment_valid = "#" not in value or _STRIPE_FRAGMENT_PATTERN.fullmatch(parsed.fragment) is not None
     if (
-        parsed.scheme != "https"
-        or parsed.hostname != "checkout.stripe.com"
+        len(value) > 2048
+        or value.strip() != value
+        or _UNSAFE_URL_PATTERN.search(value) is not None
+        or not value.startswith("https://checkout.stripe.com/")
+        or session_match is None
+        or session_match.group(1) != expected_session_mode
+        or parsed.scheme != "https"
+        or parsed.netloc != "checkout.stripe.com"
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.port not in {None, 443}
-        or parsed.fragment
+        or parsed.path != f"/c/pay/{session_id}"
+        or parsed.query
+        or not fragment_valid
     ):
         raise PaymentProviderError("provider returned an unsafe checkout URL")
 

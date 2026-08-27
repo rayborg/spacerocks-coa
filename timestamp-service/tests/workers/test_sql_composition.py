@@ -4,6 +4,7 @@ import io
 import json
 import uuid
 import zipfile
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -19,7 +20,14 @@ from app.bitcoin.fixture import FixtureBitcoinVerifier
 from app.config.settings import Settings
 from app.db.base import Base
 from app.db.fulfillment_adapters import create_sql_fulfillment_adapters
-from app.db.models import DurableJob, Order, ProofBundle, ProofVerification, ProofVersion
+from app.db.models import (
+    BitcoinConfirmationObservation,
+    DurableJob,
+    Order,
+    ProofBundle,
+    ProofVerification,
+    ProofVersion,
+)
 from app.db.models import OutboxMessage as OutboxRecord
 from app.db.session import create_session_factory
 from app.domain.digest import ManifestDigest
@@ -59,6 +67,26 @@ class Random:
     def uniform(self, lower: float, upper: float) -> float:
         assert (lower, upper) == (0.0, 1.0)
         return 0.5
+
+
+class SequenceBitcoinVerifier:
+    def __init__(self, confirmations: list[int]) -> None:
+        self.confirmations = confirmations
+        self.fixture = FixtureBitcoinVerifier()
+        self.calls = 0
+
+    async def verify_exact_digest(self, digest, proof_bytes):
+        result = await self.fixture.verify_exact_digest(digest, proof_bytes)
+        if not result.verified:
+            return result
+        confirmations = self.confirmations[min(self.calls, len(self.confirmations) - 1)]
+        self.calls += 1
+        assert result.verified_at is not None
+        return replace(
+            result,
+            confirmations=confirmations,
+            verified_at=result.verified_at + timedelta(minutes=self.calls),
+        )
 
 
 @pytest.fixture
@@ -137,18 +165,22 @@ async def test_sql_worker_chain_is_durable_exact_and_schema_valid(sql_runtime) -
     factory, settings = sql_runtime
     order_id = _seed_order(factory)
     timestamper = FixtureTimestamper(confirm_on_upgrade=True)
+    clock = MutableClock()
     worker = build_worker(
         settings,
         factory,
         worker_id="worker-sql-chain",
-        clock=Clock(),
+        clock=clock,
         random=Random(),
         timestamper=timestamper,
-        bitcoin=FixtureBitcoinVerifier(),
+        bitcoin=SequenceBitcoinVerifier([1, 6]),
     )
 
     assert await worker.run_once()
     assert await worker.run_once()
+    assert await worker.run_once()
+    assert not await worker.run_once()
+    clock.advance(timedelta(minutes=15))
     assert await worker.run_once()
     assert not await worker.run_once()
 
@@ -178,10 +210,21 @@ async def test_sql_worker_chain_is_durable_exact_and_schema_valid(sql_runtime) -
         assert len(proof_rows) == 2
         assert all(row.calendar_submitted_at == proof_rows[0].calendar_submitted_at for row in proof_rows)
         assert session.scalar(select(func.count()).select_from(ProofVerification)) == 1
+        assert session.scalar(select(func.count()).select_from(BitcoinConfirmationObservation)) == 2
         assert session.scalar(select(func.count()).select_from(ProofBundle)) == 1
-        assert session.scalar(select(func.count()).select_from(OutboxRecord)) == 1
+        outbox_rows = session.scalars(select(OutboxRecord)).all()
+        assert {row.kind for row in outbox_rows} == {
+            "bitcoin-confirmed-initial",
+            "bitcoin-confirmed-final",
+        }
+        assert {row.confirmation_count for row in outbox_rows} == {1, 6}
         jobs = session.scalars(select(DurableJob).order_by(DurableJob.created_at, DurableJob.job_key)).all()
-        assert {job.kind for job in jobs} == {"stamp_manifest_digest", "upgrade_timestamp", "deliver_timestamp"}
+        assert {job.kind for job in jobs} == {
+            "stamp_manifest_digest",
+            "upgrade_timestamp",
+            "deliver_timestamp",
+            "monitor_bitcoin_confirmations",
+        }
         assert all(job.state == JobState.COMPLETE.value for job in jobs)
 
     operator = SqlOperatorCommands(settings, factory, adapters)

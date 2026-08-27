@@ -1,10 +1,34 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const apiConfigured = Boolean(process.env.VITE_TIMESTAMP_API_URL);
+const serviceMode = process.env.VITE_TIMESTAMP_SERVICE_MODE ?? "sandbox";
+
+function validProductionUrl(value: string | undefined): boolean {
+  if (!value || value.trim() !== value || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+const productionConfigured = apiConfigured
+  && serviceMode === "production"
+  && /^(?!phase0)[A-Za-z0-9._-]{1,32}$/i.test(process.env.VITE_TIMESTAMP_POLICY_VERSION ?? "")
+  && validProductionUrl(process.env.VITE_TIMESTAMP_TERMS_URL)
+  && validProductionUrl(process.env.VITE_TIMESTAMP_PRIVACY_URL)
+  && validProductionUrl(process.env.VITE_TIMESTAMP_REFUND_URL)
+  && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(process.env.VITE_TIMESTAMP_SUPPORT_EMAIL ?? "")
+  && (process.env.VITE_TIMESTAMP_SUPPORT_EMAIL?.length ?? 0) <= 254;
+const sandboxConfigured = apiConfigured && serviceMode === "sandbox";
+const timestampFeatureConfigured = sandboxConfigured || productionConfigured;
 const digest = "cf0a31b01661599b8f73cd2dd2830f859e36a00c8ca22b259b33a7ec32c067cc";
 const token = "v1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const replacementToken = "v1.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const orderReference = "ts_01K1E2Q3R4S5T6V7W8X9Y0Z1AB";
+const checkoutSessionId = "cs_test_a1SafeSession9";
+const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}#fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8`;
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -84,7 +108,7 @@ async function issueLocalRelease(page: Page): Promise<void> {
 }
 
 test("omits the paid feature and makes zero timestamp requests without API configuration", async ({ page }) => {
-  test.skip(apiConfigured, "This assertion requires VITE_TIMESTAMP_API_URL to be absent at server start.");
+  test.skip(timestampFeatureConfigured, "This assertion requires the timestamp frontend configuration to be absent or rejected at server start.");
   let timestampRequests = 0;
   await page.route("**/v1/**", async (route) => {
     timestampRequests += 1;
@@ -99,7 +123,7 @@ test("omits the paid feature and makes zero timestamp requests without API confi
 });
 
 test.describe("configured sandbox timestamp service", () => {
-  test.skip(!apiConfigured, "Run with VITE_TIMESTAMP_API_URL=http://127.0.0.1:4400/api at server start.");
+  test.skip(!sandboxConfigured, "Run with a timestamp API URL and sandbox mode at server start.");
 
   test("reveals only explicit recovery, keeps the token private, rotates, resumes, and downloads safely", async ({ page }) => {
     const consoleMessages: string[] = [];
@@ -152,7 +176,7 @@ test.describe("configured sandbox timestamp service", () => {
     await page.getByRole("button", { name: "Recover in this tab" }).click();
     await expect(page.getByText("Calendar proof pending")).toBeVisible();
     await expect(page.getByText(/not yet Bitcoin-confirmed/)).toBeVisible();
-    await expect(page.getByText("Bitcoin attestation verified")).toHaveCount(0);
+    await expect(page.getByText("Initial Bitcoin confirmation verified")).toHaveCount(0);
     expect(new URL(page.url()).search).toBe("");
     expect(page.url()).not.toContain(token);
 
@@ -171,8 +195,11 @@ test.describe("configured sandbox timestamp service", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toBeVisible();
     await expect(page.getByLabel("Recovery code")).toHaveValue(replacementToken);
-    await expect(page.getByText("Bitcoin attestation verified")).toBeVisible();
-    await expect(page.getByText(/service reports that the exact submitted manifest digest/)).toBeVisible();
+    await expect(page.getByText("Initial Bitcoin confirmation verified")).toBeVisible();
+    const verifiedStatus = page.locator(".timestamp-status");
+    await expect(verifiedStatus).toContainText(/at least one Bitcoin confirmation/);
+    await expect(verifiedStatus).toContainText(/subject to reorganization monitoring/);
+    await expect(verifiedStatus).toContainText(/final confirmation email.*stable evidence of at least six confirmations/);
     await page.setViewportSize({ width: 320, height: 844 });
     const dimensions = await page.evaluate(() => ({ page: document.documentElement.scrollWidth, viewport: window.innerWidth }));
     expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
@@ -226,7 +253,7 @@ test.describe("configured sandbox timestamp service", () => {
             status_token: token,
             checkout_url: hostileAttempt === 3
               ? "https://checkout.stripe.com.evil.test/c/pay/lookalike"
-              : "https://checkout.stripe.com/c/pay/test_session",
+              : checkoutUrl,
             payment_state: "checkout_open",
             fulfillment_state: "awaiting_payment",
             ...(hostileAttempt === 4 ? { unexpected_customer_data: "must be rejected" } : {}),
@@ -280,7 +307,7 @@ test.describe("configured sandbox timestamp service", () => {
         body: JSON.stringify({
           order_reference: orderReference,
           status_token: token,
-          checkout_url: "https://checkout.stripe.com/c/pay/test_session",
+          checkout_url: checkoutUrl,
           payment_state: "checkout_open",
           fulfillment_state: "awaiting_payment",
         }),
@@ -289,7 +316,7 @@ test.describe("configured sandbox timestamp service", () => {
     await page.getByRole("button", { name: "Create server-priced test checkout" }).click();
     const stripeLink = page.getByRole("link", { name: "Continue to Stripe sandbox" });
     await expect(page.getByText("Recovery saved?")).toBeVisible();
-    await expect(stripeLink).toHaveAttribute("href", "https://checkout.stripe.com/c/pay/test_session");
+    await expect(stripeLink).toHaveAttribute("href", checkoutUrl);
     await expect(stripeLink).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(checkoutRequest?.url).not.toContain(token);
     expect(checkoutRequest?.headers["idempotency-key"]).toMatch(/^[A-Za-z0-9_-]{22,86}$/);
@@ -308,7 +335,7 @@ test.describe("configured sandbox timestamp service", () => {
 
     const apiBase = new URL(`${process.env.VITE_TIMESTAMP_API_URL!.replace(/\/+$/, "")}/`).href;
     const savedBeforeReload = JSON.parse((await page.evaluate(() => sessionStorage.getItem("spacerocks.timestamp.phase0")))!);
-    expect(savedBeforeReload).toMatchObject({ apiBase, checkoutUrl: "https://checkout.stripe.com/c/pay/test_session" });
+    expect(savedBeforeReload).toMatchObject({ apiBase, checkoutUrl });
     expect(savedBeforeReload).not.toHaveProperty("apiOrigin");
 
     let paymentProcessing = false;
@@ -344,7 +371,7 @@ test.describe("configured sandbox timestamp service", () => {
       if (route.request().headers().authorization) authenticatedRequests += 1;
       await route.abort();
     });
-    await page.addInitScript(({ storedToken, storedDigest, storedOrder }) => {
+    await page.addInitScript(({ storedToken, storedDigest, storedOrder, checkoutUrl }) => {
       if (sessionStorage.getItem("timestamp-test-initialized")) return;
       sessionStorage.setItem("timestamp-test-initialized", "true");
       sessionStorage.setItem("spacerocks.timestamp.phase0", JSON.stringify({
@@ -354,15 +381,15 @@ test.describe("configured sandbox timestamp service", () => {
         manifestSha256: storedDigest,
         apiBase: "http://127.0.0.1:4400/other-api/",
         apiVersion: "phase0-2026-07-30",
-        checkoutUrl: "https://checkout.stripe.com/c/pay/test_session",
+        checkoutUrl,
       }));
-    }, { storedToken: token, storedDigest: digest, storedOrder: orderReference });
+    }, { storedToken: token, storedDigest: digest, storedOrder: orderReference, checkoutUrl });
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toHaveCount(0);
     await page.waitForTimeout(300);
     expect(authenticatedRequests).toBe(0);
 
-    await page.evaluate(({ storedToken, storedDigest, storedOrder }) => {
+    await page.evaluate(({ storedToken, storedDigest, storedOrder, hostileCheckoutUrl }) => {
       sessionStorage.setItem("spacerocks.timestamp.phase0", JSON.stringify({
         token: storedToken,
         orderRef: storedOrder,
@@ -370,9 +397,14 @@ test.describe("configured sandbox timestamp service", () => {
         manifestSha256: storedDigest,
         apiBase: "http://127.0.0.1:4400/api/",
         apiVersion: "phase0-2026-07-30",
-        checkoutUrl: "https://checkout.stripe.com.evil.test/c/pay/test_session",
+        checkoutUrl: hostileCheckoutUrl,
       }));
-    }, { storedToken: token, storedDigest: digest, storedOrder: orderReference });
+    }, {
+      storedToken: token,
+      storedDigest: digest,
+      storedOrder: orderReference,
+      hostileCheckoutUrl: `https://checkout.stripe.com.evil.test/c/pay/${checkoutSessionId}#fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8`,
+    });
     await page.reload();
     await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toHaveCount(0);
     expect(authenticatedRequests).toBe(0);
@@ -406,7 +438,7 @@ test.describe("configured sandbox timestamp service", () => {
     await page.getByRole("button", { name: "Recover a timestamp order" }).click();
     await page.getByLabel("Private recovery code").fill(token);
     await page.getByRole("button", { name: "Recover in this tab" }).click();
-    await expect(page.getByText("Bitcoin attestation verified")).toBeVisible();
+    await expect(page.getByText("Initial Bitcoin confirmation verified")).toBeVisible();
     await expect(page.getByText(/downloadable proof bundle is still being prepared/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Download proof bundle" })).toBeDisabled();
     await expect(page.getByText(/Bitcoin verification metadata is current/)).toBeVisible();
@@ -418,7 +450,7 @@ test.describe("configured sandbox timestamp service", () => {
     responseMode = "stale_stamping";
     await page.getByRole("button", { name: "Refresh status" }).click();
     await expect(page.getByText(/state without a downloadable bundle/)).toBeVisible();
-    await expect(page.getByText("Bitcoin attestation verified")).toHaveCount(0);
+    await expect(page.getByText("Initial Bitcoin confirmation verified")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Download proof bundle" })).toBeDisabled();
     expect(await page.evaluate(() => sessionStorage.getItem("spacerocks.timestamp.phase0"))).not.toBeNull();
 
@@ -426,7 +458,7 @@ test.describe("configured sandbox timestamp service", () => {
     await page.getByRole("button", { name: "Refresh status" }).click();
     await expect(page.getByText("Manual review")).toBeVisible();
     await expect(page.getByText("Service verification time:")).toHaveCount(0);
-    await expect(page.getByText("Bitcoin attestation verified")).toHaveCount(0);
+    await expect(page.getByText("Initial Bitcoin confirmation verified")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Download proof bundle" })).toBeDisabled();
 
     responseMode = "revoked";
@@ -453,5 +485,43 @@ test.describe("configured sandbox timestamp service", () => {
     await page.getByRole("button", { name: "Recover in this tab" }).click();
     await expect(page.getByText(/invalid, expired, or revoked/)).toBeVisible();
     expect(await page.evaluate(() => sessionStorage.getItem("spacerocks.timestamp.phase0"))).toBeNull();
+  });
+});
+
+test.describe("configured production timestamp service", () => {
+  test.skip(!productionConfigured, "Run with a complete production timestamp frontend configuration at server start.");
+
+  test("renders production policy links and precise two-stage confirmation copy", async ({ page }) => {
+    await page.route("**/v1/orders/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: privateHeaders,
+        body: JSON.stringify({
+          ...pendingStatus,
+          fulfillment_state: "bitcoin_verified",
+          bitcoin_verified_at: "2026-08-27T15:10:00Z",
+        }),
+      });
+    });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Recover a timestamp order" }).click();
+    const panel = page.locator("#timestamp-service");
+    await expect(panel.getByText("Live paid service")).toBeVisible();
+    await expect(panel).not.toContainText(/sandbox|future fee|phase 0|\btest\b/i);
+    await expect(panel.getByRole("link", { name: "Terms" })).toHaveAttribute("href", process.env.VITE_TIMESTAMP_TERMS_URL!);
+    await expect(panel.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", process.env.VITE_TIMESTAMP_PRIVACY_URL!);
+    await expect(panel.getByRole("link", { name: "Refund Policy" })).toHaveAttribute("href", process.env.VITE_TIMESTAMP_REFUND_URL!);
+    await expect(panel.getByRole("link", { name: process.env.VITE_TIMESTAMP_SUPPORT_EMAIL! })).toHaveAttribute(
+      "href",
+      `mailto:${process.env.VITE_TIMESTAMP_SUPPORT_EMAIL!}`,
+    );
+    await page.getByLabel("Private recovery code").fill(token);
+    await page.getByRole("button", { name: "Recover in this tab" }).click();
+    await expect(page.getByText("Initial Bitcoin confirmation verified")).toBeVisible();
+    const verifiedStatus = page.locator(".timestamp-status");
+    await expect(verifiedStatus).toContainText(/at least one Bitcoin confirmation/);
+    await expect(verifiedStatus).toContainText(/subject to reorganization monitoring/);
+    await expect(verifiedStatus).toContainText(/final confirmation email.*stable evidence of at least six confirmations/);
+    await expect(panel).not.toContainText(/current confirmation count|irreversible finality/i);
   });
 });

@@ -11,7 +11,6 @@ import {
   loadTimestampSession,
   pollOrderStatus,
   saveTimestampSession,
-  TIMESTAMP_POLICY_VERSION,
   validateStatusToken,
   type CheckoutAttempt,
   type OrderStatus,
@@ -44,9 +43,9 @@ function statusCopy(status: OrderStatus): { label: string; detail: string; tone:
   if (status.paymentState === "disputed") return { label: "Order disputed", detail: "The commercial order is under review. This does not by itself change existing timestamp evidence.", tone: "warning" };
   if (status.fulfillmentState === "bitcoin_verified" || status.fulfillmentState === "delivered") {
     if (!status.proofAvailable) {
-      return { label: "Bitcoin attestation verified", detail: "The service reports verified Bitcoin metadata for the exact submitted manifest digest. The separate downloadable proof bundle is still being prepared and is not yet available.", tone: "confirmed" };
+      return { label: "Initial Bitcoin confirmation verified", detail: "The service verified at least one Bitcoin confirmation for the exact submitted manifest digest. This initial result remains subject to reorganization monitoring. A separate final confirmation email is sent only after stable evidence of at least six confirmations. The downloadable proof bundle is still being prepared.", tone: "confirmed" };
     }
-    return { label: "Bitcoin attestation verified", detail: "The service reports that the exact submitted manifest digest is included in a verified Bitcoin-attested OpenTimestamps proof.", tone: "confirmed" };
+    return { label: "Initial Bitcoin confirmation verified", detail: "The service verified at least one Bitcoin confirmation for the exact submitted manifest digest in the Bitcoin-attested OpenTimestamps proof. This initial result remains subject to reorganization monitoring. A separate final confirmation email is sent only after stable evidence of at least six confirmations.", tone: "confirmed" };
   }
   if (status.fulfillmentState === "calendar_pending") {
     return { label: "Calendar proof pending", detail: "Submitted to one or more public OpenTimestamps calendars. It is not yet Bitcoin-confirmed and may take hours or longer.", tone: "pending" };
@@ -96,6 +95,7 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
   const [visible, setVisible] = useState(document.visibilityState !== "hidden");
   const [refreshKey, setRefreshKey] = useState(0);
   const emailValid = isValidTimestampEmail(email);
+  const sandbox = config.mode === "sandbox";
 
   function acceptStatus(nextStatus: OrderStatus, activeSession: TimestampSession): void {
     assertSessionBinding(nextStatus, activeSession);
@@ -156,19 +156,20 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
     if (!release) return;
     setEmailTouched(true);
     if (!emailValid) {
-      setMessage("A valid delivery email is required before creating a test checkout.");
+      setMessage(`A valid delivery email is required before creating ${sandbox ? "a test" : "the"} checkout.`);
       return;
     }
     if (!consented) {
-      setMessage("Explicit consent is required before creating a test checkout.");
+      setMessage(`Explicit consent is required before creating ${sandbox ? "a test" : "the"} checkout.`);
       return;
     }
     setBusy(true);
-    setMessage("Creating a server-priced Stripe sandbox checkout...");
+    setMessage(sandbox ? "Creating a server-priced Stripe sandbox checkout..." : "Creating secure server-priced checkout...");
     const request = {
       certificateReference: release.certificateReference,
       manifestSha256: release.manifestSha256,
       email,
+      policyVersion: config.policyVersion,
     };
     try {
       const attempt = checkoutAttempt && checkoutAttemptMatches(checkoutAttempt, request)
@@ -331,13 +332,16 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
           <p className="eyebrow eyebrow--dark"><span>+</span> Optional supplemental service</p>
           <h2 id="timestamp-heading">Managed Bitcoin timestamp</h2>
         </div>
-        <strong className="timestamp-test-badge">Sandbox / test only</strong>
+        <strong className="timestamp-test-badge">{sandbox ? "Sandbox / test only" : "Live paid service"}</strong>
       </div>
 
       <div className="timestamp-explainer">
         <p><strong>Your signed COA is already complete.</strong> It remains independently verifiable without this service, Stripe, OpenTimestamps, Bitcoin, or this website.</p>
-        <p>Public OpenTimestamps calendars are free. A future fee would cover managed checkout, automation, monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls any price; no amount is editable here.</p>
+        {sandbox
+          ? <p>Public OpenTimestamps calendars are free. A future fee would cover managed checkout, automation, monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls any price; no amount is editable here.</p>
+          : <p>Public OpenTimestamps calendars are free. The service fee covers managed checkout, automation, confirmation monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls the price; no amount is editable here.</p>}
         <p>The separate proof anchors the exact submitted <code>manifest.json</code> SHA-256 digest through an aggregate commitment. It does not put the COA or photographs on Bitcoin, usually does not provide a unique transaction, and does not prove authenticity, ownership, identity, authorship, provenance truth, or an exact creation time.</p>
+        <p>Initial Bitcoin verification requires at least one confirmation and remains subject to reorganization monitoring. A separate final confirmation email is sent only after stable evidence of at least six confirmations.</p>
       </div>
 
       {session ? (
@@ -361,7 +365,7 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
             <div className="timestamp-checkout-ready">
               <strong>Recovery saved?</strong>
               <p>Continue only when you can recover this order. Stripe's return page is not proof of payment or Bitcoin confirmation.</p>
-              <a className="button button--gold" href={session.checkoutUrl} referrerPolicy="no-referrer">Continue to Stripe sandbox</a>
+              <a className="button button--gold" href={session.checkoutUrl} referrerPolicy="no-referrer">{sandbox ? "Continue to Stripe sandbox" : "Continue to secure checkout"}</a>
             </div>
           ) : null}
           {displayStatus ? (
@@ -422,9 +426,13 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
                 if (!event.target.checked) setCheckoutAttempt(undefined);
               }}
             />
-            <span>I explicitly consent to sandbox managed timestamp processing under terms and privacy policy version <strong>{TIMESTAMP_POLICY_VERSION}</strong>, including service retention of the email, certificate reference, manifest digest, payment/order records, and proof lifecycle data.</span>
+            {config.mode === "production" ? (
+              <span>I explicitly consent to managed timestamp processing under the <a href={config.termsUrl} referrerPolicy="no-referrer">Terms</a> and <a href={config.privacyUrl} referrerPolicy="no-referrer">Privacy Policy</a>, version <strong>{config.policyVersion}</strong>, including service retention of the email, certificate reference, manifest digest, payment/order records, and proof lifecycle data.</span>
+            ) : (
+              <span>I explicitly consent to sandbox managed timestamp processing under terms and privacy policy version <strong>{config.policyVersion}</strong>, including service retention of the email, certificate reference, manifest digest, payment/order records, and proof lifecycle data.</span>
+            )}
           </label>
-          <button type="button" className="button button--gold" disabled={busy || !consented || !emailValid} onClick={() => void createCheckout()}>{busy ? "Creating test checkout..." : "Create server-priced test checkout"}</button>
+          <button type="button" className="button button--gold" disabled={busy || !consented || !emailValid} onClick={() => void createCheckout()}>{busy ? (sandbox ? "Creating test checkout..." : "Creating checkout...") : (sandbox ? "Create server-priced test checkout" : "Create secure checkout")}</button>
         </div>
       ) : (
         <div className="timestamp-manual-recovery">
@@ -440,6 +448,9 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
 
       <p className="timestamp-live-message" aria-live="polite">{message}</p>
       <p className="timestamp-privacy-note"><strong>Local boundary:</strong> private signing keys, passphrases, images, the COA package, manifest contents, addresses, provenance, and the full form record stay in this browser. The optional request sends only the fields listed above after explicit consent.</p>
+      {config.mode === "production" ? (
+        <p className="timestamp-privacy-note">Service policies: <a href={config.termsUrl} referrerPolicy="no-referrer">Terms</a>, <a href={config.privacyUrl} referrerPolicy="no-referrer">Privacy</a>, and <a href={config.refundUrl} referrerPolicy="no-referrer">Refund Policy</a>. Support: <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a>.</p>
+      ) : null}
     </section>
   );
 }

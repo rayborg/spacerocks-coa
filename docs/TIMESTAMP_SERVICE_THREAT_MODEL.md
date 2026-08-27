@@ -2,85 +2,91 @@
 
 ## Scope and status
 
-This model covers the Phase 0 optional frontend, FastAPI service, Postgres data, durable worker/operator paths, Stripe test integration boundary, and OpenTimestamps proof lifecycle. Current execution is deterministic/local sandbox only. Public calendar parsing/fan-out exists, but no runtime-selectable transport exists: settings/composition cannot enable it and the default transport refuses operation pending pinned-public-IP TLS/SNI review. Production Bitcoin verification, email delivery, live payments, and deployment remain release blockers.
+This model covers the optional production-capable frontend mode, FastAPI API, Neon PostgreSQL target, timestamp and notification workers, Stripe Checkout/webhooks, hardened public-calendar transport, private Bitcoin Core verification, Resend sending/webhooks, proof lifecycle, and operator/deployment paths.
 
-The security objective is limited: preserve an immutable binding between a customer-supplied certificate reference, the SHA-256 of the exact final `manifest.json` bytes, payment authorization, and a separately downloadable OpenTimestamps proof. The service does not prove certificate truth, specimen authenticity, ownership, authorship, human identity, or that signature bytes existed by the Bitcoin block.
+The MVP scope is code-complete, but production is not publicly live and real customer payments are unavailable. A previously deployed Stripe-test sandbox recorded working checkout/refund canaries; those results have not been freshly verified. Code and recovered records do not prove current cloud state or authorize launch.
+
+The security objective is limited to preserving an immutable binding among a customer-supplied certificate reference, SHA-256 of the exact final `manifest.json` bytes, payment authorization, OpenTimestamps proof, Bitcoin evidence, and notification evidence. The service does not establish certificate truth, specimen authenticity, ownership, authorship, issuer identity, provenance, or that signature bytes existed by the Bitcoin block.
 
 ## Assets
 
-- exact 32-byte manifest digest and immutable certificate/order binding;
-- private bearer recovery tokens and token-hashing peppers;
+- exact 32-byte digest and immutable certificate/order binding;
+- bearer recovery tokens and token-hashing peppers;
 - fulfillment email, consent, policy versions, and payment/order evidence;
 - Stripe keys, webhook secrets, Price configuration, and canonical provider references;
-- Postgres credentials, rows, migrations, durable jobs, leases, and append-only audit evidence;
-- pending and upgraded `.ots` bytes, proof checksums, target binding, and Bitcoin verification metadata;
-- source, dependency locks, CI integrity, deployment identity, GitHub App scope, and operator access; and
-- availability and truthful distinction among payment, pending, verified, future delivered, refunded, disputed, and manual-review states.
+- Neon credentials, migrations, rows, jobs, leases, backups, and restore evidence;
+- pending/upgraded `.ots` bytes, checksums, bundles, Bitcoin verification and append-only confirmation observations;
+- Bitcoin Core RPC credentials and node integrity;
+- Resend API/webhook secrets, sender identity, notification attempts, provider IDs, and delivery/bounce/complaint evidence;
+- source/dependency/deployment identity, DNS/TLS, GitHub/provider access, and operator authority; and
+- truthful distinction among payment, pending, `bitcoin_verified`, email `delivered`, final six-confirmation notice, refund/dispute, and `manual_review`.
 
-Private COA signing keys, passphrases, photographs, full manifest contents, COA ZIPs, addresses, provenance data, and card credentials must stay outside this system.
+Private COA keys, passphrases, photographs, full manifest/ZIP, addresses, provenance fields, and card credentials must remain outside the system.
 
-## Trust boundaries and data flow
+## Trust boundaries
 
-1. Browser to static frontend: all `VITE_*` configuration and shipped code are public. Local COA generation is the primary boundary.
-2. Browser to API over HTTPS: checkout sends only certificate reference, manifest digest, email, and consent. Status token travels only in the `Authorization` header.
-3. Browser to Stripe-hosted Checkout: card data goes directly to Stripe. The browser return is non-authoritative.
-4. Stripe webhook to API: the raw body crosses an untrusted public boundary and requires signature, tolerance, mode, metadata, amount, currency, line-item, payment-state, and canonical object checks.
-5. API/worker/operator to Postgres: database state authorizes durable work and retains proof/payment evidence. Migrations and operator commands are privileged serialized paths.
-6. Worker to calendars and Bitcoin verification source: public transport and production verification are unavailable in Phase 0. Future calendar responses are non-transactional external input and remain untrusted until structural/exact-target checks and an approved confirmation/reorganization policy succeed.
-7. Outbox to email provider: only durable outbox records exist. A future sender creates a new PII/provider boundary requiring separate approval.
-8. CI/source to deployment: pull-request code is untrusted. CI has read-only repository permission, no service secrets, no deployment step, and uses synthetic/mocked providers.
+1. Browser/static frontend: shipped code and every `VITE_*` value are public. Production mode requires non-Phase-0 policies and reviewed HTTPS URLs.
+2. Browser/API: checkout sends only certificate reference, digest, email, and consent. Bearer tokens use `Authorization`, never URLs.
+3. Browser/Stripe Checkout: Stripe receives card data. Browser return is non-authoritative.
+4. Stripe/API webhook: raw public input requires signature/tolerance plus canonical mode, metadata, amount, currency, Price, line-item, and payment-state checks.
+5. API/workers/operators/Neon: database state authorizes durable work. Migrations, restore, and operator commands are privileged serialized paths.
+6. Timestamp worker/public calendars: DNS and calendar responses are hostile external input. Calendar acceptance is not transactional with local append and is irreversible.
+7. Timestamp worker/Bitcoin Core: RPC must be private and authenticated. Node sync, network, canonical block/header, Merkle-root, and tip consistency are checked.
+8. Notification worker/Resend API: recipient PII crosses a provider boundary. API acceptance is not delivery.
+9. Resend/API webhook: signed public events can change notification state and, for matching initial delivery evidence, fulfillment state.
+10. CI/source/deployment/DNS: pull-request code and supply chain are untrusted; deployment, cloud, secret, and DNS access are privileged owner-controlled paths.
 
 ## Threats and controls
 
-| Category | Threat | Implemented or required controls | Residual risk / gate |
+| Category | Threat | Implemented controls | Residual gate/risk |
 | --- | --- | --- | --- |
-| Spoofing | Attacker guesses or steals a status token | High-entropy bearer token, only hash stored, header-only transport, no URL/referrer/log use, rotation/revocation, rate limits, `no-store` | Bearer possession grants access; customer endpoint compromise and support mishandling remain risks |
-| Spoofing | Forged payment event authorizes work | Signed raw webhook, timestamp tolerance, canonical Stripe object retrieval, test/live mode and object checks | Stripe test end-to-end exercise is not complete; live mode is forbidden |
-| Spoofing | Forwarded address spoof bypasses limits | Trust `X-Forwarded-For` only from exact configured proxy IPs | Railway proxy topology must be verified; never trust wildcard networks |
-| Tampering | Digest hex is hashed as text or hashed twice | Strict lowercase SHA-256 format, decode once to 32 bytes, detached proof, exact-target validation, known fixture | Public client/library compatibility and production verifier remain untested |
-| Tampering | Order amount/digest changes after checkout | Server-controlled Price/amount/currency/quantity, immutable binding, database constraints/triggers, idempotency | Migration/restore drills and provider reconciliation remain required |
-| Tampering | Proof is corrupt, truncated, oversized, replaced, or mismatched | Shared 262,144-byte raw-proof cap, checksum/length, append-only versions, exact target validation, deterministic bundle and strict receipt states | Off-provider backup and independent production verification are absent |
-| Tampering | Historical valid proof is served after state/version changed | Latest-version metadata selection, current-state checks, post-build pending recheck, persisted verified bundle binding, manual-review suppression | Race and restore tests remain required; historical durability is not download authorization |
-| Tampering | Verified state is mistaken for immediate bundle readiness, or stamping leaks stale artifact metadata | Status matrix suppresses stamping proof/timestamps and derives verified `proof_available` from the matching persisted bundle | Bundle-job lag is expected; clients and alerts must treat verification and artifact readiness separately |
-| Repudiation | Customer/provider disputes consent, payment, or future delivery | Versioned consent, canonical provider references, unique event IDs, append-only transitions, job/outbox/proof evidence | No sender exists; retention, privacy, refund, dispute, delivery, and support policies are not approved |
-| Information disclosure | PII, token, or secret leaks through logs/errors | Allowlisted safe request paths, sanitized errors, no access log in service commands, token hashes, response minimization, security headers | Platform/proxy/provider logs need configuration and audit |
-| Information disclosure | Browser uploads local COA material | Explicit allowlisted request shape; frontend tests exact keys; API field/size validation | Malicious modified clients can send arbitrary traffic; server must continue rejecting unknown data and avoid body logging |
-| Information disclosure | Digest is treated as anonymous | Documentation classifies digest as potentially pseudonymous; minimize association and retention | Correlation with public records or leaked manifests remains possible |
-| Denial of service | Oversized bodies, request floods, expensive downloads | Body limits, endpoint-specific durable rate limits, bounded frontend polling, worker retries/leases, 262,144-byte raw-proof limit | Distributed attacks, storage exhaustion, provider outages, and budget exhaustion require edge controls/alerts |
-| Denial of service | Ordinary pending exhausts retries or stops being checked | Each pending result schedules a durable six-hour successor without consuming error attempts | Poll/retention/escalation maximums and successor-gap alerts remain live gates |
-| Denial of service | Checkout retries race provider processing or token issuance | Committed processing/grace lease, frozen provider idempotency key, HTTP `425` without token during lease | Client retry discipline and lease-age monitoring are required |
-| Repudiation | Calendar accepted a digest but worker crashed before local append | Same immutable digest is frozen and replay preserves an existing local proof | Calendar/local DB cannot transact; at-least-once same-digest resubmission is expected and may create repeated commitments |
-| Elevation of privilege | Fixture or live adapters enabled in wrong environment | Fixture requires `APP_ENV=test` plus loaded `pytest`; `stripe_live` rejected; public transport is absent; Stripe test needs explicit gate and test key prefix | Environment-variable control is privileged; deployment review and separation are mandatory |
-| Elevation of privilege | CI or deployment integration gains write access | `contents: read`, no CI secrets/deploy, checkout credentials not persisted; separate backend repo and least-privilege GitHub App required | Version-tagged third-party actions and dependency registries remain supply-chain trust |
-| Elevation of privilege | Operator replays or mutates wrong record | Opaque/UUID validation, exact confirmation phrase, state eligibility checks, serialized ownership | Commands are powerful; no full RBAC/audit wrapper is implemented |
-| Elevation of privilege | Operator forces manual-review or stale verified data back into service | Manual review suppresses proof/download; terminal replay validates then refuses without an audited state transition | Recovery transition is intentionally absent; live reverification history and reorg policy are not complete |
+| Spoofing | Stolen/guessed status token | High entropy, hash-only storage, header transport, rotation, rate limits, `no-store` | Bearer possession grants access; customer/support compromise remains possible |
+| Spoofing | Forged Stripe payment | Raw signature verification, tolerance, canonical retrieval, mode/object/amount/currency/Price/payment checks | Fresh sandbox/live canaries and live webhook setup are incomplete |
+| Spoofing | Forged Resend delivery | Svix-compatible raw-body HMAC, timestamp tolerance, bounded IDs/body, event dedupe, provider-message binding | Domain/webhook provider setup and live exercises are incomplete |
+| Spoofing | Forwarded IP bypass | Trust first forwarded address only from exact configured immediate proxy IP | Production proxy topology must be verified; no wildcard trust |
+| Tampering | Digest text is hashed or digest is double-hashed | Strict lowercase SHA-256, decode once to 32 bytes, detached proof, exact-target validation | Public pilot and independent operational review remain gated |
+| Tampering | Order/price/digest changes after checkout | Server Price/amount/currency/quantity, immutable DB binding, idempotency, constraints/triggers; isolated Neon migration/trigger tests passed | Production was empty, so customer-data restore and proof-binding comparison remain untested |
+| Tampering | Calendar SSRF/DNS rebinding/redirect | Operator HTTPS allowlist, 2+ independent hosts, resolve once, reject any non-global DNS result, pin vetted IP, hostname TLS/SNI, no redirects/proxy env, bounded fan-out/body | Independent review, chosen allowlist, DNS monitoring, and explicit pilot authorization required |
+| Tampering | Corrupt/wrong/oversized/stale proof | 262,144-byte cap, structural parsing, target/checksum/length checks, append-only versions, current-state/version/bundle checks | Restore and end-to-end pilot evidence required |
+| Tampering | Malicious or stale Bitcoin RPC evidence | Private auth, mainnet/sync checks, canonical hash/header serialization, header hash, Merkle root, confirmations, tip recheck | Node hardening, monitoring, and approved reorg policy required |
+| Tampering | Reorganization after verification | Append-only observations; lost/decreased/conflicting evidence raises terminal error and moves to `manual_review` | Recovery policy is intentionally not generic; owner-approved handling remains required |
+| Tampering | Email delivery falsely changes fulfillment | Initial notice bound to current proof/bundle, verification, latest observation `>=1`, Resend acceptance, and signed matching delivery event | Provider/DNS exercises and monitoring required |
+| Repudiation | Customer/provider disputes consent, payment, proof, or delivery | Versioned consent, canonical references, unique events, state/job/proof/observation/attempt/webhook evidence | Retention, refund/dispute, privacy, support, and legal policies incomplete |
+| Information disclosure | Logs expose PII/tokens/secrets/proofs | Safe paths/errors, no access log in command, hash-only tokens, minimal payload/templates, public frontend separation | Platform, proxy, Neon, Stripe, Resend, and node logs need audit |
+| Information disclosure | Frontend uploads local COA content | Exact allowlisted request shape and size/field validation | Modified clients remain hostile; body logging stays forbidden |
+| Information disclosure | Digest treated as anonymous | Digest documented as potentially pseudonymous | Correlation with public/leaked manifests remains possible |
+| Denial of service | Request/storage/provider exhaustion | Body/rate/proof limits, durable leases, bounded timeouts/fan-out/retries, edge-control requirement | Distributed abuse, provider outage, cost/storage exhaustion require alerts |
+| Denial of service | Ordinary pending exhausts retries | Six-hour successor scheduling separate from error retry budget | Maximum retention/escalation policy remains owner gate |
+| Denial of service | Confirmation/final notice stops | Fifteen-minute successor monitoring until `>=6`; durable outbox leases/retries | Gap, dead-letter, provider quota, and complaint monitoring required |
+| Elevation | Wrong environment enables fixture/provider mode | Fixture restricted to pytest/test; explicit test/live gates; production version checks; disabled defaults; mode-specific settings validation | Environment/secret control is privileged and needs deployment review |
+| Elevation | Public Bitcoin RPC or broad database access | Documented private topology and least privilege | Private networking and access checks are external launch gates |
+| Elevation | Operator forces unsafe recovery | State eligibility, UUID/confirmation phrases, manual-review recovery refusal | Operator RBAC/audit wrapper and reviewed recovery procedure remain needed |
+| Supply chain | CI/deployment gains broad access | Private reviewed source, immutable image, CI/review/least privilege required | Provenance, scanning, provider access, and rollback evidence incomplete |
 
-## Cryptographic and claim risks
+## Confirmation and delivery semantics
 
-- SHA-256 collision/preimage resistance and Ed25519 security are assumptions, not business-truth validation.
-- The target is `SHA-256(exact final UTF-8 bytes of manifest.json)` exactly once. Reformatting or line-ending changes produce a different target.
-- The signature is not itself timestamped. A later-valid signature does not establish that `signature.sig` existed by the referenced block.
-- OpenTimestamps normally aggregates many commitments. A customer generally has no unique Bitcoin transaction.
-- Calendar submission is at least once across the acceptance-before-local-append crash window. Repeated submission targets the same immutable digest and provides no exactly-once or unique-transaction guarantee.
-- A Bitcoin attestation gives an existence-before bound, not exact creation time.
-- Calendar acceptance, proof possession, payment, redirect, pending status, or a fixture result is not Bitcoin verification.
+- A pending proof, calendar acceptance, Stripe payment, browser redirect, fixture result, email acceptance, or email delivery is not Bitcoin confirmation.
+- `bitcoin_verified` requires exact-digest canonical Bitcoin evidence with `>=1` confirmation.
+- Bundle creation and initial notification are separate durable work after verification.
+- `delivered` means a signature-verified matching Resend `email.delivered` event for the initial notice backed by current proof/bundle and an observation at `>=1`. It does not mean six confirmations.
+- The final notice is generated at `>=6`; its delivery adds evidence but no stronger fulfillment state.
+- Lost confirmation, decreased count, or immutable evidence conflict fails closed to `manual_review`, which suppresses proof access.
 
-## Privacy risks
+## Privacy and irreversibility
 
-The minimum checkout data is certificate reference, digest, fulfillment email, and consent. Payment/order IDs, event history, proof lifecycle, outbox/future-delivery, refund, and dispute evidence are retained only under an approved policy. Data minimization can conflict with accounting, disputes, support, and immutable timestamp evidence. Deletion policy must distinguish removable PII from proof commitments that cannot be withdrawn from calendars or Bitcoin.
+Minimum checkout data is certificate reference, digest, fulfillment email, and consent. Notification templates expose only the opaque order reference and fixed text. Status tokens, digests, certificate data, and proof bytes must not be emailed.
 
-The status token must never be used as an order lookup value in support communications. Email introduces phishing and account-enumeration risks and remains unimplemented. Third-party analytics are forbidden on status/download views.
+Data minimization conflicts with accounting, disputes, support, append-only evidence, and irreversible calendar/Bitcoin commitments. Policies must distinguish removable PII from public commitments that cannot be recalled by refund, deletion, restore, token revocation, rollback, or account closure. Calendar acceptance-before-append may create repeated commitments of the same digest.
 
 ## Residual release blockers
 
-- pinned-public-IP TLS/SNI calendar transport implementation and independent review, runtime composition/settings gate, allowlist policy, and multi-calendar outage/resubmission behavior;
-- approved independent Bitcoin verification policy/source, confirmation criteria, reorganization handling, and typed append-only history for every repeated reverification;
-- Stripe sandbox provider exercise, webhook registration, reconciliation, and failure scenarios;
-- email provider selection, sender authentication, bounce/complaint handling, minimized templates, and an audited transition from `bitcoin_verified` to `delivered`; current code has no sender and never reaches `delivered`;
-- staging/production isolation, edge rate limiting, verified proxy topology, alerts, and incident exercises;
-- encrypted off-provider backup and successful clean restore/reverification drill;
-- dependency/action provenance review, vulnerability response, and image scanning policy;
-- account-owner approval of price, claims, terms, privacy, six-hour polling duration/escalation, retention/deletion, refund/dispute, support, tax, and legal duties; and
-- explicit authorization for each rollout phase. Live payment mode is not implemented.
+- ongoing Neon backup monitoring and a customer-data restore/reverification drill when production data exists; the empty-production isolated migration passed on 2026-08-27;
+- private deployment access, network, logging, proxy, backup, monitoring, incident, cost, and rollback checks;
+- independent hardened-calendar review, approved allowlist, explicit synthetic pilot authorization, and end-to-end pilot;
+- private synchronized Bitcoin Core provisioning, credential/network controls, confirmation/reorganization policy, and manual-review exercises;
+- Resend provider approval, sending-domain DNS, signed webhook, delivery/bounce/failure/complaint tests, reputation monitoring, and support process;
+- fresh Stripe-test canaries, live account/Price/restricted key/webhook, tax/accounting/legal decisions, refunds/disputes, and reconciliation;
+- production frontend/API DNS and TLS, exact origins/return URLs, policies, support, price, retention/deletion, and customer claims;
+- owner-controlled live canaries and explicit invite-only/public launch authorization.
 
-Review this model whenever a trust boundary, provider, data field, proof state, dependency, deployment platform, or customer claim changes.
+All corresponding modes must remain disabled until these external gates are evidenced and approved. Review this model whenever a provider, trust boundary, setting, data field, state, migration, deployment target, or customer claim changes.

@@ -33,4 +33,5 @@ class FixtureBitcoinVerifier:
             block_hash=self._block_hash,
             block_time=datetime(2026, 7, 30, 15, 0, tzinfo=UTC),
             confirmation_policy="phase0-fixture-exact-target",
+            confirmations=6,
         )
