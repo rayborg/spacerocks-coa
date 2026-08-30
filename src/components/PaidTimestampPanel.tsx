@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { downloadBlob } from "../lib/core";
 import {
   checkoutAttemptMatches,
@@ -20,6 +20,7 @@ import {
 
 interface PaidTimestampPanelProps {
   config: TimestampServiceConfig;
+  focusOnRelease?: boolean;
   release?: {
     certificateReference: string;
     manifestSha256: string;
@@ -43,9 +44,9 @@ function statusCopy(status: OrderStatus): { label: string; detail: string; tone:
   if (status.paymentState === "disputed") return { label: "Order disputed", detail: "The commercial order is under review. This does not by itself change existing timestamp evidence.", tone: "warning" };
   if (status.fulfillmentState === "bitcoin_verified" || status.fulfillmentState === "delivered") {
     if (!status.proofAvailable) {
-      return { label: "Initial Bitcoin confirmation verified", detail: "The service verified at least one Bitcoin confirmation for the exact submitted manifest digest. This initial result remains subject to reorganization monitoring. A separate final confirmation email is sent only after stable evidence of at least six confirmations. The downloadable proof bundle is still being prepared.", tone: "confirmed" };
+      return { label: "Initial Bitcoin confirmation verified", detail: "The service verified at least one Bitcoin confirmation for the exact submitted manifest digest. This initial result remains subject to reorganization monitoring. Use the private recovery code to return for later proof upgrades. The downloadable proof bundle is still being prepared.", tone: "confirmed" };
     }
-    return { label: "Initial Bitcoin confirmation verified", detail: "The service verified at least one Bitcoin confirmation for the exact submitted manifest digest in the Bitcoin-attested OpenTimestamps proof. This initial result remains subject to reorganization monitoring. A separate final confirmation email is sent only after stable evidence of at least six confirmations.", tone: "confirmed" };
+    return { label: "Initial Bitcoin confirmation verified", detail: "The service verified at least one Bitcoin confirmation for the exact submitted manifest digest in the Bitcoin-attested OpenTimestamps proof. This initial result remains subject to reorganization monitoring. Keep the private recovery code to check for later proof upgrades.", tone: "confirmed" };
   }
   if (status.fulfillmentState === "calendar_pending") {
     return { label: "Calendar proof pending", detail: "Submitted to one or more public OpenTimestamps calendars. It is not yet Bitcoin-confirmed and may take hours or longer.", tone: "pending" };
@@ -75,7 +76,8 @@ function assertSessionBinding(status: OrderStatus, session: TimestampSession): v
   }
 }
 
-export default function PaidTimestampPanel({ config, release }: PaidTimestampPanelProps) {
+export default function PaidTimestampPanel({ config, focusOnRelease = false, release }: PaidTimestampPanelProps) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [session, setSession] = useState<TimestampSession | undefined>(() => {
     try {
       return loadTimestampSession(config);
@@ -128,6 +130,17 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
+  useEffect(() => {
+    if (!focusOnRelease || !release) return;
+    const frame = requestAnimationFrame(() => {
+      const heading = headingRef.current;
+      if (!heading) return;
+      heading.focus({ preventScroll: true });
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      heading.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusOnRelease, release?.manifestSha256]);
 
   useEffect(() => {
     if (!session || !visible || (orderStatus && isPollingComplete(orderStatus))) return;
@@ -156,7 +169,7 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
     if (!release) return;
     setEmailTouched(true);
     if (!emailValid) {
-      setMessage(`A valid delivery email is required before creating ${sandbox ? "a test" : "the"} checkout.`);
+      setMessage(`A valid contact email is required before creating ${sandbox ? "a test" : "the"} checkout.`);
       return;
     }
     if (!consented) {
@@ -329,8 +342,8 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
     <section className="timestamp-section" id="timestamp-service" aria-labelledby="timestamp-heading">
       <div className="timestamp-section__heading">
         <div>
-          <p className="eyebrow eyebrow--dark"><span>+</span> Optional supplemental service</p>
-          <h2 id="timestamp-heading">Managed Bitcoin timestamp</h2>
+          <p className="eyebrow eyebrow--dark"><span>+</span> Option 2 · Blockchain enhancement</p>
+          <h2 id="timestamp-heading" ref={headingRef} tabIndex={-1}>Managed blockchain timestamp</h2>
         </div>
         <strong className="timestamp-test-badge">{sandbox ? "Sandbox / test only" : "Live paid service"}</strong>
       </div>
@@ -340,8 +353,8 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
         {sandbox
           ? <p>Public OpenTimestamps calendars are free. A future fee would cover managed checkout, automation, monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls any price; no amount is editable here.</p>
           : <p>Public OpenTimestamps calendars are free. The service fee covers managed checkout, automation, confirmation monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls the price; no amount is editable here.</p>}
-        <p>The separate proof anchors the exact submitted <code>manifest.json</code> SHA-256 digest through an aggregate commitment. It does not put the COA or photographs on Bitcoin, usually does not provide a unique transaction, and does not prove authenticity, ownership, identity, authorship, provenance truth, or an exact creation time.</p>
-        <p>Initial Bitcoin verification requires at least one confirmation and remains subject to reorganization monitoring. A separate final confirmation email is sent only after stable evidence of at least six confirmations.</p>
+        <p>The separate proof anchors the exact submitted <code>manifest.json</code> SHA-256 digest through OpenTimestamps to the Bitcoin blockchain. It does not put the COA or photographs on-chain, usually does not provide a unique transaction, and does not prove authenticity, ownership, identity, authorship, provenance truth, or an exact creation time.</p>
+        <p>Bitcoin is the specific blockchain used by this service. Initial verification requires at least one confirmation and remains subject to reorganization monitoring. Keep the private recovery code to return for proof upgrades and download.</p>
       </div>
 
       {session ? (
@@ -399,7 +412,7 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
             <code>{release.manifestSha256}</code>
           </div>
           <label className="timestamp-field" htmlFor="timestamp-email">
-            <span>Delivery email <strong>(required)</strong></span>
+            <span>Order contact email <strong>(required)</strong></span>
             <input
               id="timestamp-email"
               type="email"
@@ -414,8 +427,8 @@ export default function PaidTimestampPanel({ config, release }: PaidTimestampPan
               onBlur={() => setEmailTouched(true)}
               placeholder="customer@example.com"
             />
-            <small id="timestamp-email-help">Paid-service delivery contact. This is separate from the optional issuer email in the local COA. Only this email, the certificate reference, exact manifest digest, and consent record are sent.</small>
-            {emailTouched && !emailValid ? <span className="timestamp-field__error" id="timestamp-email-error" role="alert">Enter a valid delivery email of 254 characters or fewer.</span> : null}
+            <small id="timestamp-email-help">Payment and support contact. Automated confirmation email is not currently enabled, so keep the private recovery code shown before Stripe checkout. Only this email, the certificate reference, exact manifest digest, and consent record are sent.</small>
+            {emailTouched && !emailValid ? <span className="timestamp-field__error" id="timestamp-email-error" role="alert">Enter a valid contact email of 254 characters or fewer.</span> : null}
           </label>
           <label className="timestamp-consent">
             <input
