@@ -58,6 +58,7 @@ class Settings(BaseSettings):
 
     app_env: AppEnvironment = AppEnvironment.LOCAL
     payment_mode: PaymentMode = PaymentMode.DISABLED
+    checkout_enabled: bool = False
     bitcoin_verifier: BitcoinMode = BitcoinMode.DISABLED
     calendar_mode: CalendarMode = CalendarMode.DISABLED
     resend_sender_mode: ResendSenderMode = ResendSenderMode.DISABLED
@@ -166,6 +167,8 @@ class Settings(BaseSettings):
             )
             if any(version.casefold().startswith("phase0") for version in production_versions):
                 raise ValueError("production product and policy versions cannot use phase0 values")
+        if self.checkout_enabled and self.payment_mode == PaymentMode.DISABLED:
+            raise ValueError("checkout cannot be enabled while payments are disabled")
         for version, pepper in self.token_peppers.items():
             if version < 1 or len(pepper.get_secret_value().encode("utf-8")) < 32:
                 raise ValueError("token peppers require a positive version and at least 32 bytes")

@@ -22,6 +22,7 @@ services:
       - /tmp:rw,noexec,nosuid,size=32m
     environment:
       APP_ENV: local
+      CHECKOUT_ENABLED: "false"
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-timestamp_local}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-timestamp_local}
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-concurrency", "100", "--timeout-keep-alive", "5", "--no-access-log"]
     ports:

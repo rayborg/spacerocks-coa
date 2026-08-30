@@ -93,6 +93,8 @@ class CheckoutService:
         now: datetime,
         random_bytes: bytes,
     ) -> CheckoutOutput:
+        if not self.settings.checkout_enabled:
+            raise CheckoutUnavailable("checkout is disabled")
         if self.settings.payment_mode == PaymentMode.DISABLED:
             raise CheckoutUnavailable("checkout is disabled")
         if (

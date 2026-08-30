@@ -98,7 +98,7 @@ Calendar submission and PostgreSQL proof append cannot be one transaction. If a 
 
 Backend setting names are defined by `Settings`:
 
-- modes: `APP_ENV`, `PAYMENT_MODE`, `CALENDAR_MODE`, `BITCOIN_VERIFIER`, `RESEND_SENDER_MODE`, `RESEND_WEBHOOK_MODE`;
+- modes: `APP_ENV`, `PAYMENT_MODE`, `CHECKOUT_ENABLED`, `CALENDAR_MODE`, `BITCOIN_VERIFIER`, `RESEND_SENDER_MODE`, `RESEND_WEBHOOK_MODE`;
 - database/tokens: `DATABASE_URL`, `TOKEN_PEPPERS__N`, `ACTIVE_TOKEN_PEPPER_VERSION`, `TOKEN_TTL_SECONDS`;
 - Stripe: `STRIPE_TEST_ENABLED`, `STRIPE_LIVE_ENABLED`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `CHECKOUT_AMOUNT_MINOR`, `CHECKOUT_CURRENCY`, `PRODUCT_VERSION`, `EXPECTED_TERMS_VERSION`, `EXPECTED_PRIVACY_VERSION`, `CHECKOUT_SUCCESS_URL`, `CHECKOUT_CANCEL_URL`, `STRIPE_AUTOMATIC_TAX_ENABLED`, `STRIPE_SIGNATURE_TOLERANCE_SECONDS`, `STRIPE_API_TIMEOUT_SECONDS`, `CHECKOUT_CREDENTIAL_GRACE_SECONDS`;
 - calendars: `CALENDAR_ALLOWLIST`, `CALENDAR_TIMEOUT_SECONDS`;
@@ -114,7 +114,7 @@ Exact process factories:
 
 Optional opaque process IDs are `TIMESTAMP_WORKER_ID` and `NOTIFICATION_WORKER_ID`.
 
-`stripe_live` is implemented but fail-closed. It requires `APP_ENV=production`, `PAYMENT_MODE=stripe_live`, `STRIPE_LIVE_ENABLED=true`, `STRIPE_TEST_ENABLED=false`, matching live key/webhook/Price configuration, HTTPS allowlisted return origins, PostgreSQL, a strong active token pepper, and production product/terms/privacy versions that do not begin with `phase0`. `STRIPE_AUTOMATIC_TAX_ENABLED=true` is hard-rejected; the owner must resolve the tax configuration before launch.
+`stripe_live` is implemented but fail-closed. It requires `APP_ENV=production`, `PAYMENT_MODE=stripe_live`, `STRIPE_LIVE_ENABLED=true`, `STRIPE_TEST_ENABLED=false`, matching live key/webhook/Price configuration, HTTPS allowlisted return origins, PostgreSQL, a strong active token pepper, and production product/terms/privacy versions that do not begin with `phase0`. New sessions additionally require the independent, default-off `CHECKOUT_ENABLED=true` gate. `STRIPE_AUTOMATIC_TAX_ENABLED=true` is hard-rejected; the owner must resolve the tax configuration before launch.
 
 Frontend public variables are:
 

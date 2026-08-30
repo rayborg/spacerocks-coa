@@ -6,10 +6,10 @@ The free browser-generated, locally signed COA remains complete and independentl
 
 ## Safety boundary
 
-- Safe defaults are `PAYMENT_MODE=disabled`, `CALENDAR_MODE=disabled`, `BITCOIN_VERIFIER=disabled`, `RESEND_SENDER_MODE=disabled`, and `RESEND_WEBHOOK_MODE=disabled`.
-- `PAYMENT_MODE=stripe_live` is supported only when settings validate `APP_ENV=production`, `STRIPE_LIVE_ENABLED=true`, matching live credentials and Price, HTTPS return origins, and non-Phase-0 product and policy versions. That code gate is not owner launch approval.
+- Safe defaults are `PAYMENT_MODE=disabled`, `CHECKOUT_ENABLED=false`, `CALENDAR_MODE=disabled`, `BITCOIN_VERIFIER=disabled`, `RESEND_SENDER_MODE=disabled`, and `RESEND_WEBHOOK_MODE=disabled`.
+- `PAYMENT_MODE=stripe_live` is supported only when settings validate `APP_ENV=production`, `STRIPE_LIVE_ENABLED=true`, matching live credentials and Price, HTTPS return origins, and non-Phase-0 product and policy versions. New checkout remains unavailable until the independent `CHECKOUT_ENABLED=true` gate is also set. Neither code gate is owner launch approval.
 - Fixture payment, calendar, and Bitcoin adapters require `APP_ENV=test` and an active `pytest` process. They are test doubles, not a runnable local service mode.
-- Disabled payment mode exposes health routes but checkout is unavailable.
+- Disabled payment mode or `CHECKOUT_ENABLED=false` exposes health and existing-order routes but new checkout is unavailable. Stripe webhooks and paid-order fulfillment remain available when only the checkout gate is off.
 - `CALENDAR_MODE=public` composes `MultiCalendarTimestamper` with `HardenedCalendarTransport`. It requires staging/production and at least two allowlisted HTTPS calendar hosts; the transport rejects unsafe DNS snapshots, pins one vetted public IP per request, preserves hostname TLS/SNI, rejects redirects, and bounds fan-out and responses. Calendar pilot use still requires explicit owner authorization and independent security review.
 - `BITCOIN_VERIFIER=bitcoin_core` composes `BitcoinCoreRpcTransport` and `BitcoinCoreRpcVerifier` in staging/production. RPC must be private and authenticated; never expose it publicly.
 - `RESEND_SENDER_MODE=resend` enables the separate durable notification worker. `RESEND_WEBHOOK_MODE=resend` enables signed `POST /v1/webhooks/resend` handling.

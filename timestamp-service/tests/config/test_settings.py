@@ -17,6 +17,7 @@ from app.config.settings import (
 def test_defaults_are_inert_and_secret_free() -> None:
     settings = Settings(_env_file=None)
     assert settings.payment_mode == PaymentMode.DISABLED
+    assert settings.checkout_enabled is False
     assert settings.bitcoin_verifier == BitcoinMode.DISABLED
     assert settings.calendar_mode == CalendarMode.DISABLED
     assert settings.resend_sender_mode == ResendSenderMode.DISABLED
@@ -36,6 +37,7 @@ def test_app_env_uses_required_unprefixed_environment_name(monkeypatch: pytest.M
     "values",
     [
         {"payment_mode": "stripe_live"},
+        {"checkout_enabled": True},
         {"stripe_automatic_tax_enabled": True},
         {"payment_mode": "fixture", "app_env": "local"},
         {"bitcoin_verifier": "fixture", "app_env": "staging", "database_url": "postgresql://db/test"},
@@ -127,6 +129,7 @@ def test_explicit_stripe_live_public_calendar_and_bitcoin_core_configuration_is_
         expected_privacy_version="2026-08-v1",
     )
     assert settings.payment_mode == PaymentMode.STRIPE_LIVE
+    assert settings.checkout_enabled is False
     assert settings.calendar_mode == CalendarMode.PUBLIC
     assert settings.bitcoin_verifier == BitcoinMode.BITCOIN_CORE
 

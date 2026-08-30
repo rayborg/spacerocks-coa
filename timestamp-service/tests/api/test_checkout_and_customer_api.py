@@ -79,6 +79,54 @@ def test_checkout_matches_frozen_contract_and_persists_no_raw_token(app_factory:
         assert token.pepper_version == 1
 
 
+def test_checkout_gate_blocks_before_reservation_or_provider_call(app_factory: Any) -> None:
+    context: ServiceContext = app_factory(checkout_enabled=False)
+    provider_called = False
+
+    async def fail_if_called(_request: HostedCheckoutRequest, _idempotency_key: str) -> HostedCheckoutResult:
+        nonlocal provider_called
+        provider_called = True
+        raise AssertionError("disabled checkout must not call the payment provider")
+
+    context.provider.create_checkout = fail_if_called  # type: ignore[method-assign]
+    with TestClient(context.app) as client:
+        response = client.post(
+            "/v1/checkout",
+            json=checkout_payload(),
+            headers={"Idempotency-Key": idempotency_key()},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "checkout unavailable"}
+    assert provider_called is False
+    with context.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Order)) == 0
+        assert session.scalar(select(func.count()).select_from(IdempotencyRequest)) == 0
+
+
+def test_checkout_gate_blocks_idempotent_replay_without_rotating_token(app_factory: Any) -> None:
+    context: ServiceContext = app_factory()
+    with TestClient(context.app) as client:
+        create_checkout(client)
+        with context.session_factory() as session, session.begin():
+            reservation = session.scalar(select(IdempotencyRequest))
+            assert reservation is not None
+            reservation.checkout_lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        context.settings.checkout_enabled = False
+        response = client.post(
+            "/v1/checkout",
+            json=checkout_payload(),
+            headers={"Idempotency-Key": idempotency_key()},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "checkout unavailable"}
+    with context.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Order)) == 1
+        assert session.scalar(select(func.count()).select_from(IdempotencyRequest)) == 1
+        assert session.scalar(select(func.count()).select_from(OrderToken)) == 1
+
+
 def test_idempotent_replay_rotates_token_without_recreating_checkout(app_factory: Any) -> None:
     context: ServiceContext = app_factory()
     with TestClient(context.app) as client:

@@ -128,11 +128,12 @@ Before enabling sender/webhook modes, verify the approved sending domain and SPF
 
 To pause new checkout:
 
-1. Block checkout at the edge while retaining health and authenticated recovery endpoints.
-2. Deploy `PAYMENT_MODE=disabled` and remove Stripe settings, because disabled mode rejects Stripe configuration.
-3. Decide and record whether already-paid timestamp jobs, confirmation monitoring, and notification delivery continue.
-4. Reconcile every open, processing, paid, queued, leased, accepted, delivered, refund, and dispute record.
-5. Do not assume existing Stripe sessions were canceled; expire/reconcile them through an authorized environment-specific procedure.
+1. Deploy `CHECKOUT_ENABLED=false`; this rejects new sessions before reservation or provider calls while retaining health, authenticated recovery, Stripe webhooks, and paid-order fulfillment.
+2. Block checkout at the edge if application rollout is unavailable or immediate containment is required.
+3. Use `PAYMENT_MODE=disabled` and remove Stripe settings only when Stripe webhook processing and paid-order reconciliation are intentionally being stopped too.
+4. Decide and record whether already-paid timestamp jobs, confirmation monitoring, and notification delivery continue.
+5. Reconcile every open, processing, paid, queued, leased, accepted, delivered, refund, and dispute record.
+6. Do not assume existing Stripe sessions were canceled; expire/reconcile them through an authorized environment-specific procedure.
 
 Calendar commitments already accepted cannot be canceled. Stopping workers only prevents new external work.
 

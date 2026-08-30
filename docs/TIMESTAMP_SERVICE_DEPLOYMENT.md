@@ -20,6 +20,7 @@ Secrets belong in the approved secret manager, never Git, chat, screenshots, log
 | --- | --- |
 | `APP_ENV` | `local`, `test`, `staging`, or `production`; fixture modes require `test` |
 | `PAYMENT_MODE` | Default `disabled`; `stripe_test` requires test/staging plus its explicit gate; `stripe_live` requires production plus its explicit gate |
+| `CHECKOUT_ENABLED` | Independent default `false` gate for creating new checkout sessions; enable only after Stripe and fulfillment are ready |
 | `CALENDAR_MODE` | Default `disabled`; `public` requires staging/production and a valid allowlist |
 | `BITCOIN_VERIFIER` | Default `disabled`; `bitcoin_core` requires staging/production and complete RPC configuration |
 | `RESEND_SENDER_MODE` | Default `disabled`; `resend` requires database, API key, and sender |
@@ -124,9 +125,9 @@ Every provider or network-changing step requires the applicable owner approval. 
 12. Register environment-specific Stripe webhook `POST /v1/webhooks/stripe`, preserve the raw body, and configure a server-controlled Price. Resolve Stripe Tax/accounting policy; the application currently hard-rejects automatic tax.
 13. Freshly re-run Stripe-test checkout, decline/3DS where applicable, expiration, duplicate/out-of-order event, refund, dispute, and reconciliation canaries. Record that the prior recovered checkout/refund canaries were historical only.
 14. Configure production API/frontend DNS and TLS, exact `ALLOWED_ORIGINS`, Stripe return URLs, policy URLs, support email, proxy trust, and edge controls. Verify certificate renewal and HTTP-to-HTTPS behavior.
-15. With all policies and controls approved, prepare `APP_ENV=production`, `PAYMENT_MODE=stripe_live`, and `STRIPE_LIVE_ENABLED=true`; keep public access blocked until owner live-canary approval.
-16. Run owner-controlled low-value live checkout/refund and fulfillment canaries while monitoring API, timestamp worker, notification worker, Neon, calendars, Bitcoin Core, Stripe, and Resend. Reconcile every canary.
-17. Obtain explicit owner go/no-go. Open only invite-only access at first; production remains disabled or private after any incomplete/failed gate.
+15. With all policies and controls approved, prepare `APP_ENV=production`, `PAYMENT_MODE=stripe_live`, `STRIPE_LIVE_ENABLED=true`, and `CHECKOUT_ENABLED=false`; this permits webhook and fulfillment readiness without creating new checkout sessions.
+16. While public access remains blocked, temporarily set `CHECKOUT_ENABLED=true`, run owner-controlled low-value live checkout/refund and fulfillment canaries, then restore `CHECKOUT_ENABLED=false`. Monitor API, timestamp worker, notification worker, Neon, calendars, Bitcoin Core, Stripe, and Resend, and reconcile every canary.
+17. Obtain explicit owner go/no-go, set `CHECKOUT_ENABLED=true`, and open only invite-only access at first; set it back to `false` after any incomplete/failed gate.
 
 ## Webhooks and delivery semantics
 
