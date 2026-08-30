@@ -262,7 +262,6 @@ test("starts with blank content, provisional preview labels, and readable respon
           fontSize(".key-option .button"),
           fontSize(".generation-status"),
           fontSize(".issue-section > div:first-child > span"),
-          fontSize(".preview-column__head > small"),
           fontSize(".preview-checks span"),
           fontSize(".preview-note p"),
         ],

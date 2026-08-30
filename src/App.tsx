@@ -955,7 +955,7 @@ export default function App() {
             </div>
 
             <aside className="preview-column">
-              <div className="preview-column__head"><span>Live preview</span><small>12px minimum / scroll if needed</small></div>
+              <div className="preview-column__head"><span>Live preview</span></div>
               <div
                 className="certificate-preview-viewport"
                 tabIndex={0}

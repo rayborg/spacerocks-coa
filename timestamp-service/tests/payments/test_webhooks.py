@@ -16,9 +16,12 @@ from conftest import REPOSITORY_ROOT, ServiceContext
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.config.settings import PaymentMode
 from app.db.models import DurableJob, Order, ProofVersion, StateEvent, StripeEvent
-from app.payments.gateway import PaymentProviderError, PaymentSignatureError, StripeTestPaymentProvider
+from app.payments.gateway import PaymentProviderError, PaymentSignatureError, StripePaymentProvider
 from app.payments.models import CanonicalCheckout, HostedCheckoutRequest
+
+FID_FRAGMENT = "fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8"
 
 
 def checkout_payload() -> dict[str, Any]:
@@ -182,6 +185,14 @@ def test_wrong_canonical_payment_attributes_never_authorize(app_factory: Any, ch
 
 def test_live_event_never_authorizes_fixture_order(app_factory: Any) -> None:
     context: ServiceContext = app_factory()
+    retrievals = 0
+
+    async def retrieve(_session_id: str) -> CanonicalCheckout:
+        nonlocal retrievals
+        retrievals += 1
+        raise AssertionError("wrong-mode webhook must be rejected before canonical retrieval")
+
+    context.provider.retrieve_checkout = retrieve  # type: ignore[method-assign]
     with TestClient(context.app) as client:
         create_checkout(client)
         _canonical(context)
@@ -193,10 +204,12 @@ def test_live_event_never_authorizes_fixture_order(app_factory: Any) -> None:
         )
         response = _post_event(client, body, signature)
     assert response.status_code == 400
+    assert retrievals == 0
     with context.session_factory() as session:
         order = session.scalar(select(Order))
         assert order is not None and order.payment_state == "checkout_open"
         assert session.scalar(select(func.count()).select_from(DurableJob)) == 0
+        assert session.scalar(select(func.count()).select_from(StripeEvent)) == 0
 
 
 def test_invalid_stale_and_modified_signatures_fail_before_persistence(app_factory: Any) -> None:
@@ -399,10 +412,15 @@ def test_concurrent_duplicate_event_produces_one_event_and_job(app_factory: Any,
 
 def test_official_stripe_signature_verification_is_raw_body_bound() -> None:
     secret = "whsec_phase0_test_only"
-    provider = StripeTestPaymentProvider("sk_test_phase0", secret)
+    provider = StripePaymentProvider(
+        "rk_test_phase0",
+        secret,
+        payment_mode=PaymentMode.STRIPE_TEST,
+    )
     body = json.dumps(
         {
             "id": "evt_official_signature",
+            "object": "event",
             "type": "checkout.session.completed",
             "livemode": False,
             "data": {"object": {"id": "cs_test_1", "metadata": {"order_id": "opaque"}}},
@@ -426,12 +444,21 @@ async def test_stripe_sdk_operation_runs_off_event_loop_thread(monkeypatch: pyte
     event_loop_thread = threading.get_ident()
     sdk_threads: list[int] = []
 
-    def create(**_kwargs: object) -> dict[str, str]:
+    def create(_params: object, _options: object) -> dict[str, object]:
         sdk_threads.append(threading.get_ident())
-        return {"id": "cs_test_threaded", "url": "https://checkout.stripe.com/c/pay/threaded"}
+        return {
+            "id": "cs_test_threaded",
+            "url": f"https://checkout.stripe.com/c/pay/cs_test_threaded#{FID_FRAGMENT}",
+            "livemode": False,
+        }
 
-    monkeypatch.setattr("stripe.checkout.Session.create", create)
-    provider = StripeTestPaymentProvider("sk_test_phase0", "whsec_phase0", timeout_seconds=1)
+    provider = StripePaymentProvider(
+        "rk_test_phase0",
+        "whsec_phase0",
+        payment_mode=PaymentMode.STRIPE_TEST,
+        timeout_seconds=1,
+    )
+    monkeypatch.setattr(provider.client.v1.checkout.sessions, "create", create)
     result = await provider.create_checkout(
         HostedCheckoutRequest(
             internal_order_id="00000000-0000-0000-0000-000000000001",
@@ -451,12 +478,21 @@ async def test_stripe_sdk_operation_runs_off_event_loop_thread(monkeypatch: pyte
 
 @pytest.mark.asyncio
 async def test_stripe_sdk_timeout_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    def slow_create(**_kwargs: object) -> dict[str, str]:
+    def slow_create(_params: object, _options: object) -> dict[str, object]:
         time.sleep(0.05)
-        return {"id": "cs_test_late", "url": "https://checkout.stripe.com/c/pay/late"}
+        return {
+            "id": "cs_test_late",
+            "url": f"https://checkout.stripe.com/c/pay/cs_test_late#{FID_FRAGMENT}",
+            "livemode": False,
+        }
 
-    monkeypatch.setattr("stripe.checkout.Session.create", slow_create)
-    provider = StripeTestPaymentProvider("sk_test_phase0", "whsec_phase0", timeout_seconds=0.001)
+    provider = StripePaymentProvider(
+        "rk_test_phase0",
+        "whsec_phase0",
+        payment_mode=PaymentMode.STRIPE_TEST,
+        timeout_seconds=0.001,
+    )
+    monkeypatch.setattr(provider.client.v1.checkout.sessions, "create", slow_create)
     with pytest.raises(PaymentProviderError, match="timed out"):
         await provider.create_checkout(
             HostedCheckoutRequest(
@@ -479,8 +515,8 @@ async def test_stripe_canonical_checkout_expands_and_sums_succeeded_refunds(
 ) -> None:
     captured_expand: list[str] = []
 
-    def retrieve(_session_id: str, **kwargs: object) -> dict[str, object]:
-        expand = kwargs["expand"]
+    def retrieve(_session_id: str, params: dict[str, object]) -> dict[str, object]:
+        expand = params["expand"]
         assert isinstance(expand, list)
         captured_expand.extend(str(value) for value in expand)
         return {
@@ -502,8 +538,13 @@ async def test_stripe_canonical_checkout_expands_and_sums_succeeded_refunds(
             "line_items": {"data": [{"price": {"id": "price_test"}, "quantity": 1}]},
         }
 
-    monkeypatch.setattr("stripe.checkout.Session.retrieve", retrieve)
-    provider = StripeTestPaymentProvider("sk_test_phase0", "whsec_phase0", timeout_seconds=1)
+    provider = StripePaymentProvider(
+        "rk_test_phase0",
+        "whsec_phase0",
+        payment_mode=PaymentMode.STRIPE_TEST,
+        timeout_seconds=1,
+    )
+    monkeypatch.setattr(provider.client.v1.checkout.sessions, "retrieve", retrieve)
     canonical = await provider.retrieve_checkout("cs_test_refunded")
     assert canonical.refund_status == "succeeded"
     assert canonical.refunded_amount_total == canonical.amount_total == 500

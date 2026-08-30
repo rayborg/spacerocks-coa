@@ -11,9 +11,10 @@ from app.domain.digest import ManifestDigest
 from app.domain.identifiers import CertificateReference, OrderReference
 from app.domain.order import FulfillmentState, OrderSnapshot, OrderState, PaymentState
 from app.fulfillment.errors import ConfirmationPending, ManualReviewError, RetryableFulfillmentError
-from app.fulfillment.handlers import StampHandler, UpgradeHandler
+from app.fulfillment.handlers import ConfirmationHandler, StampHandler, UpgradeHandler
 from app.fulfillment.ports import FulfillmentOrder
-from app.ports.bitcoin import BitcoinVerification
+from app.ports.bitcoin import BitcoinEvidenceInvalid, BitcoinVerification, BitcoinVerifierUnavailable
+from app.ports.notifications import ConfirmationObservation
 from app.ports.proof import ProofState
 from app.proofs.store import InMemoryProofStore, make_stored_proof
 from app.timestamping.fixture import FixtureTimestamper
@@ -75,6 +76,49 @@ class FakeVerifications:
 
     async def get_verified(self, order_id: str, proof_version: int) -> BitcoinVerification | None:
         return self.values.get((order_id, proof_version))
+
+
+class FakeObservations:
+    def __init__(self) -> None:
+        self.values: dict[tuple[str, int], ConfirmationObservation] = {}
+
+    async def record_once(
+        self,
+        order_id: str,
+        proof_version: int,
+        event_key: str,
+        verification: BitcoinVerification,
+    ) -> ConfirmationObservation:
+        assert verification.confirmations is not None
+        assert verification.block_height is not None
+        assert verification.block_hash is not None
+        assert verification.confirmation_policy is not None
+        assert verification.verified_at is not None
+        value = ConfirmationObservation(
+            id=event_key,
+            order_id=order_id,
+            proof_version=proof_version,
+            confirmations=verification.confirmations,
+            block_height=verification.block_height,
+            block_hash=verification.block_hash,
+            method=verification.method,
+            confirmation_policy=verification.confirmation_policy,
+            observed_at=verification.verified_at,
+            event_key=event_key,
+        )
+        self.values[(order_id, proof_version)] = value
+        return value
+
+    async def latest(self, order_id: str, proof_version: int) -> ConfirmationObservation | None:
+        return self.values.get((order_id, proof_version))
+
+
+class FakeOutbox:
+    def __init__(self) -> None:
+        self.messages = []
+
+    async def enqueue(self, message) -> None:
+        self.messages.append(message)
 
 
 @pytest.mark.asyncio
@@ -152,7 +196,14 @@ async def test_pending_or_disabled_verification_cannot_transition_confirmed(monk
             verification=None,
         )
     )
-    handler = UpgradeHandler(orders, proofs, timestamper, DisabledVerifier(), FakeVerifications())
+    handler = UpgradeHandler(
+        orders,
+        proofs,
+        timestamper,
+        DisabledVerifier(),
+        FakeVerifications(),
+        FakeObservations(),
+    )
     with pytest.raises(ConfirmationPending, match="bitcoin_confirmation_pending"):
         await handler("order_opaque")
     assert orders.order.state.fulfillment == FulfillmentState.CALENDAR_PENDING
@@ -234,6 +285,7 @@ async def test_successful_reverification_appends_idempotent_state_evidence(
         timestamper,
         RecheckVerifier(later_verification),
         FakeVerifications(),
+        FakeObservations(),
     )
     await handler("order_opaque")
     await handler("order_opaque")
@@ -251,6 +303,107 @@ async def test_successful_reverification_appends_idempotent_state_evidence(
             timestamper,
             RecheckVerifier(altered),
             FakeVerifications(),
+            FakeObservations(),
         )
         with pytest.raises(ManualReviewError, match="bitcoin_reverification_metadata_conflict"):
             await hostile_handler("order_opaque")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("verifier_error", "expected_error", "safe_code"),
+    (
+        (BitcoinVerifierUnavailable("rpc_down"), RetryableFulfillmentError, "bitcoin_verifier_unavailable"),
+        (BitcoinEvidenceInvalid("wrong_merkle"), ManualReviewError, "bitcoin_evidence_invalid"),
+    ),
+)
+async def test_bitcoin_verifier_errors_are_classified_safely(
+    monkeypatch: pytest.MonkeyPatch,
+    verifier_error: Exception,
+    expected_error: type[Exception],
+    safe_code: str,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    state = _state(fulfillment=FulfillmentState.CALENDAR_PENDING)
+    submitted_at = datetime(2026, 7, 30, 12, 5, tzinfo=UTC)
+    orders = FakeOrders(state, submitted_at)
+    proofs = InMemoryProofStore()
+    timestamper = FixtureTimestamper()
+    pending = await timestamper.stamp_exact_digest(state.snapshot.manifest_digest)
+    await proofs.append(
+        make_stored_proof(
+            state.snapshot.order_reference,
+            1,
+            state.snapshot.manifest_digest,
+            pending.proof_bytes,
+            proof_state=ProofState.CALENDAR_PENDING,
+            calendar_submitted_at=submitted_at,
+            verification=None,
+        )
+    )
+
+    class FailingVerifier:
+        async def verify_exact_digest(self, digest: ManifestDigest, proof_bytes: bytes) -> BitcoinVerification:
+            del digest, proof_bytes
+            raise verifier_error
+
+    handler = UpgradeHandler(
+        orders,
+        proofs,
+        timestamper,
+        FailingVerifier(),
+        FakeVerifications(),
+        FakeObservations(),
+    )
+    with pytest.raises(expected_error, match=safe_code):
+        await handler("order_opaque")
+    assert orders.order.state.fulfillment == FulfillmentState.CALENDAR_PENDING
+
+
+@pytest.mark.asyncio
+async def test_confirmation_decrease_before_final_requires_manual_review_without_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    state = _state(fulfillment=FulfillmentState.BITCOIN_VERIFIED)
+    orders = FakeOrders(state, datetime(2026, 7, 30, 12, 5, tzinfo=UTC))
+    timestamper = FixtureTimestamper(confirm_on_upgrade=True)
+    pending = await timestamper.stamp_exact_digest(state.snapshot.manifest_digest)
+    proof_bytes = await timestamper.upgrade_exact_digest(state.snapshot.manifest_digest, pending.proof_bytes)
+    initial = await FixtureBitcoinVerifier().verify_exact_digest(state.snapshot.manifest_digest, proof_bytes)
+    proofs = InMemoryProofStore()
+    await proofs.append(
+        make_stored_proof(
+            state.snapshot.order_reference,
+            1,
+            state.snapshot.manifest_digest,
+            proof_bytes,
+            proof_state=ProofState.BITCOIN_VERIFIED,
+            calendar_submitted_at=pending.calendar_submitted_at,
+            verification=initial,
+        )
+    )
+    verifications = FakeVerifications()
+    await verifications.put_verified_once("order_opaque", 1, initial)
+    observations = FakeObservations()
+    await observations.record_once("order_opaque", 1, "initial-six", initial)
+    assert initial.verified_at is not None
+    decreased = replace(initial, confirmations=5, verified_at=initial.verified_at + timedelta(minutes=15))
+
+    class DecreasedVerifier:
+        async def verify_exact_digest(self, digest, supplied_proof):
+            del digest, supplied_proof
+            return decreased
+
+    outbox = FakeOutbox()
+    handler = ConfirmationHandler(
+        orders,
+        proofs,
+        DecreasedVerifier(),
+        verifications,
+        observations,
+        outbox,
+    )
+    with pytest.raises(ManualReviewError, match="confirmation_count_decreased"):
+        await handler("order_opaque")
+    assert not outbox.messages

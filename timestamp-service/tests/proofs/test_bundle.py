@@ -150,6 +150,7 @@ async def test_receipt_state_time_and_verification_are_exactly_proof_bound(monke
         block_hash="ab" * 32,
         block_time=datetime(2026, 7, 30, 15, 0, tzinfo=UTC),
         confirmation_policy="phase0-fixture-exact-target",
+        confirmations=1,
     )
     verified_proof = make_stored_proof(
         proof.order_reference,

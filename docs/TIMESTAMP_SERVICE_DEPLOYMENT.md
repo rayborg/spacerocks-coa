@@ -1,141 +1,148 @@
 # Timestamp Service Deployment Preparation
 
-## No-deploy status
+## Authority and current state
 
-This is a preparation guide, not deployment authorization. Phase 0 is sandbox-only. The application rejects `stripe_live`. Public calendar parsing/fan-out cannot be enabled through settings/composition, and its default transport intentionally refuses operation until pinned-public-IP TLS/SNI transport is implemented and independently reviewed. Production Bitcoin verification and email sending are absent. No Railway project, provider account, public endpoint, or live service should be created from these instructions until the account owner completes the applicable plan gates and explicitly authorizes the next phase.
+This is a preparation guide, not deployment authorization. The MVP code supports gated live operation, but production is not publicly live and real customer payments are unavailable. A Stripe-test sandbox checkout/refund exercise was recorded working previously; it has not been freshly verified and must not be represented as current health.
 
-## Repository and GitHub boundary
+Neon is the current PostgreSQL target. `timestamp-service/railway.toml` is optional deployment metadata only: it neither selects a database/provider nor proves that any Railway resource exists. Do not create or alter cloud resources, DNS, provider accounts, webhooks, secrets, payments, or calendar commitments without the account owner's explicit approval.
 
-Before granting Railway access:
+## Source and environment isolation
 
-1. Extract `timestamp-service` into a separate private backend repository and include reviewed contracts, tests, migrations, pinned dependency lock, Dockerfile, deployment metadata, and runbooks.
-2. Preserve history or record the exact reviewed source revision. Adjust contract test paths deliberately and rerun all CI after extraction.
-3. Protect the default branch, require pull-request review and CI, enable secret scanning/dependency alerts as available, require MFA, and restrict collaborators.
-4. Install Railway's GitHub App only on the backend repository. Do not grant organization-wide or combined frontend-repository access, and do not use a personal access token for routine deploys.
-5. Keep CI non-deploying with `contents: read`, no provider secrets, and no `pull_request_target` execution of untrusted code.
+Deploy only a reviewed immutable source revision from a private, protected backend boundary. Require CI, review, MFA, secret scanning, least-privilege deployment access, and separate staging/production identities. Keep databases, domains, Stripe objects and secrets, token peppers, Resend credentials/webhooks, logs, backups, budgets, workers, and frontend API URLs isolated. Never copy production customer data to staging.
 
-## Environment isolation
+All provider modes default to `disabled`. Staging must use synthetic records until privacy and retention policy allows otherwise.
 
-Use distinct Railway projects or strongly isolated environments for staging and any future production. They require separate Postgres databases, domains, Stripe objects/keys/webhook secrets, token peppers, logs, backups, budgets, operators, and frontend API URLs. Never clone production customer data into staging. Production must remain `PAYMENT_MODE=disabled` in Phase 0 because live mode is unsupported.
+## Backend variables
 
-Staging is not safe merely because Stripe is in test mode: its email, digest, tokens, and proof records are still sensitive. Use synthetic records until privacy, retention, and deletion policies are approved.
+Secrets belong in the approved secret manager, never Git, chat, screenshots, logs, command history, support tickets, or `VITE_*` values.
 
-## Required variables
+| Variable | Condition and source-enforced rule |
+| --- | --- |
+| `APP_ENV` | `local`, `test`, `staging`, or `production`; fixture modes require `test` |
+| `PAYMENT_MODE` | Default `disabled`; `stripe_test` requires test/staging plus its explicit gate; `stripe_live` requires production plus its explicit gate |
+| `CHECKOUT_ENABLED` | Independent default `false` gate for creating new checkout sessions; enable only after Stripe and fulfillment are ready |
+| `CALENDAR_MODE` | Default `disabled`; `public` requires staging/production and a valid allowlist |
+| `BITCOIN_VERIFIER` | Default `disabled`; `bitcoin_core` requires staging/production and complete RPC configuration |
+| `RESEND_SENDER_MODE` | Default `disabled`; `resend` requires database, API key, and sender |
+| `RESEND_WEBHOOK_MODE` | Default `disabled`; `resend` requires database and valid signing secret |
+| `DATABASE_URL` | Secret PostgreSQL URL; Neon is the current target and remote environments require PostgreSQL |
+| `ALLOWED_ORIGINS` | JSON list of exact origins; staging/production entries must be HTTPS; no wildcard/credentials/path/query/fragment |
+| `TOKEN_PEPPERS__N` | Secret, at least 32 bytes for each positive retained version |
+| `ACTIVE_TOKEN_PEPPER_VERSION` | Names a configured pepper; required when payments are enabled |
+| `TOKEN_TTL_SECONDS` | 300 through 7,776,000; default 2,592,000 |
+| `CHECKOUT_CREDENTIAL_GRACE_SECONDS` | 5 through 300; default 60 |
+| `STRIPE_TEST_ENABLED` | Explicit `true` gate for `stripe_test`; must be false in live mode |
+| `STRIPE_LIVE_ENABLED` | Explicit `true` gate for `stripe_live`; must be false in test mode |
+| `STRIPE_SECRET_KEY` | Matching `sk_test_`/`rk_test_` or `sk_live_`/`rk_live_` credential |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_` secret for the exact environment endpoint |
+| `STRIPE_PRICE_ID` | Server-controlled `price_` identifier |
+| `CHECKOUT_AMOUNT_MINOR` | Positive server-controlled amount; default 500 |
+| `CHECKOUT_CURRENCY` | Lowercase three-letter code; default `usd` |
+| `PRODUCT_VERSION` | Reviewed 1-64 character version; production cannot begin with `phase0` |
+| `EXPECTED_TERMS_VERSION` | Safe 1-32 character version; production cannot begin with `phase0` |
+| `EXPECTED_PRIVACY_VERSION` | Safe 1-32 character version; production cannot begin with `phase0` |
+| `CHECKOUT_SUCCESS_URL` | HTTPS and origin present in `ALLOWED_ORIGINS` |
+| `CHECKOUT_CANCEL_URL` | HTTPS and origin present in `ALLOWED_ORIGINS` |
+| `STRIPE_AUTOMATIC_TAX_ENABLED` | Must remain `false`; `true` is hard-rejected |
+| `STRIPE_SIGNATURE_TOLERANCE_SECONDS` | 60-600; default 300 |
+| `STRIPE_API_TIMEOUT_SECONDS` | 1-30; default 10 |
+| `CALENDAR_ALLOWLIST` | JSON list of 2-8 HTTPS URLs on at least two independent DNS hosts; only with public mode |
+| `CALENDAR_TIMEOUT_SECONDS` | 0.1-30; default 5 |
+| `BITCOIN_RPC_URL` | Private explicit HTTP(S) Bitcoin Core JSON-RPC URL without embedded credentials |
+| `BITCOIN_RPC_USERNAME` | Secret RPC username |
+| `BITCOIN_RPC_PASSWORD` | Secret RPC password |
+| `BITCOIN_RPC_TIMEOUT_SECONDS` | 0.1-30; default 5 |
+| `RESEND_API_KEY` | Secret `re_` key, sender mode only |
+| `RESEND_SENDER` | Reviewed sender address, sender mode only |
+| `RESEND_API_TIMEOUT_SECONDS` | 0.1-30; default 10 |
+| `RESEND_WEBHOOK_SECRET` | Secret `whsec_` Svix-compatible signing secret, webhook mode only |
+| `RESEND_WEBHOOK_TOLERANCE_SECONDS` | 1-900; default 300 |
+| `TRUSTED_PROXY_IPS` | JSON list of exact verified immediate proxy IPs; default empty |
+| `CHECKOUT_RATE_LIMIT` | Positive; default 10 |
+| `WEBHOOK_RATE_LIMIT` | Positive; default 120 |
+| `RESEND_WEBHOOK_RATE_LIMIT` | Positive; default 120 |
+| `STATUS_RATE_LIMIT` | Positive; default 60 |
+| `PROOF_RATE_LIMIT` | Positive; default 20 |
+| `ROTATION_RATE_LIMIT` | Positive; default 5 |
 
-All backend values belong in Railway Variables or an approved secret manager, never frontend `VITE_*` configuration. Secret values must be generated and entered directly by an authorized operator; do not transmit them through chat, Git, screenshots, logs, or support tickets.
+Exact process settings:
 
-| Variable | Required condition | Secret | Phase 0 rule |
-| --- | --- | ---: | --- |
-| `APP_ENV` | Always | No | `staging` for provider sandbox; `production` cannot enable payments in Phase 0 |
-| `PAYMENT_MODE` | Always | No | `disabled` by default; `stripe_test` only for authorized sandbox; never `stripe_live` |
-| `CALENDAR_MODE` | Always | No | `disabled`; fixture requires `pytest`; there is no public runtime value |
-| `BITCOIN_VERIFIER` | Always | No | `disabled`; fixture requires `pytest`; no production source exists |
-| `DATABASE_URL` | Staging/production and any enabled service | Yes | Railway private Postgres reference using PostgreSQL |
-| `ALLOWED_ORIGINS` | Browser access | No | JSON list of exact HTTPS frontend origins; no wildcard, credentials, path, query, or fragment |
-| `TOKEN_PEPPERS__N` | Status/proof service | Yes | At least 32 random bytes for each retained positive version |
-| `ACTIVE_TOKEN_PEPPER_VERSION` | Status/proof service | No | Must name a configured pepper version |
-| `TOKEN_TTL_SECONDS` | Optional override | No | 300 through 7,776,000; requires approved retention/access policy |
-| `CHECKOUT_CREDENTIAL_GRACE_SECONDS` | Optional override | No | 5-300; default 60; protects provider processing/token replay leases |
-| `STRIPE_TEST_ENABLED` | Stripe sandbox only | No | Must be `true` with `stripe_test`; explicit kill gate |
-| `STRIPE_SECRET_KEY` | Stripe sandbox only | Yes | Least-privilege `sk_test_...` credential only |
-| `STRIPE_WEBHOOK_SECRET` | Stripe sandbox only | Yes | Secret for this exact staging endpoint only |
-| `STRIPE_PRICE_ID` | Stripe sandbox only | No, sensitive config | Server-controlled sandbox Price ID |
-| `CHECKOUT_AMOUNT_MINOR` | Enabled checkout | No | Approved positive test amount; frontend cannot set it |
-| `CHECKOUT_CURRENCY` | Enabled checkout | No | Approved lowercase three-letter currency |
-| `PRODUCT_VERSION` | Enabled checkout | No | Immutable reviewed product/policy version, 1-64 characters |
-| `CHECKOUT_SUCCESS_URL` | Stripe sandbox only | No | HTTPS URL whose origin appears in `ALLOWED_ORIGINS` |
-| `CHECKOUT_CANCEL_URL` | Stripe sandbox only | No | HTTPS URL whose origin appears in `ALLOWED_ORIGINS` |
-| `STRIPE_SIGNATURE_TOLERANCE_SECONDS` | Optional override | No | 60-600; default 300 |
-| `STRIPE_API_TIMEOUT_SECONDS` | Optional override | No | 1-30 seconds; default 10 |
-| `TRUSTED_PROXY_IPS` | Forwarded client IP use | No | JSON list of verified immediate proxy IPs only; empty is safer than broad trust |
-| `CHECKOUT_RATE_LIMIT` | Optional override | No | Positive requests/minute policy |
-| `WEBHOOK_RATE_LIMIT` | Optional override | No | Positive requests/minute policy |
-| `STATUS_RATE_LIMIT` | Optional override | No | Positive requests/minute policy |
-| `PROOF_RATE_LIMIT` | Optional override | No | Positive requests/minute policy |
-| `ROTATION_RATE_LIMIT` | Optional override | No | Positive requests/minute policy |
-| `TIMESTAMP_WORKER_FACTORY` | Worker service | No | Exactly `app.worker.composition:create_worker` |
-| `TIMESTAMP_WORKER_ID` | Worker service | No | Unique opaque instance ID if set |
-| `TIMESTAMP_OPERATOR_FACTORY` | One-off operator process only | No | Exactly `app.worker.operator:create_operator_commands` |
+| Process | Setting or command |
+| --- | --- |
+| Timestamp worker | `TIMESTAMP_WORKER_FACTORY=app.worker.composition:create_worker` |
+| Timestamp worker identity | Optional opaque `TIMESTAMP_WORKER_ID` |
+| Notification worker | `NOTIFICATION_WORKER_FACTORY=app.notifications.worker:create_notification_worker` |
+| Notification worker identity | Optional opaque `NOTIFICATION_WORKER_ID` |
+| Operator task | `TIMESTAMP_OPERATOR_FACTORY=app.worker.operator:create_operator_commands` |
 
-The only frontend variable is public `VITE_TIMESTAMP_API_URL`, set to the reviewed HTTPS API base path. Leaving it absent removes the paid UI and timestamp requests. Do not put a token, key, email, database URL, or provider secret in any `VITE_*` value.
+Do not set mode-specific credentials while that mode is disabled; settings reject stray Stripe, calendar, Bitcoin RPC, and Resend secrets/configuration.
 
-No email variables are defined because no sender is implemented. Bundle/outbox creation leaves the order at `bitcoin_verified`; current runtime never transitions to `delivered`. Do not invent provider variables or mark delivery complete until a separately reviewed adapter, minimized templates, sender-domain controls, bounce handling, and an audited delivery transition exist.
+## Frontend variables
 
-There is likewise no calendar URL/enable variable. `MultiCalendarTimestamper` is not reachable from runtime composition, and direct construction without an injected reviewed transport fails closed. Do not add undocumented variables or bypass composition to activate it.
+Frontend configuration is public:
 
-## Railway services
+| Variable | Rule |
+| --- | --- |
+| `VITE_TIMESTAMP_API_URL` | Reviewed HTTPS API base; absent means no paid UI/requests |
+| `VITE_TIMESTAMP_SERVICE_MODE` | `sandbox` or `production`; defaults to `sandbox` |
+| `VITE_TIMESTAMP_POLICY_VERSION` | Required in production and cannot begin with `phase0` |
+| `VITE_TIMESTAMP_TERMS_URL` | Required HTTPS policy URL in production |
+| `VITE_TIMESTAMP_PRIVACY_URL` | Required HTTPS policy URL in production |
+| `VITE_TIMESTAMP_REFUND_URL` | Required HTTPS policy URL in production |
+| `VITE_TIMESTAMP_SUPPORT_EMAIL` | Required valid support email in production |
 
-Create separate services from one reviewed immutable image:
+Policy URLs reject credentials, query, fragment, and unsafe paths. Never put tokens, emails, keys, database/RPC URLs, or provider secrets in frontend variables.
+
+## Process topology
+
+Run one reviewed image with separate process identities and no shared public worker domain:
 
 - API: `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --limit-concurrency 100 --timeout-keep-alive 5 --no-access-log`
-- Worker: `TIMESTAMP_WORKER_FACTORY=app.worker.composition:create_worker python -m app.worker.cli`
-- Migration: serialized one-off `alembic upgrade head` before the API/worker revision starts
-- Postgres: private Railway Postgres with monitored backups, capacity alerts, restricted access, and tested off-provider restore
+- timestamp worker: `python -m app.worker.cli`
+- notification worker: `python -m app.notifications.cli`
+- migration: serialized one-off `alembic upgrade head`
+- operator scripts: controlled one-off tasks only
+- Neon PostgreSQL: private connectivity, least privilege, monitored backups, and tested isolated restore
+- Bitcoin Core: private authenticated RPC reachable only by approved backend processes
 
-Do not run the migration from every replica. The worker must not share the public API domain. Operator scripts run only as controlled one-off tasks, never as a public service. In the current disabled deployment posture, a worker `--once` with no jobs is only a smoke test; it cannot perform checkout fulfillment. Do not create paid/queued sandbox orders while calendar and verifier composition remain disabled, because attempted work will safely fail and can move to manual review.
+The image runs as UID/GID `10001:10001`. Prefer read-only root filesystems, a bounded `noexec,nosuid` `/tmp`, no Docker socket, no writable source mount, and dropped capabilities. Record compensating controls where the platform cannot enforce these restrictions.
 
-The Docker image runs as UID/GID `10001:10001`, writes temporary data only under `/tmp`, and needs no persistent application filesystem because proofs are stored in Postgres. Enforce a read-only root filesystem where the platform supports it, retain a small `noexec,nosuid` temporary filesystem, drop Linux capabilities, and do not mount Docker sockets, source credentials, or writable source volumes. If Railway cannot enforce the reviewed container restrictions, record and approve the compensating control before staging.
+## Required deployment sequence
 
-## Network, CORS, origin, and proxy
+Every provider or network-changing step requires the applicable owner approval. Keep checkout disabled until the final go/no-go.
 
-- Expose only the API HTTPS domain. Keep Postgres on Railway's private network.
-- Set `ALLOWED_ORIGINS` to exact deployed HTTPS frontend origins. CORS is browser policy, not authentication.
-- Preserve `Authorization`, `Idempotency-Key`, `Content-Type`, and `Stripe-Signature` headers through the proxy. Never log their values or request bodies.
-- Verify Railway's actual immediate proxy addressing before setting `TRUSTED_PROXY_IPS`. The application trusts the first `X-Forwarded-For` value only when the direct peer is allowlisted; never use `0.0.0.0/0`, `*`, or guessed ranges.
-- Keep API docs disabled outside local/test through `APP_ENV`. Retain response security headers, request-size limits, and `no-store` behavior.
-- Put edge rate/abuse controls in front of application limits and ensure they do not depend on spoofable forwarded headers.
+1. Record the reviewed source/image digest, environment, non-sensitive change ID, rollback compatibility, and owner-approved scope.
+2. Verify private deployment boundaries, MFA/access, secret-manager references, budgets, logging redaction, edge controls, and staging/production isolation.
+3. Create a current Neon backup, restore it into a clean isolated Neon target, and ensure API, timestamp worker, notification worker, webhooks, and provider egress are disabled there.
+4. Inspect migration `20260827_0002_resend_delivery.py`; run one serialized `alembic upgrade head`; verify `alembic current` is `20260827_0002`.
+5. On the isolated restore, verify row counts, immutable order/digest bindings, all proof versions/checksums, bundles, Bitcoin observations, outbox/attempt records, and Resend webhook events. Reverify proofs only under the approved offline/private policy.
+6. Configure production API settings with payment/calendar/Bitcoin/Resend modes still disabled. Deploy the API and verify `/health/live`, `/health/ready`, CORS, security headers, body limits, rate limits, and synthetic authenticated status/token rotation.
+7. Deploy the timestamp worker using `app.worker.composition:create_worker`; run a no-job smoke cycle while calendars and Bitcoin remain disabled.
+8. Deploy the notification worker using `app.notifications.worker:create_notification_worker` only after the approved Resend sender key/domain exists; initially keep queue generation/provider sending paused as the runbook requires.
+9. Configure private Bitcoin Core RPC, network ACLs, least-privilege credentials, mainnet/sync checks, timeout behavior, and monitoring. Never expose RPC publicly.
+10. After independent review and explicit calendar-pilot authorization, configure `CALENDAR_MODE=public` and at least two allowlisted hosts. Run only synthetic random-digest pilots; preserve the irreversible proof and at-least-once crash semantics.
+11. Configure Resend sending-domain DNS (SPF, DKIM, Return-Path, DMARC), `RESEND_SENDER_MODE=resend`, and signed webhook endpoint `POST /v1/webhooks/resend`. Verify delivered, bounced, failed, complained, duplicate, stale, malformed, and delivery-before-acceptance cases.
+12. Register environment-specific Stripe webhook `POST /v1/webhooks/stripe`, preserve the raw body, and configure a server-controlled Price. Resolve Stripe Tax/accounting policy; the application currently hard-rejects automatic tax.
+13. Freshly re-run Stripe-test checkout, decline/3DS where applicable, expiration, duplicate/out-of-order event, refund, dispute, and reconciliation canaries. Record that the prior recovered checkout/refund canaries were historical only.
+14. Configure production API/frontend DNS and TLS, exact `ALLOWED_ORIGINS`, Stripe return URLs, policy URLs, support email, proxy trust, and edge controls. Verify certificate renewal and HTTP-to-HTTPS behavior.
+15. With all policies and controls approved, prepare `APP_ENV=production`, `PAYMENT_MODE=stripe_live`, `STRIPE_LIVE_ENABLED=true`, and `CHECKOUT_ENABLED=false`; this permits webhook and fulfillment readiness without creating new checkout sessions.
+16. While public access remains blocked, temporarily set `CHECKOUT_ENABLED=true`, run owner-controlled low-value live checkout/refund and fulfillment canaries, then restore `CHECKOUT_ENABLED=false`. Monitor API, timestamp worker, notification worker, Neon, calendars, Bitcoin Core, Stripe, and Resend, and reconcile every canary.
+17. Obtain explicit owner go/no-go, set `CHECKOUT_ENABLED=true`, and open only invite-only access at first; set it back to `false` after any incomplete/failed gate.
 
-## Health and startup
+## Webhooks and delivery semantics
 
-Railway's API health path is `/health/ready`. `/health/live` indicates process response only; `/health/ready` additionally checks the configured database store. Neither endpoint proves worker, Stripe, calendar, Bitcoin verification, email, backup, or restore health.
+Stripe endpoint: `POST /v1/webhooks/stripe`. A `2xx` means required payment state was durably persisted, not that timestamping completed. Browser success/cancel URLs never authorize fulfillment.
 
-Deployment order:
+Resend endpoint: `POST /v1/webhooks/resend`. Preserve `svix-id`, `svix-timestamp`, `svix-signature`, and the raw body. Resend API acceptance records `accepted`; only a signature-verified matching `email.delivered` event records delivery. The initial message is bound to an observation at `>=1` confirmation and can move `bitcoin_verified` to `delivered`. The final message is enqueued at `>=6` and does not create another fulfillment state.
 
-1. Build and scan the reviewed image without embedding variables.
-2. Back up Postgres and verify the expected current migration revision.
-3. Pause checkout and worker mutations if compatibility requires it.
-4. Run one migration task and verify `alembic current`.
-5. Deploy API, wait for readiness, then deploy worker.
-6. Exercise liveness, readiness, CORS rejection/allowlisting, rate limits, and synthetic authenticated status.
-7. Exercise Stripe behavior in automated mocked/fixture tests. A provider-backed Stripe sandbox checkout remains blocked until there is an approved fulfillment test plan that cannot strand paid/queued work while public transport and production verification are unavailable.
-8. Resume checkout only after monitoring is active and rollback compatibility is confirmed.
+## Health and monitoring
 
-## Stripe sandbox webhook
+`/health/live` proves process response. `/health/ready` checks the configured database. Neither proves Stripe, calendar, Bitcoin Core, Resend, workers, backup, restore, DNS, or TLS health.
 
-When a later provider-backed staging exercise is explicitly authorized, register a staging-only HTTPS endpoint at `/v1/webhooks/stripe`. Use a separate sandbox endpoint secret and subscribe only to reviewed event types. The raw body must reach FastAPI unchanged. A `2xx` means required state was durably persisted, not that timestamp work completed. Verify duplicate, stale, invalid-signature, wrong-mode, wrong-amount/currency/Price, out-of-order, refund, dispute, expiration, and delayed-event cases before broader sandbox use.
+Monitor API latency/errors, readiness, checkout `425` lease age, webhook rejects/replays, paid-to-stamped age, six-hour upgrade successor gaps, 15-minute confirmation successor gaps, reorganization/manual-review events, proof mismatches, notification queue/lease/retry/dead-letter state, Resend delivery/bounce/complaint events, Neon connections/storage/backups, isolated restore drills, Bitcoin sync/RPC availability, DNS/TLS expiry, costs, refunds, and disputes.
 
-The success/cancel browser URLs are status navigation only. They never authorize fulfillment or prove payment. No live webhook, key, Price, or payment mode is permitted in Phase 0.
+## Rollback and prohibition
 
-Checkout calls use a committed processing/grace lease. Concurrent identical requests may receive HTTP `425` with no token while the 5-300 second lease is active. Clients must wait and retry the identical body and idempotency key; changing keys to bypass the lease is prohibited. Monitor lease age and repeated `425` responses.
+Rollback only to a schema-compatible immutable image. Pause checkout, serialize worker transitions, preserve all payment/proof/observation/notification evidence, and avoid database downgrade unless a reviewed plan requires it. Public calendar commitments remain irreversible after refund, rollback, restore, or deletion.
 
-## Proof artifacts and current state
-
-Every raw `.ots` proof is limited to 262,144 bytes by parser/domain/database/contract checks. Proof versions are append-only and retain digest, checksum, length, state, and original calendar-submission time. The highest valid version is the current cryptographic artifact; historical durability never authorizes projection of stale state.
-
-`stamping` suppresses proof availability and both calendar/Bitcoin timestamps. Pending downloads are built from the selected latest version and returned only after a second transaction confirms the same token, immutable order binding, `calendar_pending` state, and unchanged latest metadata. Verification may set `bitcoin_verified` before the separate bundle job persists its output, so status can legitimately report verified with `proof_available=false`. Verified download readiness becomes true only when the persisted bundle is bound to the current verified proof version and has matching length/checksum. `manual_review` suppresses proof availability/download even when historical proof, verification, or bundle rows remain. Backup, restore, replication, caching, and monitoring designs must preserve these rules.
-
-Calendar submission is not transactional with Postgres. A crash after calendar acceptance but before proof append can cause at-least-once resubmission of the same immutable digest. This is an accepted recovery ambiguity, not exactly-once behavior and not a unique-transaction guarantee.
-
-## Monitoring and rollback
-
-Before provider-backed staging, configure alerts listed in the [operations runbook](TIMESTAMP_SERVICE_OPERATIONS.md), including readiness, checkout lease/`425` age, paid-to-stamped age, six-hour pending-successor gaps, pending age, error retries, target mismatch, webhook failures, Postgres capacity, backup failure, restore drill, and budget thresholds. Ordinary pending schedules six-hour successor jobs and must not dead-letter merely due to a short retry window. Polling/retention/escalation maximums remain approval gates. Logs and traces must exclude tokens, emails, request bodies, Stripe signatures/secrets, database URLs, and proof bytes.
-
-Rollback by immutable image digest only when the prior image is schema-compatible. Pause checkout, serialize worker transition, preserve all order/event/proof history, and avoid database downgrade unless a reviewed migration plan requires it. Calendar commitments already submitted are irreversible and survive rollback, refund, or database restoration.
-
-## Live gates
-
-Live deployment remains blocked until every applicable plan gate is evidenced, including:
-
-- live payment implementation and security review rather than bypassing the current rejection;
-- account-owner Stripe activation, approved business details, least-privilege live credentials, separate webhook, price, tax/accounting/legal review, and tested refund/dispute procedures;
-- approved terms, privacy, retention/deletion, support, delivery timing, claims, calendar-delay, and service-failure policies;
-- pinned-public-IP TLS/SNI public-calendar transport, independent security review, explicit settings/composition integration, multi-calendar policy, and end-to-end pilot using synthetic random digests;
-- documented at-least-once same-digest crash/resubmission behavior and reconciliation without an exactly-once or unique-transaction claim;
-- approved Bitcoin verification source, exact-target verification, confirmation and reorganization policy, plus typed append-only history for every repeated reverification;
-- approved six-hour pending-poll duration, retention, customer-escalation, and eventual-disposition policy;
-- approved email provider/domain, minimal templates, delivery/bounce/complaint handling, secret rotation, and audited `bitcoin_verified` to `delivered` transition;
-- monitored backups, encrypted off-provider copy, successful clean restore and proof reverification drill;
-- staging/production isolation, least-privilege access, MFA/recovery controls, incident exercises, capacity/cost controls, and rollback drill; and
-- explicit account-owner authorization after sandbox acceptance review.
-
-Never call a proof confirmed while it is pending or because checkout redirected successfully. Never describe the complete COA, certificate contents, photographs, or PII as stored on Bitcoin.
+This guide does not authorize live mode, provider access, DNS changes, database migration, calendar submission, customer communication, or real payments. Explicit owner approval remains mandatory at each external gate and at final launch.

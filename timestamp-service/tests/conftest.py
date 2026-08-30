@@ -59,6 +59,7 @@ def app_factory() -> Any:
         values: dict[str, object] = {
             "app_env": "test",
             "payment_mode": "fixture",
+            "checkout_enabled": True,
             "database_url": sqlite_url,
             "allowed_origins": ["https://coa.example.test"],
             "token_peppers": {1: SecretStr("test-pepper-value-that-is-32-bytes-long")},

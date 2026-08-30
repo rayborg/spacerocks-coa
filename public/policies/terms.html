@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index,follow">
+  <title>Managed Timestamp Service Terms</title>
+  <link rel="stylesheet" href="policy.css">
+</head>
+<body>
+<main>
+  <p class="meta">Policy version: paid-beta-v1 | Effective: August 27, 2026</p>
+  <h1>Managed Timestamp Service Terms</h1>
+  <p>These terms govern the optional Spacerocks managed timestamp service operated by Meteorite Research. By purchasing the service, you confirm that you have authority to submit the certificate reference and SHA-256 digest and that you accept these terms and the linked Privacy and Refund policies.</p>
+
+  <h2>1. Service</h2>
+  <p>The service submits the exact 32-byte manifest SHA-256 digest to independent public OpenTimestamps calendars, monitors proof upgrades, verifies a resulting Bitcoin attestation, retains the proof package, and provides status and delivery notices. The standard managed manifest timestamp price is USD 9.99. Stripe controls payment collection; the server controls the Price and amount.</p>
+
+  <h2>2. What the proof means</h2>
+  <p class="notice">A valid proof establishes that the submitted digest existed no later than the attested Bitcoin block. It does not prove authenticity, ownership, authorship, physical custody, exact creation time, or the truth of certificate content.</p>
+  <p>An initial notice may be issued after at least one canonical Bitcoin confirmation. Monitoring continues and a separate final notice is sent after at least six confirmations. Recent Bitcoin blocks can reorganize; conflicting or reduced evidence is moved to manual review rather than represented as final.</p>
+
+  <h2>3. Timing and availability</h2>
+  <p>Calendar aggregation and Bitcoin confirmation are external processes. Initial completion commonly takes hours and can take longer during calendar, Bitcoin, email, or infrastructure disruption. No exact completion time is guaranteed. Planned or emergency maintenance may temporarily delay checkout, status, proof access, or email.</p>
+
+  <h2>4. Customer responsibilities</h2>
+  <ul>
+    <li>Submit only a lowercase SHA-256 digest generated from the intended signed manifest.</li>
+    <li>Keep the returned status token private. Anyone holding it may access the associated status and proof.</li>
+    <li>Provide a working email address and retain the original signed package independently.</li>
+    <li>Do not use the service for unlawful content, abuse, disruption, deception, or infringement.</li>
+  </ul>
+
+  <h2>5. Payments and tax</h2>
+  <p>Prices are displayed before redirecting to Stripe. Automatic Stripe Tax is not enabled. The listed price is tax-exclusive. Any refund is governed by the Refund Policy and does not remove an irreversible public timestamp commitment.</p>
+
+  <h2>6. Public and third-party systems</h2>
+  <p>OpenTimestamps calendars and Bitcoin are independent public systems. Stripe, Google Cloud, Neon, and Resend are third-party processors or infrastructure providers. Their outages, network conditions, and policies can affect service availability.</p>
+
+  <h2>7. Disclaimer and liability</h2>
+  <p>The service is provided on an “as available” basis. To the extent permitted by law, Meteorite Research disclaims implied warranties and is not liable for indirect, incidental, special, or consequential loss. Aggregate liability arising from one order is limited to the amount paid for that order. Nothing in these terms limits rights or liability that cannot legally be limited.</p>
+
+  <h2>8. Changes and governing law</h2>
+  <p>The policy version accepted at checkout is stored with the order. Materially changed terms apply only to later purchases unless law requires otherwise. These terms are governed by Tennessee law, without overriding mandatory consumer protections.</p>
+
+  <h2>9. Contact</h2>
+  <p>Questions, incidents, and support requests: <a href="mailto:borgesraymond@gmail.com">borgesraymond@gmail.com</a>.</p>
+  <p class="nav"><a href="privacy.html">Privacy Policy</a> · <a href="refunds.html">Refund Policy</a> · <a href="../">Return to Spacerocks COA Studio</a></p>
+</main>
+</body>
+</html>

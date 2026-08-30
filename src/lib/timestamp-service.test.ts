@@ -21,10 +21,15 @@ const digest = "cf0a31b01661599b8f73cd2dd2830f859e36a00c8ca22b259b33a7ec32c067cc
 const token = "v1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const replacementToken = "v1.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const orderReference = "ts_01K1E2Q3R4S5T6V7W8X9Y0Z1AB";
+const fidFragment = "fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8";
+const testSessionId = "cs_test_a1SafeSession9";
+const liveSessionId = "cs_live_a1SafeSession9";
+const testCheckoutUrl = `https://checkout.stripe.com/c/pay/${testSessionId}#${fidFragment}`;
+const liveCheckoutUrl = `https://checkout.stripe.com/c/pay/${liveSessionId}#${fidFragment}`;
 const checkoutFixture = {
   order_reference: orderReference,
   status_token: token,
-  checkout_url: "https://checkout.stripe.com/c/pay/test_session",
+  checkout_url: testCheckoutUrl,
   payment_state: "checkout_open",
   fulfillment_state: "awaiting_payment",
 };
@@ -57,11 +62,25 @@ function config() {
   return parsed;
 }
 
-function checkoutAttempt(overrides: Partial<{ certificateReference: string; manifestSha256: string; email: string; acceptedAt: string }> = {}) {
+function productionConfig() {
+  const parsed = parseTimestampServiceConfig("https://timestamp.example.com/api", false, {
+    mode: "production",
+    policyVersion: "2026-08-v1",
+    termsUrl: "https://www.example.com/legal/terms",
+    privacyUrl: "https://www.example.com/legal/privacy",
+    refundUrl: "https://www.example.com/legal/refunds",
+    supportEmail: "support@example.com",
+  });
+  if (!parsed) throw new Error("production test config failed");
+  return parsed;
+}
+
+function checkoutAttempt(overrides: Partial<{ certificateReference: string; manifestSha256: string; email: string; policyVersion: string; acceptedAt: string }> = {}) {
   return createCheckoutAttempt({
     certificateReference: "AZ-2019-0447-HE",
     manifestSha256: digest,
     email: "customer@example.test",
+    policyVersion: "phase0-v1",
     acceptedAt: "2026-07-30T12:00:00Z",
     ...overrides,
   });
@@ -86,7 +105,37 @@ describe("timestamp service configuration", () => {
     expect(parseTimestampServiceConfig("https://timestamp.example.test/#x", false)).toBeUndefined();
     expect(parseTimestampServiceConfig("http://127.0.0.1:8000/root", true)?.baseUrl).toBe("http://127.0.0.1:8000/root/");
     expect(parseTimestampServiceConfig("http://localhost.example.com", true)).toBeUndefined();
-    expect(config()).toMatchObject({ baseUrl: "https://timestamp.example.test/api/", apiOrigin: "https://timestamp.example.test" });
+    expect(config()).toMatchObject({
+      baseUrl: "https://timestamp.example.test/api/",
+      apiOrigin: "https://timestamp.example.test",
+      mode: "sandbox",
+      policyVersion: "phase0-v1",
+    });
+  });
+
+  it("requires complete safe public policy metadata for production mode", () => {
+    const production = {
+      mode: "production",
+      policyVersion: "2026-08-v1",
+      termsUrl: "https://www.example.com/legal/terms",
+      privacyUrl: "https://www.example.com/legal/privacy",
+      refundUrl: "https://www.example.com/legal/refunds",
+      supportEmail: "support@example.com",
+    };
+    expect(parseTimestampServiceConfig("https://timestamp.example.com/api", false, production)).toMatchObject({
+      mode: "production",
+      policyVersion: "2026-08-v1",
+      termsUrl: "https://www.example.com/legal/terms",
+      privacyUrl: "https://www.example.com/legal/privacy",
+      refundUrl: "https://www.example.com/legal/refunds",
+      supportEmail: "support@example.com",
+    });
+    expect(parseTimestampServiceConfig("https://timestamp.example.com/api", false, { ...production, supportEmail: undefined })).toBeUndefined();
+    expect(parseTimestampServiceConfig("https://timestamp.example.com/api", false, { ...production, policyVersion: "phase0-v2" })).toBeUndefined();
+    expect(parseTimestampServiceConfig("https://timestamp.example.com/api", false, { ...production, termsUrl: "http://www.example.com/terms" })).toBeUndefined();
+    expect(parseTimestampServiceConfig("https://timestamp.example.com/api", false, { ...production, privacyUrl: "https://user:pass@www.example.com/privacy" })).toBeUndefined();
+    expect(parseTimestampServiceConfig("https://timestamp.example.com/api", false, { ...production, refundUrl: "https://www.example.com/refunds?order=1" })).toBeUndefined();
+    expect(parseTimestampServiceConfig("https://timestamp.example.com/api", false, { ...production, mode: "live" })).toBeUndefined();
   });
 
   it("rejects raw and encoded path traversal before URL normalization", () => {
@@ -155,11 +204,43 @@ describe("timestamp service requests", () => {
       "https://stripe.com/pay",
       "https://checkout.stripe.com@evil.test/pay",
       "http://checkout.stripe.com/pay",
+      `https://checkout.stripe.com:443/c/pay/${testSessionId}#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}?next=evil#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}/../cs_test_other#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/%2e%2e/${testSessionId}#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/${liveSessionId}#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}#opaqueFragmentValue123`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}#fidshort`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}#fidInvalid!FragmentValue`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}#${`fid${"a".repeat(1537)}`}`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}#`,
     ]) {
       const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ ...checkoutFixture, checkout_url: checkoutUrl }, { status: 201 }));
       await expect(createTimestampService(config(), fetcher).createCheckout(checkoutAttempt({ certificateReference: "AZ-1", email: "a@example.test" })))
         .rejects.toThrow(/Stripe|URL/);
     }
+  });
+
+  it("accepts realistic mode-bound Stripe URLs with fid or no optional fragment", async () => {
+    const sandboxFetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(checkoutFixture, { status: 201 }))
+      .mockResolvedValueOnce(jsonResponse({
+        ...checkoutFixture,
+        checkout_url: `https://checkout.stripe.com/c/pay/${testSessionId}`,
+      }, { status: 201 }));
+    const sandboxService = createTimestampService(config(), sandboxFetcher);
+    await expect(sandboxService.createCheckout(checkoutAttempt())).resolves.toMatchObject({ checkoutUrl: testCheckoutUrl });
+    await expect(sandboxService.createCheckout(checkoutAttempt())).resolves.toMatchObject({
+      checkoutUrl: `https://checkout.stripe.com/c/pay/${testSessionId}`,
+    });
+
+    const liveFetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      ...checkoutFixture,
+      checkout_url: liveCheckoutUrl,
+    }, { status: 201 }));
+    await expect(createTimestampService(productionConfig(), liveFetcher).createCheckout(checkoutAttempt({
+      policyVersion: "2026-08-v1",
+    }))).resolves.toMatchObject({ checkoutUrl: liveCheckoutUrl });
   });
 
   it("reuses the exact body, consent time, and key after an ambiguous lost response", async () => {
@@ -174,10 +255,34 @@ describe("timestamp service requests", () => {
     expect(fetcher.mock.calls[0][1]?.body).toBe(fetcher.mock.calls[1][1]?.body);
     expect((fetcher.mock.calls[0][1]?.headers as Record<string, string>)["Idempotency-Key"])
       .toBe((fetcher.mock.calls[1][1]?.headers as Record<string, string>)["Idempotency-Key"]);
-    expect(checkoutAttemptMatches(attempt, { certificateReference: "AZ-2019-0447-HE", manifestSha256: digest, email: " customer@example.test " })).toBe(true);
-    expect(checkoutAttemptMatches(attempt, { certificateReference: "AZ-2019-0447-HE", manifestSha256: digest, email: "other@example.test" })).toBe(false);
-    expect(createCheckoutAttempt({ certificateReference: "AZ-2019-0447-HE", manifestSha256: digest, email: "other@example.test" }).idempotencyKey)
+    expect(checkoutAttemptMatches(attempt, { certificateReference: "AZ-2019-0447-HE", manifestSha256: digest, email: " customer@example.test ", policyVersion: "phase0-v1" })).toBe(true);
+    expect(checkoutAttemptMatches(attempt, { certificateReference: "AZ-2019-0447-HE", manifestSha256: digest, email: "other@example.test", policyVersion: "phase0-v1" })).toBe(false);
+    expect(createCheckoutAttempt({ certificateReference: "AZ-2019-0447-HE", manifestSha256: digest, email: "other@example.test", policyVersion: "phase0-v1" }).idempotencyKey)
       .not.toBe(attempt.idempotencyKey);
+  });
+
+  it("binds the configured policy version into the immutable checkout attempt", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(checkoutFixture, { status: 201 }));
+    const attempt = checkoutAttempt({ policyVersion: "2026-08-v1" });
+    expect(attempt.policyVersion).toBe("2026-08-v1");
+    expect(JSON.parse(attempt.body).consent).toMatchObject({
+      terms_version: "2026-08-v1",
+      privacy_version: "2026-08-v1",
+    });
+    await createTimestampService(config(), fetcher).createCheckout(attempt);
+    expect(fetcher.mock.calls[0][1]?.body).toBe(attempt.body);
+    expect(checkoutAttemptMatches(attempt, {
+      certificateReference: "AZ-2019-0447-HE",
+      manifestSha256: digest,
+      email: "customer@example.test",
+      policyVersion: "2026-08-v1",
+    })).toBe(true);
+    expect(checkoutAttemptMatches(attempt, {
+      certificateReference: "AZ-2019-0447-HE",
+      manifestSha256: digest,
+      email: "customer@example.test",
+      policyVersion: "2026-09-v1",
+    })).toBe(false);
   });
 
   it("sends tokens only as bearer headers to fixed no-store endpoints", async () => {
@@ -339,7 +444,7 @@ describe("recovery storage and proof downloads", () => {
     manifestSha256: digest,
     apiBase: "https://timestamp.example.test/api/",
     apiVersion: TIMESTAMP_CONTRACT_VERSION,
-    checkoutUrl: "https://checkout.stripe.com/c/pay/test_session",
+    checkoutUrl: testCheckoutUrl,
   };
 
   it("binds sessions to the exact API base and validates persisted checkout continuation", () => {
@@ -357,11 +462,12 @@ describe("recovery storage and proof downloads", () => {
     storage.setItem(TIMESTAMP_SESSION_KEY, JSON.stringify({ ...session, apiBase: "http://timestamp.example.test/api/" }));
     expect(loadTimestampSession(config(), storage)).toBeUndefined();
     for (const checkoutUrl of [
-      "https://checkout.stripe.com.evil.test/c/pay/test_session",
-      "https://checkout.stripe.com/pay/test_session",
-      "https://checkout.stripe.com/c/pay/../admin",
-      "https://checkout.stripe.com/c/pay/test_session?token=x",
-      "https://checkout.stripe.com/c/pay/test_session#x",
+      `https://checkout.stripe.com.evil.test/c/pay/${testSessionId}#${fidFragment}`,
+      `https://checkout.stripe.com/pay/${testSessionId}#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/../${testSessionId}#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}?token=x#${fidFragment}`,
+      `https://checkout.stripe.com/c/pay/${testSessionId}#x`,
+      liveCheckoutUrl,
     ]) {
       storage.setItem(TIMESTAMP_SESSION_KEY, JSON.stringify({ ...session, checkoutUrl }));
       expect(loadTimestampSession(config(), storage), checkoutUrl).toBeUndefined();

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="index,follow">
+  <title>Managed Timestamp Privacy Policy</title>
+  <link rel="stylesheet" href="policy.css">
+</head>
+<body>
+<main>
+  <p class="meta">Policy version: paid-beta-v1 | Effective: August 27, 2026</p>
+  <h1>Managed Timestamp Privacy Policy</h1>
+  <p>This policy describes information processed by Meteorite Research for the optional Spacerocks managed timestamp service. The browser-only certificate generator remains local unless you separately choose the paid service.</p>
+
+  <h2>Information collected</h2>
+  <ul>
+    <li>Certificate reference, exact manifest SHA-256 digest, delivery email, policy consent versions, and timestamps.</li>
+    <li>Opaque order, Stripe Checkout, payment, refund, and dispute references.</li>
+    <li>OpenTimestamps proof versions, Bitcoin block evidence, confirmation observations, delivery attempts, and provider event references.</li>
+    <li>Security and reliability data such as rate-limit counters, safe error codes, job attempts, and restricted audit events. Raw status tokens are not stored.</li>
+  </ul>
+  <p>The service does not receive certificate photographs, the complete certificate package, private signing keys, passphrases, physical addresses, or card details. Stripe collects payment details directly.</p>
+
+  <h2>Purposes</h2>
+  <p>Information is used to create and reconcile payment, submit and verify the exact digest, deliver and retain proof, provide support, prevent abuse, investigate incidents, process refunds or disputes, and meet accounting or legal obligations.</p>
+
+  <h2>Processors and public systems</h2>
+  <p>Stripe processes payment; Google Cloud hosts application workloads and secrets; Neon hosts PostgreSQL records; Resend delivers transactional email. The digest commitment is submitted to independent public OpenTimestamps calendars and may ultimately be anchored in Bitcoin. The service does not sell personal information.</p>
+
+  <h2>Retention and deletion</h2>
+  <p>Payment, consent, order, proof, delivery, refund, dispute, and security evidence may be retained for up to seven years where needed for the service, accounting, fraud prevention, disputes, or law. Public calendar and Bitcoin commitments are irreversible and cannot be recalled. Proof evidence may be retained longer so customers can continue verifying it. Temporary rate-limit records expire operationally.</p>
+  <p>You may request correction or deletion of eligible email and support data. A request cannot erase public commitments or records that must be retained for security, disputes, accounting, or law.</p>
+
+  <h2>Security and access</h2>
+  <p>Status access uses a high-entropy bearer token. Keep it confidential. The service stores only a hash of the token and uses restricted service identities, encrypted transport, managed secrets, append-only evidence controls, and monitored production systems. No system can guarantee absolute security.</p>
+
+  <h2>Contact</h2>
+  <p>Privacy and data requests: <a href="mailto:borgesraymond@gmail.com">borgesraymond@gmail.com</a>. Include the opaque order reference, but never email a status token, private key, passphrase, or full certificate package.</p>
+  <p class="nav"><a href="terms.html">Terms</a> · <a href="refunds.html">Refund Policy</a> · <a href="../">Return to Spacerocks COA Studio</a></p>
+</main>
+</body>
+</html>

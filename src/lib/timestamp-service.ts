@@ -10,20 +10,45 @@ const ORDER_PATTERN = /^ts_[0-9A-HJKMNP-TV-Z]{26}$/;
 const TOKEN_PATTERN = /^v[1-9][0-9]*\.[A-Za-z0-9_-]{43}$/;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9_-]{22,86}$/;
 const MESSAGE_PATTERN = /^[a-z0-9_]{1,64}$/;
+const POLICY_VERSION_PATTERN = /^[A-Za-z0-9._-]{1,32}$/;
+const CHECKOUT_SESSION_PATTERN = /^cs_(test|live)_[A-Za-z0-9]{1,500}$/;
+const CHECKOUT_FRAGMENT_PATTERN = /^fid[A-Za-z0-9._~-]{16,1536}$/;
 
 export type PaymentState = "checkout_open" | "processing" | "paid" | "failed" | "expired" | "refunded" | "disputed";
 export type FulfillmentState = "awaiting_payment" | "queued" | "stamping" | "calendar_pending" | "bitcoin_verified" | "delivered" | "manual_review";
 
-export interface TimestampServiceConfig {
+interface TimestampServiceConfigBase {
   baseUrl: string;
   apiOrigin: string;
   contractVersion: typeof TIMESTAMP_CONTRACT_VERSION;
+}
+
+export type TimestampServiceConfig = TimestampServiceConfigBase & ({
+  mode: "sandbox";
+  policyVersion: typeof TIMESTAMP_POLICY_VERSION;
+} | {
+  mode: "production";
+  policyVersion: string;
+  termsUrl: string;
+  privacyUrl: string;
+  refundUrl: string;
+  supportEmail: string;
+});
+
+export interface TimestampServicePublicEnvironment {
+  mode?: string;
+  policyVersion?: string;
+  termsUrl?: string;
+  privacyUrl?: string;
+  refundUrl?: string;
+  supportEmail?: string;
 }
 
 export interface CheckoutRequest {
   certificateReference: string;
   manifestSha256: string;
   email: string;
+  policyVersion: string;
   acceptedAt?: string;
 }
 
@@ -33,6 +58,7 @@ export interface CheckoutAttempt {
   certificateReference: string;
   manifestSha256: string;
   email: string;
+  policyVersion: string;
   acceptedAt: string;
 }
 
@@ -111,6 +137,7 @@ function hasUnsafeRawPath(rawUrl: string): boolean {
 export function parseTimestampServiceConfig(
   rawUrl: string | undefined,
   allowLoopbackHttp = import.meta.env.DEV || import.meta.env.MODE === "test",
+  environment: TimestampServicePublicEnvironment = {},
 ): TimestampServiceConfig | undefined {
   if (!rawUrl || rawUrl.trim() !== rawUrl || rawUrl.length > 2048) return undefined;
   if (hasUnsafeRawPath(rawUrl)) return undefined;
@@ -123,14 +150,61 @@ export function parseTimestampServiceConfig(
   if (url.username || url.password || url.search || url.hash) return undefined;
   if (url.protocol !== "https:" && !(allowLoopbackHttp && url.protocol === "http:" && isLoopback(url.hostname))) return undefined;
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/`;
-  return {
+  const base: TimestampServiceConfigBase = {
     baseUrl: url.href,
     apiOrigin: url.origin,
     contractVersion: TIMESTAMP_CONTRACT_VERSION,
   };
+  const mode = environment.mode ?? "sandbox";
+  if (mode === "sandbox") {
+    return { ...base, mode, policyVersion: TIMESTAMP_POLICY_VERSION };
+  }
+  if (mode !== "production" || !environment.policyVersion
+    || !environment.termsUrl || !environment.privacyUrl || !environment.refundUrl || !environment.supportEmail) {
+    return undefined;
+  }
+  const policyVersion = validatePolicyVersion(environment.policyVersion);
+  if (!policyVersion || policyVersion.toLowerCase().startsWith("phase0")) return undefined;
+  const termsUrl = parsePublicPolicyUrl(environment.termsUrl);
+  const privacyUrl = parsePublicPolicyUrl(environment.privacyUrl);
+  const refundUrl = parsePublicPolicyUrl(environment.refundUrl);
+  const supportEmail = parseSupportEmail(environment.supportEmail);
+  if (!termsUrl || !privacyUrl || !refundUrl || !supportEmail) return undefined;
+  return { ...base, mode, policyVersion, termsUrl, privacyUrl, refundUrl, supportEmail };
 }
 
-export const timestampServiceConfig = parseTimestampServiceConfig(import.meta.env.VITE_TIMESTAMP_API_URL);
+function validatePolicyVersion(value: string): string | undefined {
+  return value.trim() === value && POLICY_VERSION_PATTERN.test(value) ? value : undefined;
+}
+
+function parsePublicPolicyUrl(value: string): string | undefined {
+  if (value.trim() !== value || value.length > 2048 || hasUnsafeRawPath(value)) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return undefined;
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseSupportEmail(value: string): string | undefined {
+  if (value.trim() !== value || value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return undefined;
+  return value;
+}
+
+export const timestampServiceConfig = parseTimestampServiceConfig(
+  import.meta.env.VITE_TIMESTAMP_API_URL,
+  undefined,
+  {
+    mode: import.meta.env.VITE_TIMESTAMP_SERVICE_MODE,
+    policyVersion: import.meta.env.VITE_TIMESTAMP_POLICY_VERSION,
+    termsUrl: import.meta.env.VITE_TIMESTAMP_TERMS_URL,
+    privacyUrl: import.meta.env.VITE_TIMESTAMP_PRIVACY_URL,
+    refundUrl: import.meta.env.VITE_TIMESTAMP_REFUND_URL,
+    supportEmail: import.meta.env.VITE_TIMESTAMP_SUPPORT_EMAIL,
+  },
+);
 
 function endpoint(config: TimestampServiceConfig, path: string): string {
   if (!/^v1\/[a-z/-]+$/.test(path)) throw new Error("Invalid timestamp service endpoint.");
@@ -188,19 +262,30 @@ export function validateStatusToken(value: string): string {
   return value;
 }
 
-function validateCheckoutUrl(value: unknown): string {
-  if (typeof value !== "string" || value.length > 2048) throw new Error("The checkout service returned an invalid URL.");
+function validateCheckoutUrl(value: unknown, mode: TimestampServiceConfig["mode"]): string {
+  if (typeof value !== "string" || value.length > 2048 || value.trim() !== value
+    || /[\\\u0000-\u0020\u007f]/.test(value) || hasUnsafeRawPath(value)) {
+    throw new Error("The checkout service returned an invalid URL.");
+  }
+  const authority = /^https:\/\/([^/?#]+)/.exec(value)?.[1];
   let url: URL;
   try {
     url = new URL(value);
   } catch {
     throw new Error("The checkout service returned an invalid URL.");
   }
-  if (url.origin !== "https://checkout.stripe.com" || url.username || url.password || url.search || url.hash
-    || !/^\/c\/pay\/[A-Za-z0-9_-]{1,512}$/.test(url.pathname)) {
+  const pathMatch = /^\/c\/pay\/(cs_(test|live)_[A-Za-z0-9]{1,500})$/.exec(url.pathname);
+  const expectedSessionMode = mode === "production" ? "live" : "test";
+  const hasFragmentMarker = value.includes("#");
+  const fragment = url.hash.slice(1);
+  // Stripe can return the canonical session path without optional browser-state data.
+  const fragmentValid = !hasFragmentMarker || CHECKOUT_FRAGMENT_PATTERN.test(fragment);
+  if (authority !== "checkout.stripe.com" || url.protocol !== "https:" || url.host !== "checkout.stripe.com"
+    || url.username || url.password || url.search || !pathMatch || !CHECKOUT_SESSION_PATTERN.test(pathMatch[1])
+    || pathMatch[2] !== expectedSessionMode || !fragmentValid) {
     throw new Error("Checkout was blocked because the destination is not Stripe's exact secure host.");
   }
-  return url.href;
+  return value;
 }
 
 async function readBounded(response: Response, maximumBytes: number): Promise<Uint8Array> {
@@ -281,7 +366,7 @@ async function requireOk(response: Response, checkout = false): Promise<void> {
   throw new TimestampServiceError(`The timestamp service request failed (${response.status}).`, code);
 }
 
-function parseCheckoutResponse(value: unknown): CheckoutResponse {
+function parseCheckoutResponse(value: unknown, mode: TimestampServiceConfig["mode"]): CheckoutResponse {
   if (!isRecord(value) || !hasExactKeys(value, ["order_reference", "status_token", "checkout_url", "payment_state", "fulfillment_state"])) {
     throw new Error("The timestamp service returned an unexpected checkout response.");
   }
@@ -293,7 +378,7 @@ function parseCheckoutResponse(value: unknown): CheckoutResponse {
   return {
     orderReference: value.order_reference,
     statusToken: value.status_token,
-    checkoutUrl: validateCheckoutUrl(value.checkout_url),
+    checkoutUrl: validateCheckoutUrl(value.checkout_url, mode),
     paymentState: value.payment_state,
     fulfillmentState: value.fulfillment_state,
   };
@@ -401,7 +486,7 @@ export function createTimestampService(config: TimestampServiceConfig, fetcher: 
         signal,
       });
       await requireOk(response, true);
-      return parseCheckoutResponse(await readJson(response, true));
+      return parseCheckoutResponse(await readJson(response, true), config.mode);
     },
     async getStatus(token: string, signal?: AbortSignal): Promise<OrderStatus> {
       const response = await fetcher(endpoint(config, "v1/orders/status"), bearerRequest(token, signal));
@@ -455,14 +540,16 @@ function checkoutBody(request: CheckoutRequest, acceptedAt: string): {
   consent: { managed_timestamp: true; terms_version: string; privacy_version: string; accepted_at: string };
 } {
   if (!isDateTime(acceptedAt)) throw new Error("The consent time is invalid.");
+  const policyVersion = validatePolicyVersion(request.policyVersion);
+  if (!policyVersion) throw new Error("The consent policy version is invalid.");
   return {
     certificate_reference: validateCertificateReference(request.certificateReference),
     manifest_sha256: validateManifestSha256(request.manifestSha256),
     email: validateTimestampEmail(request.email),
     consent: {
       managed_timestamp: true,
-      terms_version: TIMESTAMP_POLICY_VERSION,
-      privacy_version: TIMESTAMP_POLICY_VERSION,
+      terms_version: policyVersion,
+      privacy_version: policyVersion,
       accepted_at: acceptedAt,
     },
   };
@@ -477,6 +564,7 @@ export function createCheckoutAttempt(request: CheckoutRequest): CheckoutAttempt
     certificateReference: body.certificate_reference,
     manifestSha256: body.manifest_sha256,
     email: body.email,
+    policyVersion: body.consent.terms_version,
     acceptedAt,
   };
 }
@@ -487,6 +575,7 @@ function validateCheckoutAttempt(attempt: CheckoutAttempt): void {
     certificateReference: attempt.certificateReference,
     manifestSha256: attempt.manifestSha256,
     email: attempt.email,
+    policyVersion: attempt.policyVersion,
   }, attempt.acceptedAt);
   if (attempt.body !== JSON.stringify(expected)) throw new Error("The checkout attempt binding is invalid.");
 }
@@ -545,7 +634,7 @@ function parseTimestampSession(value: unknown, config: TimestampServiceConfig): 
     || value.apiBase !== config.baseUrl || value.apiVersion !== config.contractVersion
     || (value.checkoutUrl !== undefined && (() => {
       try {
-        return validateCheckoutUrl(value.checkoutUrl) !== value.checkoutUrl;
+        return validateCheckoutUrl(value.checkoutUrl, config.mode) !== value.checkoutUrl;
       } catch {
         return true;
       }

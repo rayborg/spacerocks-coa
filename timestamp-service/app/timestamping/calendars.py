@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import socket
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
+import httpx
 from opentimestamps.core.notary import PendingAttestation
 from opentimestamps.core.serialize import BytesDeserializationContext
 from opentimestamps.core.timestamp import Timestamp
@@ -36,6 +39,10 @@ class CalendarTransport(Protocol):
     async def upgrade(self, base_url: str, commitment: bytes) -> bytes | None: ...
 
 
+class CalendarResolver(Protocol):
+    async def __call__(self, hostname: str, port: int) -> tuple[str, ...]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class CalendarConfiguration:
     allowlist: tuple[str, ...] = ()
@@ -50,22 +57,11 @@ class CalendarConfiguration:
         normalized: list[str] = []
         hosts: set[str] = set()
         for raw_url in self.allowlist:
-            parsed = urlsplit(raw_url)
-            if (
-                parsed.scheme != "https"
-                or not parsed.hostname
-                or parsed.username
-                or parsed.password
-                or parsed.query
-                or parsed.fragment
-                or parsed.port not in {None, 443}
-            ):
-                raise ValueError("calendar_allowlist_requires_operator_https_urls")
-            base_url = raw_url.rstrip("/") + "/"
+            base_url, hostname = _validated_calendar_url(raw_url)
             if base_url in normalized:
                 raise ValueError("duplicate_calendar_url")
             normalized.append(base_url)
-            hosts.add(parsed.hostname.lower())
+            hosts.add(hostname)
         if len(normalized) < 2 or len(hosts) < 2:
             raise ValueError("at_least_two_independent_calendar_hosts_required")
         if len(normalized) > MAX_CALENDAR_URLS:
@@ -74,17 +70,177 @@ class CalendarConfiguration:
 
 
 class HardenedCalendarTransport:
-    def __init__(self, timeout_seconds: float) -> None:
-        del timeout_seconds
-        raise CalendarUnavailable("live_calendar_transport_requires_pinned_ip_tls_sni")
+    """Resolve once, reject the entire unsafe DNS snapshot, then connect to one pinned IP."""
+
+    def __init__(
+        self,
+        timeout_seconds: float,
+        *,
+        resolver: CalendarResolver | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        if not 0.1 <= timeout_seconds <= 30.0:
+            raise ValueError("calendar_timeout_out_of_bounds")
+        self._timeout_seconds = timeout_seconds
+        self._timeout = httpx.Timeout(timeout_seconds)
+        self._resolver = resolver or _resolve_hostname
+        self._transport = transport
 
     async def submit(self, base_url: str, digest: bytes) -> bytes:
-        del base_url, digest
-        raise CalendarUnavailable("live_calendar_transport_requires_pinned_ip_tls_sni")
+        if len(digest) != 32:
+            raise CalendarUnavailable("calendar_digest_invalid")
+        try:
+            async with asyncio.timeout(self._timeout_seconds):
+                response = await self._request("POST", base_url, "digest", content=digest)
+        except TimeoutError as exc:
+            raise CalendarUnavailable("calendar_request_unavailable") from exc
+        if response is None:
+            raise CalendarUnavailable("calendar_response_invalid")
+        return response
 
     async def upgrade(self, base_url: str, commitment: bytes) -> bytes | None:
-        del base_url, commitment
-        raise CalendarUnavailable("live_calendar_transport_requires_pinned_ip_tls_sni")
+        if len(commitment) != 32:
+            raise CalendarUnavailable("calendar_commitment_invalid")
+        try:
+            async with asyncio.timeout(self._timeout_seconds):
+                return await self._request(
+                    "GET",
+                    base_url,
+                    f"timestamp/{commitment.hex()}",
+                    allow_not_found=True,
+                )
+        except TimeoutError as exc:
+            raise CalendarUnavailable("calendar_request_unavailable") from exc
+
+    async def _request(
+        self,
+        method: str,
+        base_url: str,
+        suffix: str,
+        *,
+        content: bytes = b"",
+        allow_not_found: bool = False,
+    ) -> bytes | None:
+        normalized, hostname = _validated_calendar_url(base_url)
+        try:
+            addresses = await self._resolver(hostname, 443)
+        except (OSError, TimeoutError) as exc:
+            raise CalendarUnavailable("calendar_dns_unavailable") from exc
+        vetted = _vetted_public_addresses(addresses)
+        pinned = ipaddress.ip_address(vetted[0])
+        authority = f"[{pinned.compressed}]" if pinned.version == 6 else pinned.compressed
+        path = urlsplit(normalized).path + suffix
+        request = httpx.Request(
+            method,
+            urlunsplit(("https", authority, path, "", "")),
+            headers={
+                "Host": hostname,
+                "Accept": "application/vnd.opentimestamps.v1",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            content=content,
+            extensions={"sni_hostname": hostname},
+        )
+        body = bytearray()
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                follow_redirects=False,
+                trust_env=False,
+                transport=self._transport,
+            ) as client:
+                response = await client.send(request, stream=True)
+                try:
+                    if allow_not_found and response.status_code == 404:
+                        return None
+                    if response.status_code != 200:
+                        raise CalendarUnavailable("calendar_http_response_invalid")
+                    async for chunk in response.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > CALENDAR_RESPONSE_LIMIT:
+                            raise CalendarUnavailable("calendar_response_invalid")
+                finally:
+                    await response.aclose()
+        except CalendarUnavailable:
+            raise
+        except (httpx.HTTPError, OSError, TimeoutError) as exc:
+            raise CalendarUnavailable("calendar_request_unavailable") from exc
+        if not body:
+            raise CalendarUnavailable("calendar_response_invalid")
+        return bytes(body)
+
+
+async def _resolve_hostname(hostname: str, port: int) -> tuple[str, ...]:
+    loop = asyncio.get_running_loop()
+    records = await loop.getaddrinfo(hostname, port, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+    return tuple(record[4][0] for record in records)
+
+
+def _vetted_public_addresses(addresses: tuple[str, ...]) -> tuple[str, ...]:
+    if not addresses:
+        raise CalendarUnavailable("calendar_dns_empty")
+    normalized: list[str] = []
+    for raw_address in addresses:
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise CalendarUnavailable("calendar_dns_address_invalid") from exc
+        if not address.is_global:
+            raise CalendarUnavailable("calendar_dns_address_not_public")
+        value = address.compressed
+        if value not in normalized:
+            normalized.append(value)
+    return tuple(normalized)
+
+
+def _validated_calendar_url(raw_url: str) -> tuple[str, str]:
+    if (
+        not raw_url
+        or raw_url != raw_url.strip()
+        or not raw_url.isascii()
+        or "\\" in raw_url
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in raw_url)
+    ):
+        raise ValueError("calendar_allowlist_requires_operator_https_urls")
+    try:
+        parsed = urlsplit(raw_url)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("calendar_allowlist_requires_operator_https_urls") from exc
+    hostname = (parsed.hostname or "").lower()
+    labels = hostname.split(".")
+    hostname_valid = (
+        len(hostname) <= 253
+        and len(labels) >= 2
+        and all(
+            1 <= len(label) <= 63
+            and label[0].isalnum()
+            and label[-1].isalnum()
+            and all(character.isalnum() or character == "-" for character in label)
+            for label in labels
+        )
+    )
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        literal_ip = False
+    else:
+        literal_ip = True
+    path_invalid = bool(parsed.path) and not parsed.path.startswith("/")
+    if (
+        parsed.scheme != "https"
+        or not hostname_valid
+        or literal_ip
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or port not in {None, 443}
+        or path_invalid
+    ):
+        raise ValueError("calendar_allowlist_requires_operator_https_urls")
+    path = parsed.path.rstrip("/") + "/"
+    return urlunsplit(("https", hostname, path, "", "")), hostname
 
 
 def _timestamp_from_bytes(message: bytes, response: bytes) -> Timestamp:
@@ -105,9 +261,7 @@ class MultiCalendarTimestamper:
 
     def __init__(self, config: CalendarConfiguration, transport: CalendarTransport | None = None) -> None:
         self._urls = config.validated_urls()
-        if transport is None:
-            raise CalendarUnavailable("live_calendar_transport_requires_pinned_ip_tls_sni")
-        self._transport = transport
+        self._transport = transport or HardenedCalendarTransport(config.timeout_seconds)
         self._request_slots = asyncio.Semaphore(MAX_CONCURRENT_CALENDAR_REQUESTS)
 
     async def stamp_exact_digest(self, digest: ManifestDigest) -> PendingProof:

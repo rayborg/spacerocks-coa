@@ -27,6 +27,7 @@ async def test_fixture_confirmation_requires_attestation_and_exact_target(monkey
     result = await FixtureBitcoinVerifier().verify_exact_digest(digest, upgraded)
     assert result.verified
     assert result.block_height == 900_000
+    assert result.confirmations == 6
     with pytest.raises(ValueError, match="proof_target_mismatch"):
         await FixtureBitcoinVerifier().verify_exact_digest(ManifestDigest.from_hex("79" * 32), upgraded)
 

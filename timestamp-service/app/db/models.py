@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import (
     Boolean,
@@ -284,6 +284,37 @@ class ProofBundle(Base, TimestampMixin):
     bundle_byte_length: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class BitcoinConfirmationObservation(Base, TimestampMixin):
+    __tablename__ = "bitcoin_confirmation_observations"
+    __table_args__ = (
+        UniqueConstraint("order_id", "event_key", name="uq_bitcoin_confirmation_event_key"),
+        CheckConstraint("proof_version > 0", name="ck_bitcoin_confirmation_proof_version"),
+        CheckConstraint("observed_confirmations > 0", name="ck_bitcoin_confirmation_count"),
+        CheckConstraint("block_height >= 0", name="ck_bitcoin_confirmation_height"),
+        CheckConstraint(
+            "length(block_hash) = 64 AND block_hash = lower(block_hash)",
+            name="ck_bitcoin_confirmation_block_hash",
+        ),
+        ForeignKeyConstraint(
+            ["order_id", "proof_version"],
+            ["proof_versions.order_id", "proof_versions.version"],
+            ondelete="CASCADE",
+            name="fk_bitcoin_confirmation_proof_version",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    proof_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    observed_confirmations: Mapped[int] = mapped_column(Integer, nullable=False)
+    block_height: Mapped[int] = mapped_column(Integer, nullable=False)
+    block_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    method: Mapped[str] = mapped_column(String(128), nullable=False)
+    confirmation_policy: Mapped[str] = mapped_column(String(128), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(160), nullable=False)
+
+
 class StateEvent(Base, TimestampMixin):
     __tablename__ = "state_events"
     __table_args__ = (
@@ -305,7 +336,24 @@ class StateEvent(Base, TimestampMixin):
 
 class OutboxMessage(Base, TimestampMixin):
     __tablename__ = "outbox"
-    __table_args__ = (CheckConstraint("attempt_count >= 0", name="ck_outbox_attempts"),)
+    __table_args__ = (
+        CheckConstraint("attempt_count >= 0 AND max_attempts > 0", name="ck_outbox_attempts"),
+        CheckConstraint("lease_until IS NULL OR lease_owner IS NOT NULL", name="ck_outbox_lease_owner"),
+        CheckConstraint(
+            "proof_version IS NULL OR proof_version > 0",
+            name="ck_outbox_proof_version_positive",
+        ),
+        CheckConstraint(
+            "confirmation_count IS NULL OR confirmation_count > 0",
+            name="ck_outbox_confirmation_count_positive",
+        ),
+        ForeignKeyConstraint(
+            ["confirmation_observation_id"],
+            ["bitcoin_confirmation_observations.id"],
+            ondelete="RESTRICT",
+            name="fk_outbox_confirmation_observation",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     message_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
@@ -315,12 +363,65 @@ class OutboxMessage(Base, TimestampMixin):
     payload: Mapped[dict[str, object]] = mapped_column(JSONType, nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     lease_owner: Mapped[str | None] = mapped_column(String(128))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    proof_version: Mapped[int | None] = mapped_column(Integer)
+    confirmation_count: Mapped[int | None] = mapped_column(Integer)
+    confirmation_observation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(128), unique=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    idempotency_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC) + timedelta(hours=24),
+        index=True,
+    )
     safe_error_code: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class NotificationAttempt(Base, TimestampMixin):
+    __tablename__ = "notification_attempts"
+    __table_args__ = (
+        UniqueConstraint("outbox_id", "attempt_number", name="uq_notification_attempt_number"),
+        CheckConstraint("attempt_number > 0", name="ck_notification_attempt_positive"),
+        CheckConstraint(
+            "response_status IS NULL OR response_status BETWEEN 100 AND 599",
+            name="ck_notification_attempt_response_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    outbox_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("outbox.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    worker_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    lease_token: Mapped[str] = mapped_column(String(36), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str | None] = mapped_column(String(32))
+    response_status: Mapped[int | None] = mapped_column(Integer)
+    provider_message_id: Mapped[str | None] = mapped_column(String(128))
+    safe_error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+class ResendWebhookEvent(Base, TimestampMixin):
+    __tablename__ = "resend_webhook_events"
+    __table_args__ = (
+        CheckConstraint("length(payload_sha256) = 32", name="ck_resend_webhook_payload_hash_32"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    svix_event_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_message_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    payload_sha256: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    event_created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 _IMMUTABLE_ORDER_FIELDS = frozenset(
@@ -354,5 +455,9 @@ def reject_order_snapshot_mutation(_mapper: object, _connection: object, target:
 @event.listens_for(ProofVersion, "before_delete")
 @event.listens_for(ProofVerification, "before_delete")
 @event.listens_for(ProofBundle, "before_delete")
+@event.listens_for(BitcoinConfirmationObservation, "before_update")
+@event.listens_for(BitcoinConfirmationObservation, "before_delete")
+@event.listens_for(ResendWebhookEvent, "before_update")
+@event.listens_for(ResendWebhookEvent, "before_delete")
 def reject_proof_evidence_mutation(_mapper: object, _connection: object, _target: object) -> None:
     raise ValueError("proof evidence is append-only")

@@ -1,19 +1,23 @@
 # Timestamp Service
 
-This directory contains the Phase 0 FastAPI, Postgres, durable-worker, and proof-bundling implementation for the optional managed timestamp service. It is sandbox-only. It does not authorize deployment, real payment collection, public calendar submission, or a Bitcoin-confirmed claim.
+This directory contains the FastAPI, PostgreSQL, timestamp-worker, notification-worker, proof-bundling, Stripe, public-calendar, Bitcoin Core, and Resend implementation for the optional paid timestamp MVP. Production is not publicly live and real customer payments are unavailable. Code completeness does not authorize deployment, provider changes, public calendar submission, or payment collection.
 
 The free browser-generated, locally signed COA remains complete and independently verifiable without this service.
 
 ## Safety boundary
 
-- `PAYMENT_MODE=stripe_live` is rejected.
+- Safe defaults are `PAYMENT_MODE=disabled`, `CHECKOUT_ENABLED=false`, `CALENDAR_MODE=disabled`, `BITCOIN_VERIFIER=disabled`, `RESEND_SENDER_MODE=disabled`, and `RESEND_WEBHOOK_MODE=disabled`.
+- `PAYMENT_MODE=stripe_live` is supported only when settings validate `APP_ENV=production`, `STRIPE_LIVE_ENABLED=true`, matching live credentials and Price, HTTPS return origins, and non-Phase-0 product and policy versions. New checkout remains unavailable until the independent `CHECKOUT_ENABLED=true` gate is also set. Neither code gate is owner launch approval.
 - Fixture payment, calendar, and Bitcoin adapters require `APP_ENV=test` and an active `pytest` process. They are test doubles, not a runnable local service mode.
-- Disabled payment mode exposes health routes but checkout is unavailable.
-- Public calendar parsing/fan-out code is not a usable runtime transport: settings/composition expose no public mode, and the default transport refuses operation pending pinned-public-IP TLS/SNI review. No production Bitcoin verification source or email sender is implemented.
+- Disabled payment mode or `CHECKOUT_ENABLED=false` exposes health and existing-order routes but new checkout is unavailable. Stripe webhooks and paid-order fulfillment remain available when only the checkout gate is off.
+- `CALENDAR_MODE=public` composes `MultiCalendarTimestamper` with `HardenedCalendarTransport`. It requires staging/production and at least two allowlisted HTTPS calendar hosts; the transport rejects unsafe DNS snapshots, pins one vetted public IP per request, preserves hostname TLS/SNI, rejects redirects, and bounds fan-out and responses. Calendar pilot use still requires explicit owner authorization and independent security review.
+- `BITCOIN_VERIFIER=bitcoin_core` composes `BitcoinCoreRpcTransport` and `BitcoinCoreRpcVerifier` in staging/production. RPC must be private and authenticated; never expose it publicly.
+- `RESEND_SENDER_MODE=resend` enables the separate durable notification worker. `RESEND_WEBHOOK_MODE=resend` enables signed `POST /v1/webhooks/resend` handling.
 - A browser return does not authorize fulfillment. Only a verified, canonical payment webhook can do so in Stripe test mode.
 - `calendar_pending` and proof availability do not mean Bitcoin-confirmed.
 - Ordinary pending confirmation schedules a durable successor check six hours later; it does not exhaust a short retry budget or dead-letter solely because Bitcoin confirmation is still pending.
-- Bitcoin verification and downloadable bundle readiness are separate. State can become `bitcoin_verified` with `proof_available=false`; a later durable bundle job makes the matching artifact available without changing fulfillment state. Without a sender, the order remains `bitcoin_verified`; `delivered` is reserved for a future audited sender transition.
+- Bitcoin verification and downloadable bundle readiness are separate. State can become `bitcoin_verified` with `proof_available=false`; a later durable bundle job creates the matching artifact and an initial notification at `>=1` confirmation. Only a verified Resend `email.delivered` event for that initial notice moves the order to `delivered`. A final notice is enqueued at `>=6` confirmations.
+- Lost confirmation, decreased confirmation count, or changed immutable block evidence fails closed through terminal handling to `manual_review`; proof download is suppressed pending audited recovery.
 - Every raw `.ots` proof must be between 1 and 262,144 bytes. Proof versions are append-only, the latest valid version is authoritative for cryptographic state, and current state plus matching persisted-bundle readiness controls download eligibility.
 - `stamping` suppresses proof availability and calendar/Bitcoin timestamps even if historical rows exist.
 - The service receives only the certificate reference, exact manifest SHA-256, fulfillment email, and versioned consent. It must never receive private keys, passphrases, images, manifest contents, the COA ZIP, address/provenance fields, or card data.
@@ -84,7 +88,7 @@ pytest tests/api tests/payments tests/fulfillment tests/workers
 
 The fixtures never contact Stripe, public calendars, Bitcoin, or email. Use only synthetic `.test` addresses and fixture digests. A fixture `bitcoin_verified` result is deterministic test evidence, never public Bitcoin evidence. There is no supported direct fixture API/worker startup command.
 
-Stripe test mode exists for a later, separately authorized sandbox exercise. It requires `APP_ENV=test` or `staging`, `PAYMENT_MODE=stripe_test`, the explicit `STRIPE_TEST_ENABLED=true` gate, test-only Stripe credentials, a server-controlled test Price, and HTTPS return origins. It must not be enabled in routine local tests or CI, and it must never use live keys or real charges.
+Stripe test mode requires `APP_ENV=test` or `staging`, `PAYMENT_MODE=stripe_test`, `STRIPE_TEST_ENABLED=true`, test-only Stripe credentials, a server-controlled test Price, and HTTPS return origins. A Stripe-test sandbox was previously deployed and checkout/refund canaries were recorded working, but that recovered state has not been freshly verified. It must not be treated as current provider evidence, enabled in routine local tests/CI, or used with live keys or real charges.
 
 ## Commands
 
@@ -100,6 +104,12 @@ Worker, one bounded claim cycle in disabled mode:
 TIMESTAMP_WORKER_FACTORY=app.worker.composition:create_worker python -m app.worker.cli --once
 ```
 
+Notification worker, only after Resend sender mode is deliberately configured:
+
+```bash
+NOTIFICATION_WORKER_FACTORY=app.notifications.worker:create_notification_worker python -m app.notifications.cli --once
+```
+
 Operator commands require `DATABASE_URL` and the serialized operator factory:
 
 ```bash
@@ -111,12 +121,12 @@ python -m scripts.reverify_order ORDER_UUID --request-id CHANGE_ID --confirm REV
 
 Inspect the order and job first. Replay accepts an ordinary retry job. For manual-review/dead-letter jobs it validates limited proof invariants and then deliberately refuses recovery because no audited fulfillment-state transition exists. Upgrade accepts only pending orders; reverify accepts only verified or delivered orders. Do not run concurrent operator mutations for the same order.
 
-Current successful reverification checks immutable block metadata and appends state evidence, but live reverification remains blocked until every run has a typed, append-only history record and an approved verifier, confirmation, and Bitcoin reorganization policy. Do not use manual review as a queue that an operator can force back into fulfillment.
+Reverification records append-only confirmation observations and rejects lost or conflicting immutable block evidence. Scheduled confirmation monitoring rejects lost, decreased, or conflicting evidence through `manual_review`. Live use still requires an owner-approved verifier, confirmation, reorganization, retention, and recovery policy. Do not use manual review as a queue that an operator can force back into fulfillment.
 
 Checkout creation uses committed processing/grace leases. Concurrent retries using the same idempotency key may receive HTTP `425` without a recovery token; wait for the 5-300 second configured grace period (60 seconds by default) before retrying the identical request. Never switch keys to bypass an in-progress lease.
 
-## Repository extraction gate
+## Deployment boundary
 
-Before authorizing Railway's GitHub App, extract this backend into a separate private backend repository with its contracts, tests, migration, lock file, Dockerfile, and runbooks. Preserve history or record a reviewed source snapshot, update contract paths deliberately, rerun all CI, and protect the default branch. Grant the GitHub App access only to that backend repository. Do not authorize Railway against this combined frontend repository as a shortcut.
+Keep the backend in a private, protected deployment repository or equivalent reviewed source boundary. Neon is the current database target. Migration `20260827_0002` and all backend tests passed against isolated Neon branches on 2026-08-27; production was empty, so customer-data restore and proof reverification remain future gates when applicable. `railway.toml` is optional deployment metadata only; it does not establish Railway as the deployment platform or database provider.
 
 Deployment preparation and every remaining gate are in [`../docs/TIMESTAMP_SERVICE_DEPLOYMENT.md`](../docs/TIMESTAMP_SERVICE_DEPLOYMENT.md). Operational recovery is in [`../docs/TIMESTAMP_SERVICE_OPERATIONS.md`](../docs/TIMESTAMP_SERVICE_OPERATIONS.md).

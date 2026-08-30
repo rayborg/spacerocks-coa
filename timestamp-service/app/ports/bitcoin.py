@@ -16,6 +16,7 @@ class BitcoinVerification:
     block_hash: str | None = None
     block_time: datetime | None = None
     confirmation_policy: str | None = None
+    confirmations: int | None = None
 
     def __post_init__(self) -> None:
         metadata = (self.verified_at, self.block_height, self.block_hash, self.block_time, self.confirmation_policy)
@@ -23,6 +24,22 @@ class BitcoinVerification:
             raise ValueError("verified Bitcoin result requires complete metadata")
         if not self.verified and any(value is not None for value in metadata):
             raise ValueError("unverified Bitcoin result cannot carry confirmation metadata")
+        if self.verified and (
+            self.confirmations is None or isinstance(self.confirmations, bool) or self.confirmations < 1
+        ):
+            raise ValueError("verified Bitcoin result requires at least one confirmation")
+        if not self.verified and self.confirmations is not None and (
+            isinstance(self.confirmations, bool) or self.confirmations < 0
+        ):
+            raise ValueError("Bitcoin confirmation count is invalid")
+
+
+class BitcoinVerifierUnavailable(RuntimeError):
+    """The trusted verifier cannot currently provide a reliable answer."""
+
+
+class BitcoinEvidenceInvalid(ValueError):
+    """The proof or node response contradicts required Bitcoin evidence invariants."""
 
 
 class BitcoinVerifier(Protocol):

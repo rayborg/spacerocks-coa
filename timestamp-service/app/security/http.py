@@ -31,6 +31,7 @@ SECURITY_HEADERS = {
 _BODY_LIMITS = {
     ("POST", "/v1/checkout"): 4 * 1024,
     ("POST", "/v1/webhooks/stripe"): 256 * 1024,
+    ("POST", "/v1/webhooks/resend"): 256 * 1024,
 }
 
 
@@ -101,6 +102,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.limits = {
             ("POST", "/v1/checkout"): ("checkout", settings.checkout_rate_limit),
             ("POST", "/v1/webhooks/stripe"): ("webhook", settings.webhook_rate_limit),
+            ("POST", "/v1/webhooks/resend"): ("resend_webhook", settings.resend_webhook_rate_limit),
             ("GET", "/v1/orders/status"): ("status", settings.status_rate_limit),
             ("GET", "/v1/orders/proof"): ("proof", settings.proof_rate_limit),
             ("POST", "/v1/orders/rotate-token"): ("rotation", settings.rotation_rate_limit),
@@ -165,6 +167,7 @@ def _safe_path(path: str) -> str:
     allowed = {
         "/v1/checkout",
         "/v1/webhooks/stripe",
+        "/v1/webhooks/resend",
         "/v1/orders/status",
         "/v1/orders/proof",
         "/v1/orders/rotate-token",

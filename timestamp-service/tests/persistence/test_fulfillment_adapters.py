@@ -21,7 +21,7 @@ from app.domain.digest import ManifestDigest
 from app.domain.identifiers import OrderReference
 from app.domain.order import FulfillmentState
 from app.ports.bitcoin import BitcoinVerification
-from app.ports.notifications import OutboxMessage
+from app.ports.notifications import NotificationKind, OutboxMessage, notification_message
 from app.ports.proof import ProofState, StoredProof
 
 ORDER_REFERENCE = OrderReference("ts_01K1E2Q3R4S5T6V7W8X9Y0Z1AB")
@@ -84,6 +84,7 @@ def verified() -> BitcoinVerification:
         block_hash="ab" * 32,
         block_time=datetime(2026, 7, 30, 15, 0, tzinfo=UTC),
         confirmation_policy="phase0-fixture-exact-target",
+        confirmations=1,
     )
 
 
@@ -213,6 +214,7 @@ async def test_verification_bundle_and_outbox_are_once_only_and_safe(adapters) -
     result = verified()
     await aggregate.verifications.put_verified_once(str(order_id), 1, result)
     await aggregate.verifications.put_verified_once(str(order_id), 1, result)
+    await aggregate.observations.record_once(str(order_id), 1, "initial-observation", result)
     assert await aggregate.verifications.get_verified(str(order_id), 1) == result
     await transition_to_verified(aggregate, order_id)
     latest = await aggregate.proofs.latest(ORDER_REFERENCE)
@@ -227,6 +229,7 @@ async def test_verification_bundle_and_outbox_are_once_only_and_safe(adapters) -
         block_hash=result.block_hash,
         block_time=result.block_time,
         confirmation_policy=result.confirmation_policy,
+        confirmations=result.confirmations,
     )
     with pytest.raises(ValueError, match="verification_conflict"):
         await aggregate.verifications.put_verified_once(str(order_id), 1, conflict)
@@ -240,23 +243,25 @@ async def test_verification_bundle_and_outbox_are_once_only_and_safe(adapters) -
     with pytest.raises(ValueError, match="sensitive"):
         await aggregate.bundles.put_once(str(order_id), 1, b"private@example.test")
 
-    message = OutboxMessage(
-        message_key="timestamp-complete-v1-order",
-        order_reference=ORDER_REFERENCE,
-        template="timestamp-complete",
-        recipient="private@example.test",
-        variables={"order_reference": ORDER_REFERENCE.value},
+    message = notification_message(
+        NotificationKind.INITIAL_CONFIRMATION,
+        ORDER_REFERENCE,
+        "private@example.test",
+        1,
+        1,
     )
     await aggregate.outbox.enqueue(message)
     await aggregate.outbox.enqueue(message)
     with pytest.raises(ValueError, match="not_allowlisted"):
         await aggregate.outbox.enqueue(
             OutboxMessage(
-                message_key="unsafe",
+                message_key=message.message_key,
                 order_reference=ORDER_REFERENCE,
-                template="timestamp-complete",
+                template=NotificationKind.INITIAL_CONFIRMATION.value,
                 recipient="private@example.test",
                 variables={"order_reference": ORDER_REFERENCE.value, "status_token": "v1.secret"},
+                proof_version=1,
+                confirmation_count=1,
             )
         )
     with factory() as session:

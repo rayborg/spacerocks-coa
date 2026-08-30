@@ -17,6 +17,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 from sqlalchemy import event, func, select
 
 from app.db.models import (
+    BitcoinConfirmationObservation,
     IdempotencyRequest,
     Order,
     OrderToken,
@@ -25,6 +26,7 @@ from app.db.models import (
     ProofVerification,
     ProofVersion,
     RateCounter,
+    ResendWebhookEvent,
     StateEvent,
 )
 from app.main import create_app
@@ -75,6 +77,54 @@ def test_checkout_matches_frozen_contract_and_persists_no_raw_token(app_factory:
         assert raw_token.encode() != token.token_hash
         assert len(token.token_hash) == 32
         assert token.pepper_version == 1
+
+
+def test_checkout_gate_blocks_before_reservation_or_provider_call(app_factory: Any) -> None:
+    context: ServiceContext = app_factory(checkout_enabled=False)
+    provider_called = False
+
+    async def fail_if_called(_request: HostedCheckoutRequest, _idempotency_key: str) -> HostedCheckoutResult:
+        nonlocal provider_called
+        provider_called = True
+        raise AssertionError("disabled checkout must not call the payment provider")
+
+    context.provider.create_checkout = fail_if_called  # type: ignore[method-assign]
+    with TestClient(context.app) as client:
+        response = client.post(
+            "/v1/checkout",
+            json=checkout_payload(),
+            headers={"Idempotency-Key": idempotency_key()},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "checkout unavailable"}
+    assert provider_called is False
+    with context.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Order)) == 0
+        assert session.scalar(select(func.count()).select_from(IdempotencyRequest)) == 0
+
+
+def test_checkout_gate_blocks_idempotent_replay_without_rotating_token(app_factory: Any) -> None:
+    context: ServiceContext = app_factory()
+    with TestClient(context.app) as client:
+        create_checkout(client)
+        with context.session_factory() as session, session.begin():
+            reservation = session.scalar(select(IdempotencyRequest))
+            assert reservation is not None
+            reservation.checkout_lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        context.settings.checkout_enabled = False
+        response = client.post(
+            "/v1/checkout",
+            json=checkout_payload(),
+            headers={"Idempotency-Key": idempotency_key()},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "checkout unavailable"}
+    with context.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Order)) == 1
+        assert session.scalar(select(func.count()).select_from(IdempotencyRequest)) == 1
+        assert session.scalar(select(func.count()).select_from(OrderToken)) == 1
 
 
 def test_idempotent_replay_rotates_token_without_recreating_checkout(app_factory: Any) -> None:
@@ -470,6 +520,20 @@ def test_verified_status_requires_bundle_for_current_latest_version(app_factory:
                         created_at=now,
                     )
                 )
+                session.add(
+                    BitcoinConfirmationObservation(
+                        order_id=order.id,
+                        proof_version=version,
+                        observed_confirmations=1,
+                        block_height=900000 + version,
+                        block_hash="ab" * 32,
+                        method="fixture-exact-digest",
+                        confirmation_policy="fixture-confirmed",
+                        observed_at=now,
+                        event_key=f"api-status-v{version}",
+                        created_at=now,
+                    )
+                )
             session.add(
                 ProofBundle(
                     order_id=order.id,
@@ -504,21 +568,50 @@ def test_verified_status_requires_bundle_for_current_latest_version(app_factory:
         with context.session_factory() as session, session.begin():
             order = session.scalar(select(Order))
             assert order is not None
+            observation = session.scalar(
+                select(BitcoinConfirmationObservation).where(
+                    BitcoinConfirmationObservation.order_id == order.id,
+                    BitcoinConfirmationObservation.proof_version == 2,
+                )
+            )
+            assert observation is not None
             session.add(
                 OutboxMessage(
-                    message_key=f"timestamp-complete-v2-{order.order_reference}",
+                    message_key=f"bitcoin-confirmed-initial-v2-{order.order_reference}",
                     order_id=order.id,
-                    kind="timestamp-complete",
+                    kind="bitcoin-confirmed-initial",
                     recipient=order.email,
-                    payload={"order_reference": order.order_reference},
+                    payload={
+                        "template": "bitcoin-confirmed-initial",
+                        "order_reference": order.order_reference,
+                    },
                     state="delivered",
                     attempt_count=1,
+                    max_attempts=12,
                     available_at=now,
                     lease_owner=None,
                     lease_until=None,
+                    lease_token=None,
+                    proof_version=2,
+                    confirmation_count=1,
+                    confirmation_observation_id=observation.id,
                     provider_message_id="fixture-message-current-v2",
+                    accepted_at=now,
                     delivered_at=now,
+                    idempotency_expires_at=now + timedelta(hours=24),
                     safe_error_code=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                ResendWebhookEvent(
+                    svix_event_id="msg_api_status_delivered",
+                    event_type="email.delivered",
+                    provider_message_id="fixture-message-current-v2",
+                    payload_sha256=hashlib.sha256(b"api-status-delivered").digest(),
+                    event_created_at=now,
+                    processed_at=now,
                     created_at=now,
                 )
             )
@@ -723,6 +816,7 @@ def test_verified_download_returns_exact_persisted_bytes_and_records_each_audit(
                     "block_hash": "ab" * 32,
                     "block_time": now.isoformat(),
                     "confirmation_policy": "fixture-confirmed",
+                    "confirmations": 1,
                 },
                 "verification_method": "fixture-exact-digest",
                 "verified_at": now.isoformat(),
@@ -764,6 +858,20 @@ def test_verified_download_returns_exact_persisted_bytes_and_records_each_audit(
                         created_at=now,
                     ),
                 ]
+            )
+            session.add(
+                BitcoinConfirmationObservation(
+                    order_id=order.id,
+                    proof_version=1,
+                    observed_confirmations=1,
+                    block_height=900000,
+                    block_hash="ab" * 32,
+                    method="fixture-exact-digest",
+                    confirmation_policy="fixture-confirmed",
+                    observed_at=now,
+                    event_key="api-download-v1",
+                    created_at=now,
+                )
             )
         headers = {"Authorization": f"Bearer {checkout['status_token']}"}
         first = client.get("/v1/orders/proof", headers=headers)

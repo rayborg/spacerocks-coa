@@ -37,6 +37,14 @@ jobs:
         run: npm run test:e2e
       - name: Build
         run: npm run build
+        env:
+          VITE_TIMESTAMP_API_URL: https://timestamp-api-prod-907565713124.us-central1.run.app
+          VITE_TIMESTAMP_SERVICE_MODE: production
+          VITE_TIMESTAMP_POLICY_VERSION: paid-beta-v1
+          VITE_TIMESTAMP_TERMS_URL: https://coa-sandbox.meteoriteresearch.org/policies/terms.html
+          VITE_TIMESTAMP_PRIVACY_URL: https://coa-sandbox.meteoriteresearch.org/policies/privacy.html
+          VITE_TIMESTAMP_REFUND_URL: https://coa-sandbox.meteoriteresearch.org/policies/refunds.html
+          VITE_TIMESTAMP_SUPPORT_EMAIL: borgesraymond@gmail.com
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload artifact

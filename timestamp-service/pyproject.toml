@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spacerocks-timestamp-service"
 version = "0.0.1"
-description = "Sandbox-only managed timestamp service"
+description = "Gated paid Bitcoin OpenTimestamps service"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "alembic==1.16.4",
@@ -17,7 +17,7 @@ dependencies = [
   "pydantic==2.11.7",
   "pydantic-settings==2.10.1",
   "sqlalchemy==2.0.41",
-  "stripe==12.3.0",
+  "stripe==15.4.0",
   "uvicorn[standard]==0.35.0",
 ]
 

@@ -9,6 +9,11 @@ healthcheckTimeout = 10
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 
-# Create the worker as a separate Railway service from this image and override its start command with:
+# Optional Railway metadata only. The current database target is Neon; this file does not create,
+# select, or authorize any cloud service. If Railway is owner-approved, create separate processes:
+# Timestamp worker start command:
 # TIMESTAMP_WORKER_FACTORY=app.worker.composition:create_worker python -m app.worker.cli
+# Notification worker start command:
+# NOTIFICATION_WORKER_FACTORY=app.notifications.worker:create_notification_worker python -m app.notifications.cli
+# Run `alembic upgrade head` once as a serialized release task before these processes.
 # Operator commands use TIMESTAMP_OPERATOR_FACTORY=app.worker.operator:create_operator_commands.
