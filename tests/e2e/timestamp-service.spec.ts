@@ -65,7 +65,7 @@ async function fulfillOptions(page: Page): Promise<void> {
   });
 }
 
-async function issueLocalRelease(page: Page): Promise<void> {
+async function issueLocalRelease(page: Page, issueButtonName = "Issue signed COA package"): Promise<void> {
   await page.locator('input[name="issuerName"]').fill("Test Issuer");
   await page.locator('input[name="collectionName"]').fill("Test Meteorite Collection");
   await page.locator('input[name="certificateId"]').fill("TEST-COA-0001");
@@ -102,7 +102,7 @@ async function issueLocalRelease(page: Page): Promise<void> {
   });
   await page.getByLabel(/I attest this is an exact/).check();
   const packageDownload = page.waitForEvent("download", { timeout: 90_000 });
-  await page.getByRole("button", { name: "Issue signed COA package" }).click();
+  await page.getByRole("button", { name: issueButtonName }).click();
   await packageDownload;
   await expect(page.getByText("Release created")).toBeVisible();
 }
@@ -115,11 +115,31 @@ test("omits the paid feature and makes zero timestamp requests without API confi
     await route.abort();
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Signed COA + blockchain timestamp" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Recover a timestamp order" })).toHaveCount(0);
   await expect(page.getByText("Sandbox / test only")).toHaveCount(0);
   await page.waitForTimeout(500);
   expect(timestampRequests).toBe(0);
+});
+
+test("advertises free and blockchain COA options before the builder", async ({ page }) => {
+  test.skip(!timestampFeatureConfigured, "This assertion requires a configured timestamp frontend.");
+  await page.goto("/");
+  const options = page.locator("#coa-options");
+  await expect(options.getByRole("heading", { name: "Two COA options. One signed foundation." })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Signed COA", exact: true })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Signed COA + blockchain timestamp" })).toBeVisible();
+  await expect(options).toContainText("Paid");
+  await expect(options).toContainText("Bitcoin is the specific blockchain used");
+  await options.getByRole("link", { name: "Create COA + blockchain proof" }).click();
+  await expect(page.locator(".selected-service")).toContainText("Signed COA + paid blockchain timestamp");
+  await expect(page.getByRole("button", { name: "Issue COA for blockchain timestamp" })).toBeVisible();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await issueLocalRelease(page, "Issue COA for blockchain timestamp");
+  const checkoutHeading = page.getByRole("heading", { name: "Managed blockchain timestamp" });
+  await expect(checkoutHeading).toBeVisible();
+  await expect(checkoutHeading).toBeFocused();
 });
 
 test.describe("configured sandbox timestamp service", () => {
@@ -167,9 +187,9 @@ test.describe("configured sandbox timestamp service", () => {
     });
 
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
     await page.getByRole("button", { name: "Recover a timestamp order" }).click();
-    await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toBeVisible();
     await expect(page.getByText("Sandbox / test only")).toBeVisible();
     await expect(page.getByText(/does not prove authenticity, ownership, identity/)).toBeVisible();
     await page.getByLabel("Private recovery code").fill(token);
@@ -193,13 +213,13 @@ test.describe("configured sandbox timestamp service", () => {
 
     reportConfirmed = true;
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toBeVisible();
     await expect(page.getByLabel("Recovery code")).toHaveValue(replacementToken);
     await expect(page.getByText("Initial Bitcoin confirmation verified")).toBeVisible();
     const verifiedStatus = page.locator(".timestamp-status");
     await expect(verifiedStatus).toContainText(/at least one Bitcoin confirmation/);
     await expect(verifiedStatus).toContainText(/subject to reorganization monitoring/);
-    await expect(verifiedStatus).toContainText(/final confirmation email.*stable evidence of at least six confirmations/);
+    await expect(verifiedStatus).toContainText(/private recovery code.*later proof upgrades/i);
     await page.setViewportSize({ width: 320, height: 844 });
     const dimensions = await page.evaluate(() => ({ page: document.documentElement.scrollWidth, viewport: window.innerWidth }));
     expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport);
@@ -267,18 +287,18 @@ test.describe("configured sandbox timestamp service", () => {
     });
 
     await page.goto("/#builder");
-    await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
     await issueLocalRelease(page);
-    await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Create server-priced test checkout" })).toBeDisabled();
-    const deliveryEmail = page.getByLabel(/Delivery email/);
+    const deliveryEmail = page.getByLabel(/Order contact email/);
     await expect(deliveryEmail).toHaveAttribute("required", "");
     await expect(deliveryEmail).toHaveAttribute("aria-required", "true");
     await deliveryEmail.fill("invalid-address");
     await deliveryEmail.blur();
     await expect(deliveryEmail).toHaveAttribute("aria-invalid", "true");
-    await expect(page.getByRole("alert")).toHaveText(/valid delivery email/);
-    await expect(page.getByText(/separate from the optional issuer email/)).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveText(/valid contact email/);
+    await expect(page.getByText(/Automated confirmation email is not currently enabled/)).toBeVisible();
     await deliveryEmail.fill("customer@example.test");
     await expect(deliveryEmail).toHaveAttribute("aria-invalid", "false");
     await page.getByLabel(/I explicitly consent/).check();
@@ -385,7 +405,7 @@ test.describe("configured sandbox timestamp service", () => {
       }));
     }, { storedToken: token, storedDigest: digest, storedOrder: orderReference, checkoutUrl });
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
     await page.waitForTimeout(300);
     expect(authenticatedRequests).toBe(0);
 
@@ -406,7 +426,7 @@ test.describe("configured sandbox timestamp service", () => {
       hostileCheckoutUrl: `https://checkout.stripe.com.evil.test/c/pay/${checkoutSessionId}#fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8`,
     });
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Managed Bitcoin timestamp" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
     expect(authenticatedRequests).toBe(0);
   });
 
@@ -521,7 +541,7 @@ test.describe("configured production timestamp service", () => {
     const verifiedStatus = page.locator(".timestamp-status");
     await expect(verifiedStatus).toContainText(/at least one Bitcoin confirmation/);
     await expect(verifiedStatus).toContainText(/subject to reorganization monitoring/);
-    await expect(verifiedStatus).toContainText(/final confirmation email.*stable evidence of at least six confirmations/);
+    await expect(verifiedStatus).toContainText(/private recovery code.*later proof upgrades/i);
     await expect(panel).not.toContainText(/current confirmation count|irreversible finality/i);
   });
 });
