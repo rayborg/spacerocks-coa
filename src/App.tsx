@@ -534,13 +534,6 @@ export default function App() {
           <span className="brand__mark"><i /></span>
           <span><strong>Spacerocks</strong><small>COA Studio</small></span>
         </a>
-        <nav aria-label="Primary navigation">
-          {timestampServiceConfig ? <a href="#coa-options">COA options</a> : null}
-          <a href="#builder">Create</a>
-          <a href="#verify">Verify</a>
-          <a href="#method">Method</a>
-        </nav>
-        <span className="local-badge"><i /> Local COA signing</span>
       </header>
 
       <main id="top">
