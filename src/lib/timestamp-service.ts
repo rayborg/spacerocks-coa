@@ -70,11 +70,6 @@ export interface CheckoutResponse {
   fulfillmentState: "awaiting_payment";
 }
 
-export interface CheckoutPrice {
-  amountMinor: number;
-  currency: "usd";
-}
-
 export interface OrderStatus {
   orderReference: string;
   certificateReference: string;
@@ -389,18 +384,6 @@ function parseCheckoutResponse(value: unknown, mode: TimestampServiceConfig["mod
   };
 }
 
-function parseCheckoutPrice(value: unknown): CheckoutPrice {
-  if (!isRecord(value) || !hasExactKeys(value, ["amount_minor", "currency"])) {
-    throw new Error("The timestamp service returned an unexpected checkout price.");
-  }
-  if (!Number.isSafeInteger(value.amount_minor) || (value.amount_minor as number) < 1
-    || (value.amount_minor as number) > 100_000_000
-    || value.currency !== "usd") {
-    throw new Error("The timestamp service returned an invalid checkout price.");
-  }
-  return { amountMinor: value.amount_minor as number, currency: "usd" };
-}
-
 const paymentStates = new Set<PaymentState>(["checkout_open", "processing", "paid", "failed", "expired", "refunded", "disputed"]);
 const fulfillmentStates = new Set<FulfillmentState>(["awaiting_payment", "queued", "stamping", "calendar_pending", "bitcoin_verified", "delivered", "manual_review"]);
 
@@ -487,16 +470,6 @@ function bearerRequest(token: string, signal?: AbortSignal): RequestInit {
 export function createTimestampService(config: TimestampServiceConfig, fetcher: typeof fetch = fetch) {
   return {
     config,
-    async getCheckoutPrice(signal?: AbortSignal): Promise<CheckoutPrice> {
-      const response = await fetcher(endpoint(config, "v1/checkout/price"), {
-        cache: "no-store",
-        credentials: "omit",
-        referrerPolicy: "no-referrer",
-        signal,
-      });
-      await requireOk(response);
-      return parseCheckoutPrice(await readJson(response));
-    },
     async createCheckout(attempt: CheckoutAttempt, signal?: AbortSignal): Promise<CheckoutResponse> {
       validateCheckoutAttempt(attempt);
       const response = await fetcher(endpoint(config, "v1/checkout"), {
