@@ -149,6 +149,7 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   expect(priceRequests).toBe(0);
   await expect(options.getByText(/Option 1|Option 2 · Enhanced/)).toHaveCount(0);
   await expect(options).toContainText("The Bitcoin anchor contains a one-way cryptographic commitment");
+  await expect(options.getByRole("link", { name: "Create free cryptographically signed COA" })).toHaveClass(/button--navy/);
   const placement = await page.evaluate(() => ({
     options: document.querySelector("#coa-options")?.getBoundingClientRect().top,
     hero: document.querySelector(".hero")?.getBoundingClientRect().top,
