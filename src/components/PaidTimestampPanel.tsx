@@ -460,7 +460,7 @@ export default function PaidTimestampPanel({ config, focusOnRelease = false, rel
       )}
 
       <p className="timestamp-live-message" aria-live="polite">{message}</p>
-      <p className="timestamp-privacy-note"><strong>Local boundary:</strong> private signing keys, passphrases, images, the COA package, manifest contents, addresses, provenance, and the full form record stay in this browser. The optional request sends only the fields listed above after explicit consent.</p>
+      <p className="timestamp-privacy-note"><strong>Local boundary:</strong> private signing keys, passphrases, images, the COA package, manifest contents, addresses, provenance, and the full form record stay in this browser. The checkout request sends only the listed checkout fields after explicit consent. Later status and proof requests authenticate with the private recovery code.</p>
       {config.mode === "production" ? (
         <p className="timestamp-privacy-note">Service policies: <a href={config.termsUrl} referrerPolicy="no-referrer">Terms</a>, <a href={config.privacyUrl} referrerPolicy="no-referrer">Privacy</a>, and <a href={config.refundUrl} referrerPolicy="no-referrer">Refund Policy</a>. Support: <a href={`mailto:${config.supportEmail}`}>{config.supportEmail}</a>.</p>
       ) : null}

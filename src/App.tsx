@@ -570,12 +570,12 @@ export default function App() {
           <span><strong>Spacerocks</strong><small>COA Studio</small></span>
         </a>
         <nav aria-label="Primary navigation">
-          {timestampServiceConfig ? <a href="#coa-options">Options</a> : null}
+          {timestampServiceConfig ? <a href="#coa-options">COA options</a> : null}
           <a href="#builder">Create</a>
           <a href="#verify">Verify</a>
           <a href="#method">Method</a>
         </nav>
-        <span className="local-badge"><i /> Local-only cryptography</span>
+        <span className="local-badge"><i /> Local COA signing</span>
       </header>
 
       <main id="top">
@@ -652,7 +652,7 @@ export default function App() {
               <li><span>03</span><div><strong>Ed25519 signature</strong><small>Issuer-controlled key authorizes the record</small></div><i /></li>
               <li><span>04</span><div><strong>Offline verification</strong><small>Open formats, public key, and verifier included</small></div><i /></li>
             </ol>
-            <div className="ledger__foot"><span>Website dependency</span><strong>NONE</strong></div>
+            <div className="ledger__foot"><span>COA verification website dependency</span><strong>NONE</strong></div>
           </div>
           <a className="hero__scroll-cue" href="#principles">
             <span>Explore below</span>
@@ -1003,7 +1003,7 @@ export default function App() {
                   </div>
                 )}
                 <p className="key-status" aria-live="polite">{keyStatus}</p>
-                <div className="security-note"><strong>Private means private.</strong><span>Keys, passphrases, images, the COA package, and the full form record stay local. If the optional managed timestamp service is enabled and you explicitly choose it after release, only the certificate reference, manifest digest, order contact email, and consent record are sent.</span></div>
+                <div className="security-note"><strong>Private means private.</strong><span>Keys, passphrases, images, the COA package, and the full form record stay local. If you choose the managed timestamp service, checkout sends the certificate reference, manifest digest, contact email, and consent record to the service. Payment details go directly to Stripe, and later status or proof requests use your private recovery code.</span></div>
               </section>
 
               <section className="issue-section">
@@ -1099,7 +1099,7 @@ export default function App() {
         <section className="method-section" id="method">
           <div className="section-heading">
             <p className="eyebrow eyebrow--dark"><span>04</span> The method</p>
-            <h2>Four open checks. No permanent middleman.</h2>
+            <h2>Four open COA checks. No permanent verification middleman.</h2>
           </div>
           <div className="method-grid">
             <article><span>01 / RECORD</span><h3>Describe the exact object</h3><p>A canonical certificate record binds identity, physical facts, provenance, and hashes of the original photographs.</p></article>

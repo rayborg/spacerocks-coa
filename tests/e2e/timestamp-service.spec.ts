@@ -137,6 +137,11 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   test.skip(!timestampFeatureConfigured, "This assertion requires a configured timestamp frontend.");
   await fulfillCheckoutPrice(page);
   await page.goto("/");
+  await expect(page.locator(".local-badge")).toContainText("Local COA signing");
+  await expect(page.locator(".local-badge")).not.toContainText("Local-only");
+  await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "COA options" })).toBeVisible();
+  await expect(page.locator(".ledger__foot")).toContainText("COA verification website dependency");
+  await expect(page.getByRole("heading", { name: "Four open COA checks. No permanent verification middleman." })).toBeVisible();
   const options = page.locator("#coa-options");
   await expect(options.getByRole("heading", { name: "Two COA options. One signed foundation." })).toBeVisible();
   await expect(options.getByRole("heading", { name: "Cryptographically Signed COA", exact: true })).toBeVisible();
@@ -158,6 +163,10 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   const checkoutHeading = page.getByRole("heading", { name: "Managed blockchain timestamp" });
   await expect(checkoutHeading).toBeVisible();
   await expect(checkoutHeading).toBeFocused();
+  await expect(page.locator(".security-note")).toContainText("Payment details go directly to Stripe");
+  await expect(page.locator(".security-note")).toContainText("later status or proof requests use your private recovery code");
+  await expect(page.locator(".timestamp-privacy-note").first()).toContainText("The checkout request sends only the listed checkout fields");
+  await expect(page.locator(".timestamp-privacy-note").first()).toContainText("Later status and proof requests authenticate with the private recovery code");
 });
 
 test("keeps the paid path unavailable until a canonical price retry succeeds", async ({ page }) => {

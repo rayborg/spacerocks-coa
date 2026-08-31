@@ -11,11 +11,11 @@
 <main>
   <p class="meta">Policy version: paid-beta-v1 | Effective: August 27, 2026</p>
   <h1>Managed Timestamp Privacy Policy</h1>
-  <p>This policy describes information processed by Meteorite Research for the optional Spacerocks managed timestamp service. The browser-only certificate generator remains local unless you separately choose the paid service.</p>
+  <p>This policy describes information processed by Meteorite Research for the optional Spacerocks managed timestamp service. Certificate generation and signing remain local even if you choose the paid service. The paid service separately receives the limited information described below.</p>
 
   <h2>Information collected</h2>
   <ul>
-    <li>Certificate reference, exact manifest SHA-256 digest, delivery email, policy consent versions, and timestamps.</li>
+    <li>Certificate reference, exact manifest SHA-256 digest, order contact email, policy consent versions, and timestamps.</li>
     <li>Opaque order, Stripe Checkout, payment, refund, and dispute references.</li>
     <li>OpenTimestamps proof versions, Bitcoin block evidence, confirmation observations, delivery attempts, and provider event references.</li>
     <li>Security and reliability data such as rate-limit counters, safe error codes, job attempts, and restricted audit events. Raw status tokens are not stored.</li>
@@ -26,7 +26,7 @@
   <p>Information is used to create and reconcile payment, submit and verify the exact digest, deliver and retain proof, provide support, prevent abuse, investigate incidents, process refunds or disputes, and meet accounting or legal obligations.</p>
 
   <h2>Processors and public systems</h2>
-  <p>Stripe processes payment; Google Cloud hosts application workloads and secrets; Neon hosts PostgreSQL records; Resend delivers transactional email. The digest commitment is submitted to independent public OpenTimestamps calendars and may ultimately be anchored in Bitcoin. The service does not sell personal information.</p>
+  <p>Stripe processes payment; Google Cloud hosts application workloads and secrets; Neon hosts PostgreSQL records. Automated email is not currently enabled; Resend may process transactional notices if that feature is enabled in the future. The digest commitment is submitted to independent public OpenTimestamps calendars and may ultimately be anchored in Bitcoin. The service does not sell personal information.</p>
 
   <h2>Retention and deletion</h2>
   <p>Payment, consent, order, proof, delivery, refund, dispute, and security evidence may be retained for up to seven years where needed for the service, accounting, fraud prevention, disputes, or law. Public calendar and Bitcoin commitments are irreversible and cannot be recalled. Proof evidence may be retained longer so customers can continue verifying it. Temporary rate-limit records expire operationally.</p>
