@@ -314,7 +314,8 @@ test.describe("configured sandbox timestamp service", () => {
     await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
     await issueLocalRelease(page);
     await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create server-priced test checkout" })).toBeDisabled();
+    const checkoutButton = page.getByRole("button", { name: "Create server-priced test checkout" });
+    await expect(checkoutButton).toBeDisabled();
     const deliveryEmail = page.getByLabel(/Order contact email/);
     await expect(deliveryEmail).toHaveAttribute("required", "");
     await expect(deliveryEmail).toHaveAttribute("aria-required", "true");
@@ -328,15 +329,19 @@ test.describe("configured sandbox timestamp service", () => {
     await page.getByLabel(/I explicitly consent/).check();
 
     // Ambiguous network, 5xx, and malformed-success retries retain one exact request binding.
-    await page.getByRole("button", { name: "Create server-priced test checkout" }).click();
+    await checkoutButton.click();
     await expect(page.getByText(/Retry will reuse the exact request and idempotency key/)).toBeVisible();
-    await page.getByRole("button", { name: "Create server-priced test checkout" }).click();
+    await expect(checkoutButton).toBeEnabled();
+    await checkoutButton.click();
     await expect(page.getByText(/request failed \(503\).*Retry will reuse/s)).toBeVisible();
-    await page.getByRole("button", { name: "Create server-priced test checkout" }).click();
+    await expect(checkoutButton).toBeEnabled();
+    await checkoutButton.click();
     await expect(page.getByText(/not Stripe's exact secure host/)).toBeVisible();
-    await page.getByRole("button", { name: "Create server-priced test checkout" }).click();
+    await expect(checkoutButton).toBeEnabled();
+    await checkoutButton.click();
     await expect(page.getByText(/unexpected checkout response/)).toBeVisible();
-    await page.getByRole("button", { name: "Create server-priced test checkout" }).click();
+    await expect(checkoutButton).toBeEnabled();
+    await checkoutButton.click();
     await expect(page.getByText(/request failed \(422\)/)).toBeVisible();
 
     await page.unrouteAll({ behavior: "wait" });
