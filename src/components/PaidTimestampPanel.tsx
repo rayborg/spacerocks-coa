@@ -316,7 +316,7 @@ export default function PaidTimestampPanel({ config, focusOnRelease = false, rel
     try {
       const proof = await createTimestampService(config).downloadProof(session.token, session.certificateReference);
       downloadBlob(proof.blob, proof.fileName);
-      setMessage("Timestamp proof downloaded. Keep it with the original manifest; the signed COA ZIP remains unchanged.");
+      setMessage("Timestamp proof downloaded. Keep it with the original manifest; the cryptographically signed COA ZIP remains unchanged.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The timestamp proof could not be downloaded.");
     } finally {
@@ -349,7 +349,7 @@ export default function PaidTimestampPanel({ config, focusOnRelease = false, rel
       </div>
 
       <div className="timestamp-explainer">
-        <p><strong>Your signed COA is already complete.</strong> It remains independently verifiable without this service, Stripe, OpenTimestamps, Bitcoin, or this website.</p>
+        <p><strong>Your cryptographically signed COA is already complete.</strong> It remains independently verifiable without this service, Stripe, OpenTimestamps, Bitcoin, or this website.</p>
         {sandbox
           ? <p>Public OpenTimestamps calendars are free. A future fee would cover managed checkout, automation, monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls any price; no amount is editable here.</p>
           : <p>Public OpenTimestamps calendars are free. The service fee covers managed checkout, automation, confirmation monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls the price; no amount is editable here.</p>}
