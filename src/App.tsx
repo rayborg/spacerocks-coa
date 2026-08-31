@@ -554,7 +554,7 @@ export default function App() {
                   <li>Offline verifier included</li>
                   <li>No account or payment</li>
                 </ul>
-                <a className="button button--outline" href="#builder" onClick={() => setSelectedService("free")}>Create free cryptographically signed COA</a>
+                <a className="button button--navy" href="#builder" onClick={() => setSelectedService("free")}>Create free cryptographically signed COA</a>
               </article>
               <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
                 <h3>Cryptographically Signed COA + Bitcoin-Anchored Proof</h3>
