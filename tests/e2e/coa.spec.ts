@@ -1023,6 +1023,23 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   expect(errors).toEqual([]);
 });
 
+test("scopes local processing and disabled email accurately in service policies", async ({ page }) => {
+  await page.goto("/policies/privacy.html");
+  await expect(page.getByText("Certificate generation and signing remain local even if you choose the paid service.")).toBeVisible();
+  await expect(page.getByText(/Automated email is not currently enabled/)).toBeVisible();
+  await expect(page.getByText(/browser-only certificate generator remains local unless/i)).toHaveCount(0);
+
+  await page.goto("/policies/terms.html");
+  await expect(page.getByText(/Automated email notices are not currently enabled/)).toBeVisible();
+  await expect(page.getByText(/retain the private recovery code/)).toBeVisible();
+  await expect(page.getByText(/Checkout displays the current managed service price before payment/)).toBeVisible();
+  await expect(page.getByText(/final notice is sent/)).toHaveCount(0);
+  await expect(page.getByText(/Monitoring continues through at least six confirmations/)).toBeVisible();
+
+  await page.goto("/policies/refunds.html");
+  await expect(page.getByText(/email provider delay/)).toHaveCount(0);
+});
+
 test("keeps certificate facts, signoff, and non-active status treatments disjoint", async ({ page }) => {
   await page.goto("/#builder");
   const statusSelect = page.locator('select[name="certificateStatus"]');
