@@ -491,27 +491,29 @@ test.describe("configured sandbox timestamp service", () => {
     await expect(page.getByText(/downloadable proof bundle is still being prepared/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Download proof bundle" })).toBeDisabled();
     await expect(page.getByText(/Bitcoin verification metadata is current/)).toBeVisible();
+    const refreshStatus = () => page.getByRole("button", { name: "Refresh status" })
+      .evaluate((element) => (element as HTMLButtonElement).click());
 
     responseMode = "verified_ready";
-    await page.getByRole("button", { name: "Refresh status" }).click();
+    await refreshStatus();
     await expect(page.getByRole("button", { name: "Download proof bundle" })).toBeEnabled();
 
     responseMode = "stale_stamping";
-    await page.getByRole("button", { name: "Refresh status" }).click();
+    await refreshStatus();
     await expect(page.getByText(/state without a downloadable bundle/)).toBeVisible();
     await expect(page.getByText("Initial Bitcoin confirmation verified")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Download proof bundle" })).toBeDisabled();
     expect(await page.evaluate(() => sessionStorage.getItem("spacerocks.timestamp.phase0"))).not.toBeNull();
 
     responseMode = "manual";
-    await page.getByRole("button", { name: "Refresh status" }).click();
+    await refreshStatus();
     await expect(page.getByText("Manual review")).toBeVisible();
     await expect(page.getByText("Service verification time:")).toHaveCount(0);
     await expect(page.getByText("Initial Bitcoin confirmation verified")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Download proof bundle" })).toBeDisabled();
 
     responseMode = "revoked";
-    await page.getByRole("button", { name: "Refresh status" }).click();
+    await refreshStatus();
     await expect(page.getByText(/removed from this tab/)).toBeVisible();
     expect(await page.evaluate(() => sessionStorage.getItem("spacerocks.timestamp.phase0"))).toBeNull();
   });
