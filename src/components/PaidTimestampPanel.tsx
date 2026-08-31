@@ -38,8 +38,8 @@ function isPollingComplete(status: OrderStatus): boolean {
 
 function statusCopy(status: OrderStatus): { label: string; detail: string; tone: string } {
   if (status.fulfillmentState === "manual_review") return { label: "Manual review", detail: "Automation has paused safely. A historical calendar-submission time, if shown, does not mean the current review is complete or Bitcoin-confirmed.", tone: "warning" };
-  if (status.paymentState === "failed") return { label: "Payment failed", detail: "No Bitcoin timestamp is confirmed. Use Stripe or support guidance before retrying.", tone: "error" };
-  if (status.paymentState === "expired") return { label: "Checkout expired", detail: "No Bitcoin timestamp is confirmed for this expired checkout.", tone: "error" };
+  if (status.paymentState === "failed") return { label: "Payment failed", detail: "No Bitcoin-anchored proof is confirmed. Use Stripe or support guidance before retrying.", tone: "error" };
+  if (status.paymentState === "expired") return { label: "Checkout expired", detail: "No Bitcoin-anchored proof is confirmed for this expired checkout.", tone: "error" };
   if (status.paymentState === "refunded") return { label: "Order refunded", detail: "A refund does not erase timestamp evidence that may already exist. Review proof availability below.", tone: "warning" };
   if (status.paymentState === "disputed") return { label: "Order disputed", detail: "The commercial order is under review. This does not by itself change existing timestamp evidence.", tone: "warning" };
   if (status.fulfillmentState === "bitcoin_verified" || status.fulfillmentState === "delivered") {
@@ -295,7 +295,7 @@ export default function PaidTimestampPanel({ config, focusOnRelease = false, rel
   const downloadRecoveryCode = () => {
     if (!session) return;
     const text = [
-      "Spacerocks managed timestamp recovery code",
+      "Spacerocks Bitcoin-anchored proof recovery code",
       "Keep this private. Anyone with this code may view status or download an available proof.",
       `Order: ${session.orderRef}`,
       `Certificate: ${session.certificateReference}`,
@@ -326,9 +326,9 @@ export default function PaidTimestampPanel({ config, focusOnRelease = false, rel
 
   if (!expanded && !release && !session) {
     return (
-      <section className="timestamp-recovery-launch" aria-label="Managed timestamp order recovery">
+      <section className="timestamp-recovery-launch" aria-label="Bitcoin-anchored proof order recovery">
         <span>Already have a private recovery code?</span>
-        <button type="button" className="text-button" onClick={() => setExpanded(true)}>Recover a timestamp order</button>
+        <button type="button" className="text-button" onClick={() => setExpanded(true)}>Recover a Bitcoin proof order</button>
       </section>
     );
   }
@@ -342,8 +342,8 @@ export default function PaidTimestampPanel({ config, focusOnRelease = false, rel
     <section className="timestamp-section" id="timestamp-service" aria-labelledby="timestamp-heading">
       <div className="timestamp-section__heading">
         <div>
-          <p className="eyebrow eyebrow--dark"><span>+</span> Option 2 · Blockchain enhancement</p>
-          <h2 id="timestamp-heading" ref={headingRef} tabIndex={-1}>Managed blockchain timestamp</h2>
+          <p className="eyebrow eyebrow--dark"><span>+</span> Option 2 · Permanent public commitment</p>
+          <h2 id="timestamp-heading" ref={headingRef} tabIndex={-1}>Bitcoin-Anchored Proof</h2>
         </div>
         <strong className="timestamp-test-badge">{sandbox ? "Sandbox / test only" : "Live paid service"}</strong>
       </div>
@@ -352,7 +352,7 @@ export default function PaidTimestampPanel({ config, focusOnRelease = false, rel
         <p><strong>Your cryptographically signed COA is already complete.</strong> It remains independently verifiable without this service, Stripe, OpenTimestamps, Bitcoin, or this website.</p>
         {sandbox
           ? <p>Public OpenTimestamps calendars are free. A future fee would cover managed checkout, automation, monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls any price; no amount is editable here.</p>
-          : <p>Public OpenTimestamps calendars are free. The service fee covers managed checkout, automation, confirmation monitoring, proof retention and upgrades, delivery, support, and related operations. The server controls the price; no amount is editable here.</p>}
+          : <p><strong>For a one-time $9.99, we anchor a one-way cryptographic fingerprint of the exact signed manifest to Bitcoin and provide a downloadable proof.</strong> Anyone with the COA can later verify that this fingerprint existed no later than the attesting Bitcoin block. The signed manifest and its file hashes reveal later changes to the presented package. The COA and photographs remain off-chain.</p>}
         <p>The separate proof anchors the exact submitted <code>manifest.json</code> SHA-256 digest through OpenTimestamps to the Bitcoin blockchain. It does not put the COA or photographs on-chain, usually does not provide a unique transaction, and does not prove authenticity, ownership, identity, authorship, provenance truth, or an exact creation time.</p>
         <p>Bitcoin is the specific blockchain used by this service. Initial verification requires at least one confirmation and remains subject to reorganization monitoring. Keep the private recovery code to return for proof upgrades and download.</p>
       </div>

@@ -3769,12 +3769,12 @@ footer > div:last-child a {
   }
 
   .service-options {
-    padding: 28px 14px 28px;
+    padding: 24px 14px 28px;
   }
 
   .service-options__intro {
     display: block;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
 
   .service-options__intro .eyebrow {
