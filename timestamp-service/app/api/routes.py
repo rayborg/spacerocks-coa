@@ -11,7 +11,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.api.schemas import CheckoutRequest, CheckoutResponse, OrderStatusResponse, RotateTokenResponse
+from app.api.schemas import (
+    CheckoutPriceResponse,
+    CheckoutRequest,
+    CheckoutResponse,
+    OrderStatusResponse,
+    RotateTokenResponse,
+)
 from app.db.fulfillment_adapters import ProofMetadata, SqlProofStore
 from app.db.models import (
     BitcoinConfirmationObservation,
@@ -36,6 +42,23 @@ from app.ports.proof import ProofBundleContext, ProofBundler, ProofState, Stored
 from app.security.idempotency import bind_idempotency_request
 
 router = APIRouter()
+
+
+@router.get("/v1/checkout/price", response_model=CheckoutPriceResponse)
+async def checkout_price(request: Request, response: Response) -> CheckoutPriceResponse:
+    services = request.app.state.services
+    checkout: CheckoutService | None = services.checkout
+    if checkout is None:
+        raise HTTPException(status_code=503, detail="checkout unavailable")
+    try:
+        price = await checkout.get_checkout_price()
+    except (CheckoutUnavailable, PaymentProviderError) as error:
+        raise HTTPException(status_code=503, detail="checkout unavailable") from error
+    response.headers["Cache-Control"] = "no-store"
+    return CheckoutPriceResponse(
+        amount_minor=price.amount_minor,
+        currency=price.currency,
+    )
 
 
 @router.post("/v1/checkout", response_model=CheckoutResponse, status_code=status.HTTP_201_CREATED)

@@ -89,6 +89,60 @@ async def test_stripe_checkout_is_entirely_server_controlled(monkeypatch: pytest
     assert provider.client._requestor._options.stripe_version == STRIPE_API_VERSION
 
 
+@pytest.mark.asyncio
+async def test_stripe_price_is_active_one_time_usd_and_mode_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = _provider()
+    monkeypatch.setattr(provider.client.v1.prices, "retrieve", lambda price_id: {
+        "id": price_id,
+        "object": "price",
+        "active": True,
+        "currency": "usd",
+        "livemode": False,
+        "type": "one_time",
+        "unit_amount": 999,
+    })
+
+    price = await provider.retrieve_price("price_server_controlled")
+
+    assert price.price_id == "price_server_controlled"
+    assert price.amount_minor == 999
+    assert price.currency == "usd"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"active": False},
+        {"currency": "isk"},
+        {"livemode": True},
+        {"type": "recurring"},
+        {"unit_amount": None},
+        {"unit_amount": 0},
+        {"unit_amount": 100_000_001},
+    ],
+)
+async def test_stripe_price_rejects_unsafe_provider_data(
+    monkeypatch: pytest.MonkeyPatch,
+    change: dict[str, object],
+) -> None:
+    provider = _provider()
+    result: dict[str, object] = {
+        "id": "price_server_controlled",
+        "object": "price",
+        "active": True,
+        "currency": "usd",
+        "livemode": False,
+        "type": "one_time",
+        "unit_amount": 999,
+    }
+    result.update(change)
+    monkeypatch.setattr(provider.client.v1.prices, "retrieve", lambda _price_id: result)
+
+    with pytest.raises(PaymentProviderError):
+        await provider.retrieve_price("price_server_controlled")
+
+
 @pytest.mark.parametrize(
     ("payment_mode", "key"),
     [

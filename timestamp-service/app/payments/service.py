@@ -15,7 +15,13 @@ from app.db.models import DurableJob, IdempotencyRequest, Order, StripeEvent
 from app.db.repositories import OrderStore, enqueue_fulfillment_once, enqueue_outbox_once, record_stripe_event
 from app.domain.order import FulfillmentState, PaymentState
 from app.payments.gateway import PaymentProvider, PaymentProviderError, PaymentSignatureError
-from app.payments.models import CanonicalCheckout, HostedCheckoutRequest, HostedCheckoutResult, ProviderEvent
+from app.payments.models import (
+    CanonicalCheckout,
+    HostedCheckoutRequest,
+    HostedCheckoutResult,
+    ProviderEvent,
+    ProviderPrice,
+)
 from app.security.idempotency import IdempotencyBinding
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -111,6 +117,21 @@ class CheckoutService:
         _validate_checkout_url(result.checkout_url, result.session_id, self.settings.payment_mode)
         return self._finalize(reserved, binding, result, datetime.now(UTC))
 
+    async def get_checkout_price(self) -> ProviderPrice:
+        if not self.settings.checkout_enabled or self.settings.payment_mode == PaymentMode.DISABLED:
+            raise CheckoutUnavailable("checkout is disabled")
+        if self.provider.payment_mode != self.settings.payment_mode:
+            raise CheckoutUnavailable("payment provider mode does not match checkout mode")
+        price_id = self.settings.stripe_price_id or "fixture_price"
+        price = await self.provider.retrieve_price(price_id)
+        if (
+            price.price_id != price_id
+            or price.amount_minor != self.settings.checkout_amount_minor
+            or price.currency != self.settings.checkout_currency
+        ):
+            raise CheckoutUnavailable("provider Price does not match checkout configuration")
+        return price
+
     def _reserve(
         self,
         request: CheckoutInput,
@@ -195,6 +216,13 @@ class CheckoutService:
                 return self._resume(session, existing, binding, now)
 
     async def _call_provider(self, plan: CheckoutPlan) -> HostedCheckoutResult:
+        price = await self.get_checkout_price()
+        if (
+            price.price_id != plan.price_id
+            or price.amount_minor != plan.amount_minor
+            or price.currency != plan.currency
+        ):
+            raise CheckoutUnavailable("provider Price does not match reserved checkout")
         return await self.provider.create_checkout(
             HostedCheckoutRequest(
                 internal_order_id=str(plan.order_id),

@@ -165,6 +165,29 @@ describe("timestamp service configuration", () => {
 });
 
 describe("timestamp service requests", () => {
+  it("loads and strictly validates the server-controlled checkout price", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ amount_minor: 999, currency: "usd" }));
+    const service = createTimestampService(config(), fetcher);
+
+    await expect(service.getCheckoutPrice()).resolves.toEqual({ amountMinor: 999, currency: "usd" });
+    expect(fetcher).toHaveBeenCalledWith("https://timestamp.example.test/api/v1/checkout/price", expect.objectContaining({
+      cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    }));
+
+    for (const invalid of [
+      { amount_minor: 0, currency: "usd" },
+      { amount_minor: 999.5, currency: "usd" },
+      { amount_minor: 999, currency: "USD" },
+      { amount_minor: 999, currency: "isk" },
+      { amount_minor: 999, currency: "usd", price_id: "price_private" },
+    ]) {
+      const invalidFetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(invalid));
+      await expect(createTimestampService(config(), invalidFetcher).getCheckoutPrice()).rejects.toThrow(/checkout price/);
+    }
+  });
+
   it("sends only the allowlisted checkout body and a random idempotency header", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(checkoutFixture, { status: 201 }));
     const service = createTimestampService(config(), fetcher);

@@ -12,7 +12,13 @@ from typing import Any, Protocol
 import stripe
 
 from app.config.settings import AppEnvironment, PaymentMode
-from app.payments.models import CanonicalCheckout, HostedCheckoutRequest, HostedCheckoutResult, ProviderEvent
+from app.payments.models import (
+    CanonicalCheckout,
+    HostedCheckoutRequest,
+    HostedCheckoutResult,
+    ProviderEvent,
+    ProviderPrice,
+)
 
 STRIPE_API_VERSION = "2026-07-29.dahlia"
 STRIPE_INTEGRATION_IDENTIFIER = "spacerocks_timestamp_checkout_qjvkmzrx"
@@ -30,6 +36,8 @@ class PaymentProvider(Protocol):
     payment_mode: PaymentMode
 
     async def create_checkout(self, request: HostedCheckoutRequest, idempotency_key: str) -> HostedCheckoutResult: ...
+
+    async def retrieve_price(self, price_id: str) -> ProviderPrice: ...
 
     def verify_event(self, raw_body: bytes, signature: str, tolerance_seconds: int) -> ProviderEvent: ...
 
@@ -85,6 +93,28 @@ class StripePaymentProvider:
         session_id = _required_string(session_data, "id")
         checkout_url = _required_string(session_data, "url")
         return HostedCheckoutResult(session_id=session_id, checkout_url=checkout_url)
+
+    async def retrieve_price(self, price_id: str) -> ProviderPrice:
+        try:
+            price = await self._run(lambda: self.client.v1.prices.retrieve(price_id))
+        except (TimeoutError, stripe.StripeError) as error:
+            raise PaymentProviderError("Stripe Price retrieval failed") from error
+        price_data = _stripe_mapping(price)
+        self._require_object_mode(price_data, "Price retrieval")
+        amount = price_data.get("unit_amount")
+        currency = price_data.get("currency")
+        if (
+            _required_string(price_data, "id") != price_id
+            or price_data.get("active") is not True
+            or price_data.get("type") != "one_time"
+            or type(amount) is not int
+            or amount <= 0
+            or amount > 100_000_000
+            or not isinstance(currency, str)
+            or currency != "usd"
+        ):
+            raise PaymentProviderError("Stripe Price is unavailable or invalid")
+        return ProviderPrice(price_id=price_id, amount_minor=amount, currency=currency)
 
     def verify_event(self, raw_body: bytes, signature: str, tolerance_seconds: int) -> ProviderEvent:
         try:
@@ -177,6 +207,13 @@ class FixturePaymentProvider:
         self.payment_mode = PaymentMode.FIXTURE
         self.signing_secret = signing_secret
         self.checkouts: dict[str, CanonicalCheckout] = {}
+        self.prices: dict[str, ProviderPrice] = {}
+
+    async def retrieve_price(self, price_id: str) -> ProviderPrice:
+        try:
+            return self.prices[price_id]
+        except KeyError as error:
+            raise PaymentProviderError("fixture price is unavailable") from error
 
     async def create_checkout(self, request: HostedCheckoutRequest, idempotency_key: str) -> HostedCheckoutResult:
         session_id = f"cs_test_{hashlib.sha256(idempotency_key.encode('ascii')).hexdigest()[:24]}"
@@ -243,6 +280,13 @@ class FixturePaymentProvider:
 
     def set_checkout(self, checkout: CanonicalCheckout) -> None:
         self.checkouts[checkout.session_id] = checkout
+
+    def set_price(self, price_id: str, amount_minor: int, currency: str) -> None:
+        self.prices[price_id] = ProviderPrice(
+            price_id=price_id,
+            amount_minor=amount_minor,
+            currency=currency,
+        )
 
     def sign(self, raw_body: bytes, timestamp: int | None = None) -> str:
         signed_at = timestamp if timestamp is not None else int(time.time())

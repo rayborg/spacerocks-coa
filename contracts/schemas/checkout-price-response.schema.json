@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spacerocks.example/contracts/checkout-price-response.schema.json",
+  "title": "Managed timestamp checkout price response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["amount_minor", "currency"],
+  "properties": {
+    "amount_minor": {"type": "integer", "minimum": 1, "maximum": 100000000},
+    "currency": {"const": "usd"}
+  }
+}

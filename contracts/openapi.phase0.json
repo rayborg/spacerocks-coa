@@ -7,6 +7,20 @@
   },
   "servers": [{"url": "https://timestamp-api.example.test"}],
   "paths": {
+    "/v1/checkout/price": {
+      "get": {
+        "operationId": "getCheckoutPrice",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Active one-time Stripe Price used by checkout",
+            "headers": {"Cache-Control": {"required": true, "schema": {"const": "no-store"}}},
+            "content": {"application/json": {"schema": {"$ref": "./schemas/checkout-price-response.schema.json"}}}
+          },
+          "503": {"description": "Checkout or its canonical provider Price is unavailable"}
+        }
+      }
+    },
     "/v1/checkout": {
       "post": {
         "operationId": "createCheckout",
