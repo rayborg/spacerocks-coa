@@ -266,7 +266,7 @@ test.describe("configured sandbox timestamp service", () => {
   test("creates checkout only after local release with the exact allowlisted body and strict Stripe link", async ({ page }) => {
     let checkoutRequest: { headers: Record<string, string>; body: Record<string, unknown>; url: string } | undefined;
     const checkoutRequests: Array<{ headers: Record<string, string>; body: Record<string, unknown>; url: string }> = [];
-    let hostileAttempt = 0;
+    let checkoutResponse: "network" | "unavailable" | "hostile_url" | "malformed" | "rejected" = "network";
     await page.route("**/v1/**", async (route) => {
       const request = route.request();
       if (request.method() === "OPTIONS") {
@@ -274,18 +274,17 @@ test.describe("configured sandbox timestamp service", () => {
         return;
       }
       if (request.url().endsWith("/v1/checkout")) {
-        hostileAttempt += 1;
         checkoutRequest = { headers: request.headers(), body: request.postDataJSON(), url: request.url() };
         checkoutRequests.push(checkoutRequest);
-        if (hostileAttempt === 1) {
+        if (checkoutResponse === "network") {
           await route.abort("failed");
           return;
         }
-        if (hostileAttempt === 2) {
+        if (checkoutResponse === "unavailable") {
           await route.fulfill({ status: 503, headers: privateHeaders, body: JSON.stringify({ detail: "response uncertain" }) });
           return;
         }
-        if (hostileAttempt === 5) {
+        if (checkoutResponse === "rejected") {
           await route.fulfill({ status: 422, headers: privateHeaders, body: JSON.stringify({ detail: "deterministic rejection" }) });
           return;
         }
@@ -295,12 +294,12 @@ test.describe("configured sandbox timestamp service", () => {
           body: JSON.stringify({
             order_reference: orderReference,
             status_token: token,
-            checkout_url: hostileAttempt === 3
+            checkout_url: checkoutResponse === "hostile_url"
               ? "https://checkout.stripe.com.evil.test/c/pay/lookalike"
               : checkoutUrl,
             payment_state: "checkout_open",
             fulfillment_state: "awaiting_payment",
-            ...(hostileAttempt === 4 ? { unexpected_customer_data: "must be rejected" } : {}),
+            ...(checkoutResponse === "malformed" ? { unexpected_customer_data: "must be rejected" } : {}),
           }),
         });
       } else if (request.url().endsWith("/v1/orders/status")) {
@@ -332,15 +331,19 @@ test.describe("configured sandbox timestamp service", () => {
     await checkoutButton.click();
     await expect(page.getByText(/Retry will reuse the exact request and idempotency key/)).toBeVisible();
     await expect(checkoutButton).toBeEnabled();
+    checkoutResponse = "unavailable";
     await checkoutButton.click();
     await expect(page.getByText(/request failed \(503\).*Retry will reuse/s)).toBeVisible();
     await expect(checkoutButton).toBeEnabled();
+    checkoutResponse = "hostile_url";
     await checkoutButton.click();
     await expect(page.getByText(/not Stripe's exact secure host/)).toBeVisible();
     await expect(checkoutButton).toBeEnabled();
+    checkoutResponse = "malformed";
     await checkoutButton.click();
     await expect(page.getByText(/unexpected checkout response/)).toBeVisible();
     await expect(checkoutButton).toBeEnabled();
+    checkoutResponse = "rejected";
     await checkoutButton.click();
     await expect(page.getByText(/request failed \(422\)/)).toBeVisible();
 
