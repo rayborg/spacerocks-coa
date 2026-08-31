@@ -75,7 +75,7 @@ async function fulfillCheckoutPrice(page: Page, amountMinor = 999): Promise<void
   });
 }
 
-async function issueLocalRelease(page: Page, issueButtonName = "Issue signed COA package"): Promise<void> {
+async function issueLocalRelease(page: Page, issueButtonName = "Issue cryptographically signed COA package"): Promise<void> {
   await page.locator('input[name="issuerName"]').fill("Test Issuer");
   await page.locator('input[name="collectionName"]').fill("Test Meteorite Collection");
   await page.locator('input[name="certificateId"]').fill("TEST-COA-0001");
@@ -126,7 +126,7 @@ test("omits the paid feature and makes zero timestamp requests without API confi
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Signed COA + blockchain timestamp" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Cryptographically Signed COA + blockchain timestamp" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Recover a timestamp order" })).toHaveCount(0);
   await expect(page.getByText("Sandbox / test only")).toHaveCount(0);
   await page.waitForTimeout(500);
@@ -139,8 +139,8 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   await page.goto("/");
   const options = page.locator("#coa-options");
   await expect(options.getByRole("heading", { name: "Two COA options. One signed foundation." })).toBeVisible();
-  await expect(options.getByRole("heading", { name: "Signed COA", exact: true })).toBeVisible();
-  await expect(options.getByRole("heading", { name: "Signed COA + blockchain timestamp" })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Cryptographically Signed COA", exact: true })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Cryptographically Signed COA + blockchain timestamp" })).toBeVisible();
   await expect(options).toContainText("$0");
   await expect(options).toContainText("$9.99");
   await expect(options.getByText(/Option 1|Option 2 · Enhanced/)).toHaveCount(0);
@@ -151,19 +151,22 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   }));
   expect(placement.options).toBeLessThan(placement.hero!);
   await options.getByRole("link", { name: "Create COA + blockchain proof" }).click();
-  await expect(page.locator(".selected-service")).toContainText("Signed COA + blockchain timestamp · $9.99");
-  await expect(page.getByRole("button", { name: "Issue COA for blockchain timestamp" })).toBeVisible();
+  await expect(page.locator(".selected-service")).toContainText("Cryptographically Signed COA + blockchain timestamp · $9.99");
+  await expect(page.getByRole("button", { name: "Issue cryptographically signed COA for blockchain timestamp" })).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await issueLocalRelease(page, "Issue COA for blockchain timestamp");
+  await issueLocalRelease(page, "Issue cryptographically signed COA for blockchain timestamp");
   const checkoutHeading = page.getByRole("heading", { name: "Managed blockchain timestamp" });
   await expect(checkoutHeading).toBeVisible();
   await expect(checkoutHeading).toBeFocused();
 });
 
-test("keeps the paid path unavailable when its canonical price cannot load", async ({ page }) => {
+test("keeps the paid path unavailable until a canonical price retry succeeds", async ({ page }) => {
   test.skip(!timestampFeatureConfigured, "This assertion requires a configured timestamp frontend.");
+  let priceAvailable = false;
   await page.route("**/v1/checkout/price", async (route) => {
-    await route.fulfill({ status: 503, headers: privateHeaders, body: JSON.stringify({ detail: "checkout unavailable" }) });
+    await route.fulfill(priceAvailable
+      ? { status: 200, headers: privateHeaders, body: JSON.stringify({ amount_minor: 999, currency: "usd" }) }
+      : { status: 503, headers: privateHeaders, body: JSON.stringify({ detail: "checkout unavailable" }) });
   });
   await page.goto("/");
 
@@ -173,7 +176,29 @@ test("keeps the paid path unavailable when its canonical price cannot load", asy
   await expect(paidAction).toHaveAttribute("aria-disabled", "true");
   await expect(paidAction).not.toHaveAttribute("href", /.+/);
   await paidAction.evaluate((element) => (element as HTMLElement).click());
-  await expect(page.locator(".selected-service")).toContainText("Free signed COA · $0");
+  await expect(page.locator(".selected-service")).toContainText("Free cryptographically signed COA · $0");
+  priceAvailable = true;
+  await paidCard.getByRole("button", { name: "Retry live price" }).click();
+  await expect(paidCard.locator(".service-option__price strong")).toHaveText("$9.99");
+  await expect(paidAction).toHaveAttribute("aria-disabled", "false");
+  await expect(paidAction).toHaveAttribute("href", "#builder");
+});
+
+test("waits through a cold canonical price response", async ({ page }) => {
+  test.skip(!timestampFeatureConfigured, "This assertion requires a configured timestamp frontend.");
+  await page.route("**/v1/checkout/price", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 11_000));
+    await route.fulfill({
+      status: 200,
+      headers: privateHeaders,
+      body: JSON.stringify({ amount_minor: 999, currency: "usd" }),
+    });
+  });
+  await page.goto("/");
+
+  const price = page.locator(".service-option--blockchain .service-option__price strong");
+  await expect(price).toHaveText("Loading price...");
+  await expect(price).toHaveText("$9.99", { timeout: 15_000 });
 });
 
 test.describe("configured sandbox timestamp service", () => {

@@ -381,6 +381,7 @@ export default function App() {
   const [selectedService, setSelectedService] = useState<"free" | "blockchain">("free");
   const [blockchainPrice, setBlockchainPrice] = useState<string>();
   const [blockchainPriceStatus, setBlockchainPriceStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [blockchainPriceRequest, setBlockchainPriceRequest] = useState(0);
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string; certificateReference: string }>();
   const allPhotosAttested = photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal);
   const issueReady = isValid && Boolean(identity) && backupDownloaded && allPhotosAttested;
@@ -398,7 +399,8 @@ export default function App() {
     if (!timestampServiceConfig) return;
     const controller = new AbortController();
     let active = true;
-    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    setBlockchainPrice(undefined);
     setBlockchainPriceStatus("loading");
     void createTimestampService(timestampServiceConfig).getCheckoutPrice(controller.signal).then((price) => {
       if (!active) return;
@@ -416,7 +418,7 @@ export default function App() {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, []);
+  }, [blockchainPriceRequest]);
   const generateKey = async () => {
     if (generatePassphrase.length < 12) {
       setKeyStatus("Use a passphrase of at least 12 characters.");
@@ -586,7 +588,7 @@ export default function App() {
             </div>
             <div className="service-options__grid">
               <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
-                <h3>Signed COA</h3>
+                <h3>Cryptographically Signed COA</h3>
                 <div className="service-option__price"><strong>$0</strong><span>Free · no account required</span></div>
                 <p>Create, sign, download, and verify the complete certificate package locally in your browser.</p>
                 <ul>
@@ -595,17 +597,20 @@ export default function App() {
                   <li>Offline verifier included</li>
                   <li>No account or payment</li>
                 </ul>
-                <a className="button button--outline" href="#builder" onClick={() => setSelectedService("free")}>Create free signed COA</a>
+                <a className="button button--outline" href="#builder" onClick={() => setSelectedService("free")}>Create free cryptographically signed COA</a>
               </article>
               <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
-                <h3>Signed COA + blockchain timestamp</h3>
+                <h3>Cryptographically Signed COA + blockchain timestamp</h3>
                 <div className="service-option__price" aria-live="polite">
-                  <strong>{blockchainPriceStatus === "ready" ? blockchainPrice : blockchainPriceStatus === "loading" ? "Loading..." : "Unavailable"}</strong>
+                  <strong>{blockchainPriceStatus === "ready" ? blockchainPrice : blockchainPriceStatus === "loading" ? "Loading price..." : "Unavailable"}</strong>
                   <span>{blockchainPriceStatus === "ready" ? "One-time managed service" : "Live checkout price"}</span>
+                  {blockchainPriceStatus === "unavailable" ? (
+                    <button type="button" className="service-option__price-retry" onClick={() => setBlockchainPriceRequest((request) => request + 1)}>Retry live price</button>
+                  ) : null}
                 </div>
                 <p>Add managed OpenTimestamps processing that anchors the exact signed <code>manifest.json</code> hash to the Bitcoin blockchain.</p>
                 <ul>
-                  <li>Everything in the free signed COA</li>
+                  <li>Everything in the free cryptographically signed COA</li>
                   <li>Independent blockchain timestamp proof</li>
                   <li>Automated proof upgrades and Bitcoin verification</li>
                   <li>Private recovery code and proof download</li>
@@ -669,7 +674,7 @@ export default function App() {
             {timestampServiceConfig ? (
               <div className={`selected-service selected-service--${selectedService}`}>
                 <span>Selected option</span>
-                <strong>{selectedService === "blockchain" ? `Signed COA + blockchain timestamp${blockchainPrice ? ` · ${blockchainPrice}` : ""}` : "Free signed COA · $0"}</strong>
+                <strong>{selectedService === "blockchain" ? `Cryptographically Signed COA + blockchain timestamp${blockchainPrice ? ` · ${blockchainPrice}` : ""}` : "Free cryptographically signed COA · $0"}</strong>
                 <a href="#coa-options">Change option</a>
               </div>
             ) : null}
@@ -1034,7 +1039,7 @@ export default function App() {
                   type="submit"
                   aria-describedby="issuance-readiness"
                   disabled={generationBusy || !issueReady}
-                >{generationBusy ? "Building package..." : selectedService === "blockchain" ? "Issue COA for blockchain timestamp" : "Issue signed COA package"}</button>
+                >{generationBusy ? "Building package..." : selectedService === "blockchain" ? "Issue cryptographically signed COA for blockchain timestamp" : "Issue cryptographically signed COA package"}</button>
                 <p className="generation-status" aria-live="polite">{generationStatus}</p>
                 {receipt ? (
                   <div className="release-receipt">

@@ -605,6 +605,7 @@ a {
 .service-option__price {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 14px;
   margin-bottom: 28px;
   padding: 16px 0;
@@ -638,6 +639,24 @@ a {
 
 .service-option--blockchain .service-option__price span {
   color: #9eabb8;
+}
+
+.service-option__price-retry {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: var(--gold-light);
+  cursor: pointer;
+  font: 800 10px/1.4 var(--sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.service-option__price-retry:focus-visible {
+  outline: 2px solid var(--gold-light);
+  outline-offset: 4px;
 }
 
 .service-option .button[aria-disabled="true"] {

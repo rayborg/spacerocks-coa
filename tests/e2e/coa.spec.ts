@@ -214,7 +214,7 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(specimenSummary).not.toContainText(/--|0 g|Specimen form/);
   await expect(preview.locator(".certificate-preview__signoff strong")).toHaveText("Issuer");
 
-  await expect(page.getByRole("button", { name: "Issue signed COA package" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Issue cryptographically signed COA package" })).toBeDisabled();
   await expect(page.getByText("Complete these requirements before issuance:")).toBeVisible();
   await page.getByRole("button", { name: "Review missing form fields" }).click();
   await expect(page.locator(".generation-status")).toHaveText("Review the highlighted required fields.");
@@ -1226,7 +1226,7 @@ test("issues and verifies a minimal package without optional PII", async ({ page
   await page.locator('input[name="officialNameVerified"]').check();
   await page.getByRole("radio", { name: /Unclassified/ }).check();
   await page.locator('input[name="suspectedType"]').fill("Possible L5 chondrite");
-  const issueButton = page.getByRole("button", { name: "Issue signed COA package" });
+  const issueButton = page.getByRole("button", { name: "Issue cryptographically signed COA package" });
   await expect(issueButton).toBeDisabled();
   await expect(page.getByText("Generate or import a signing identity.")).toBeVisible();
 
@@ -1385,7 +1385,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.getByLabel("Caption (optional)", { exact: true }).fill("Front face");
   await page.getByLabel("Capture date (optional)", { exact: true }).fill("2026-07-29");
   await page.getByLabel(/I attest this is an exact/).check();
-  const issueButton = page.getByRole("button", { name: "Issue signed COA package" });
+  const issueButton = page.getByRole("button", { name: "Issue cryptographically signed COA package" });
   await expect(issueButton).toBeEnabled();
   await page.locator('input[name="meteoriteName"]').fill("Test Meteorite revised");
   await expect(page.locator('input[name="officialNameVerified"]')).not.toBeChecked();
@@ -1535,7 +1535,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     await page.getByRole("radio", { name: /Celestial Formal/ }).check();
     await expect(page.locator(".certificate-preview")).toHaveAttribute("data-certificate-style", "celestial-formal");
     const celestialPackageDownload = page.waitForEvent("download", { timeout: 90_000 });
-    await page.getByRole("button", { name: "Issue signed COA package" }).click();
+    await page.getByRole("button", { name: "Issue cryptographically signed COA package" }).click();
     const celestialDownload = await celestialPackageDownload;
     const celestialPackagePath = await celestialDownload.path();
     expect(celestialPackagePath).toBeTruthy();
