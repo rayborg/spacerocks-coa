@@ -138,7 +138,7 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   await expect(page.locator(".ledger__foot")).toContainText("COA verification website dependency");
   await expect(page.getByRole("heading", { name: "Four open COA checks. No permanent verification middleman." })).toBeVisible();
   const options = page.locator("#coa-options");
-  await expect(options.getByRole("heading", { name: "Two COA options. One signed foundation." })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Choose how your COA is proven." })).toBeVisible();
   await expect(options.getByRole("heading", { name: "Cryptographically Signed COA", exact: true })).toBeVisible();
   await expect(options.getByRole("heading", { name: "Cryptographically Signed COA + blockchain timestamp" })).toBeVisible();
   await expect(options).toContainText("$0");
@@ -146,12 +146,34 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   await expect(options).not.toContainText(/Loading price|Unavailable|Retry live price/);
   expect(priceRequests).toBe(0);
   await expect(options.getByText(/Option 1|Option 2 · Enhanced/)).toHaveCount(0);
-  await expect(options).toContainText("Bitcoin is the specific blockchain used");
+  await expect(options).toContainText("Only a commitment to the manifest hash is anchored to Bitcoin");
   const placement = await page.evaluate(() => ({
     options: document.querySelector("#coa-options")?.getBoundingClientRect().top,
     hero: document.querySelector(".hero")?.getBoundingClientRect().top,
   }));
   expect(placement.options).toBeLessThan(placement.hero!);
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    const fold = await page.evaluate(() => {
+      const freeAction = document.querySelector(".service-option:not(.service-option--blockchain) .button") as HTMLElement;
+      const paidAction = document.querySelector(".service-option--blockchain .button") as HTMLElement;
+      const freeRect = freeAction.getBoundingClientRect();
+      const paidRect = paidAction.getBoundingClientRect();
+      return {
+        freeAction: { top: freeRect.top, bottom: freeRect.bottom, width: freeRect.width, height: freeRect.height },
+        paidAction: { top: paidRect.top, bottom: paidRect.bottom, width: paidRect.width, height: paidRect.height },
+        overflow: document.documentElement.scrollWidth > window.innerWidth,
+      };
+    });
+    for (const action of [fold.freeAction, fold.paidAction]) {
+      expect(action.top).toBeGreaterThanOrEqual(0);
+      expect(action.bottom).toBeLessThanOrEqual(viewport.height);
+      expect(action.width).toBeGreaterThan(0);
+      expect(action.height).toBeGreaterThan(0);
+    }
+    expect(fold.overflow).toBe(false);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   await options.getByRole("link", { name: "Create COA + blockchain proof" }).click();
   await expect(page.locator(".selected-service")).toContainText("Cryptographically Signed COA + blockchain timestamp · $9.99");
   await expect(page.getByRole("button", { name: "Issue cryptographically signed COA for blockchain timestamp" })).toBeVisible();

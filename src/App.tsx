@@ -541,17 +541,16 @@ export default function App() {
           <section className="service-options" id="coa-options" aria-labelledby="coa-options-heading">
             <div className="service-options__intro">
               <p className="eyebrow eyebrow--dark"><span>01</span> Choose your proof level</p>
-              <h2 id="coa-options-heading">Two COA options. One signed foundation.</h2>
-              <p>Both options create the same private, portable, cryptographically signed COA. The enhanced option adds a separately downloadable blockchain timestamp for the exact signed manifest hash.</p>
+              <h2 id="coa-options-heading">Choose how your COA is proven.</h2>
+              <p>Create a private, cryptographically signed COA for free, or add a managed Bitcoin timestamp for $9.99.</p>
             </div>
             <div className="service-options__grid">
               <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
                 <h3>Cryptographically Signed COA</h3>
                 <div className="service-option__price"><strong>$0</strong><span>Free · no account required</span></div>
-                <p>Create, sign, download, and verify the complete certificate package locally in your browser.</p>
+                <p>Create, sign, download, and verify the complete certificate package locally.</p>
                 <ul>
-                  <li>Ed25519 issuer signature</li>
-                  <li>SHA-256 manifest and file hashes</li>
+                  <li>Ed25519 + SHA-256 proof</li>
                   <li>Offline verifier included</li>
                   <li>No account or payment</li>
                 </ul>
@@ -560,21 +559,20 @@ export default function App() {
               <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
                 <h3>Cryptographically Signed COA + blockchain timestamp</h3>
                 <div className="service-option__price"><strong>$9.99</strong><span>One-time managed service</span></div>
-                <p>Add managed OpenTimestamps processing that anchors the exact signed <code>manifest.json</code> hash to the Bitcoin blockchain.</p>
+                <p>Add a managed OpenTimestamps proof for the signed manifest hash, anchored to Bitcoin.</p>
                 <ul>
-                  <li>Everything in the free cryptographically signed COA</li>
-                  <li>Independent blockchain timestamp proof</li>
-                  <li>Automated proof upgrades and Bitcoin verification</li>
-                  <li>Private recovery code and proof download</li>
+                  <li>Everything in the free COA</li>
+                  <li>Managed Bitcoin verification</li>
+                  <li>Private proof recovery</li>
                 </ul>
                 <a
                   className="button button--gold"
                   href="#builder"
                   onClick={() => setSelectedService("blockchain")}
                 >Create COA + blockchain proof</a>
-                <small>Bitcoin is the specific blockchain used. The COA and photographs are not published on-chain; only an aggregate commitment to the exact manifest hash is anchored.</small>
               </article>
             </div>
+            <p className="service-options__note">Only a commitment to the manifest hash is anchored to Bitcoin. The COA and photographs stay off-chain.</p>
           </section>
         ) : null}
 
