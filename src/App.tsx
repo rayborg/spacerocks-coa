@@ -542,7 +542,7 @@ export default function App() {
             <div className="service-options__intro">
               <p className="eyebrow eyebrow--dark"><span>01</span> Choose your proof level</p>
               <h2 id="coa-options-heading">Choose how your COA is proven.</h2>
-              <p>Create a private, cryptographically signed COA for free, or add a managed Bitcoin timestamp for $9.99.</p>
+              <p>Create a signed COA for free, or add a permanent public Bitcoin commitment with independently verifiable proof for $9.99.</p>
             </div>
             <div className="service-options__grid">
               <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
@@ -557,22 +557,22 @@ export default function App() {
                 <a className="button button--outline" href="#builder" onClick={() => setSelectedService("free")}>Create free cryptographically signed COA</a>
               </article>
               <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
-                <h3>Cryptographically Signed COA + blockchain timestamp</h3>
+                <h3>Cryptographically Signed COA + Bitcoin-Anchored Proof</h3>
                 <div className="service-option__price"><strong>$9.99</strong><span>One-time managed service</span></div>
-                <p>Add a managed OpenTimestamps proof for the signed manifest hash, anchored to Bitcoin.</p>
+                <p>Anchor a one-way commitment to the signed manifest digest and receive a downloadable verification proof.</p>
                 <ul>
                   <li>Everything in the free COA</li>
-                  <li>Managed Bitcoin verification</li>
-                  <li>Private proof recovery</li>
+                  <li>Bitcoin-anchored commitment</li>
+                  <li>Downloadable .ots proof</li>
                 </ul>
                 <a
                   className="button button--gold"
                   href="#builder"
                   onClick={() => setSelectedService("blockchain")}
-                >Create COA + blockchain proof</a>
+                >Choose Bitcoin-anchored proof</a>
               </article>
             </div>
-            <p className="service-options__note">Only a commitment to the manifest hash is anchored to Bitcoin. The COA and photographs stay off-chain.</p>
+            <p className="service-options__note">The Bitcoin anchor contains a one-way cryptographic commitment, not the COA or photographs.</p>
           </section>
         ) : null}
 
@@ -617,7 +617,7 @@ export default function App() {
             {timestampServiceConfig ? (
               <div className={`selected-service selected-service--${selectedService}`}>
                 <span>Selected option</span>
-                <strong>{selectedService === "blockchain" ? "Cryptographically Signed COA + blockchain timestamp · $9.99" : "Free cryptographically signed COA · $0"}</strong>
+                <strong>{selectedService === "blockchain" ? "Cryptographically Signed COA + Bitcoin-Anchored Proof · $9.99" : "Free cryptographically signed COA · $0"}</strong>
                 <a href="#coa-options">Change option</a>
               </div>
             ) : null}
@@ -946,7 +946,7 @@ export default function App() {
                   </div>
                 )}
                 <p className="key-status" aria-live="polite">{keyStatus}</p>
-                <div className="security-note"><strong>Private means private.</strong><span>Keys, passphrases, images, the COA package, and the full form record stay local. If you choose the managed timestamp service, checkout sends the certificate reference, manifest digest, contact email, and consent record to the service. Payment details go directly to Stripe, and later status or proof requests use your private recovery code.</span></div>
+                <div className="security-note"><strong>Private means private.</strong><span>Keys, passphrases, images, the COA package, and the full form record stay local. If you choose the Bitcoin-anchored proof service, checkout sends the certificate reference, manifest digest, contact email, and consent record to the service. Payment details go directly to Stripe, and later status or proof requests use your private recovery code.</span></div>
               </section>
 
               <section className="issue-section">
@@ -982,7 +982,7 @@ export default function App() {
                   type="submit"
                   aria-describedby="issuance-readiness"
                   disabled={generationBusy || !issueReady}
-                >{generationBusy ? "Building package..." : selectedService === "blockchain" ? "Issue cryptographically signed COA for blockchain timestamp" : "Issue cryptographically signed COA package"}</button>
+                >{generationBusy ? "Building package..." : selectedService === "blockchain" ? "Issue COA and continue to Bitcoin proof" : "Issue cryptographically signed COA package"}</button>
                 <p className="generation-status" aria-live="polite">{generationStatus}</p>
                 {receipt ? (
                   <div className="release-receipt">

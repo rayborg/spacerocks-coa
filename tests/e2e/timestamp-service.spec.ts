@@ -115,9 +115,9 @@ test("omits the paid feature and makes zero timestamp requests without API confi
     await route.abort();
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Cryptographically Signed COA + blockchain timestamp" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Recover a timestamp order" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Cryptographically Signed COA + Bitcoin-Anchored Proof" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Recover a Bitcoin proof order" })).toHaveCount(0);
   await expect(page.getByText("Sandbox / test only")).toHaveCount(0);
   await page.waitForTimeout(500);
   expect(timestampRequests).toBe(0);
@@ -140,13 +140,15 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   const options = page.locator("#coa-options");
   await expect(options.getByRole("heading", { name: "Choose how your COA is proven." })).toBeVisible();
   await expect(options.getByRole("heading", { name: "Cryptographically Signed COA", exact: true })).toBeVisible();
-  await expect(options.getByRole("heading", { name: "Cryptographically Signed COA + blockchain timestamp" })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Cryptographically Signed COA + Bitcoin-Anchored Proof" })).toBeVisible();
+  await expect(options).toContainText("Create a signed COA for free, or add a permanent public Bitcoin commitment with independently verifiable proof for $9.99");
+  await expect(options).toContainText("Anchor a one-way commitment to the signed manifest digest and receive a downloadable verification proof");
   await expect(options).toContainText("$0");
   await expect(options).toContainText("$9.99");
   await expect(options).not.toContainText(/Loading price|Unavailable|Retry live price/);
   expect(priceRequests).toBe(0);
   await expect(options.getByText(/Option 1|Option 2 · Enhanced/)).toHaveCount(0);
-  await expect(options).toContainText("Only a commitment to the manifest hash is anchored to Bitcoin");
+  await expect(options).toContainText("The Bitcoin anchor contains a one-way cryptographic commitment");
   const placement = await page.evaluate(() => ({
     options: document.querySelector("#coa-options")?.getBoundingClientRect().top,
     hero: document.querySelector(".hero")?.getBoundingClientRect().top,
@@ -174,12 +176,12 @@ test("advertises free and blockchain COA options before the builder", async ({ p
     expect(fold.overflow).toBe(false);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
-  await options.getByRole("link", { name: "Create COA + blockchain proof" }).click();
-  await expect(page.locator(".selected-service")).toContainText("Cryptographically Signed COA + blockchain timestamp · $9.99");
-  await expect(page.getByRole("button", { name: "Issue cryptographically signed COA for blockchain timestamp" })).toBeVisible();
+  await options.getByRole("link", { name: "Choose Bitcoin-anchored proof" }).click();
+  await expect(page.locator(".selected-service")).toContainText("Cryptographically Signed COA + Bitcoin-Anchored Proof · $9.99");
+  await expect(page.getByRole("button", { name: "Issue COA and continue to Bitcoin proof" })).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await issueLocalRelease(page, "Issue cryptographically signed COA for blockchain timestamp");
-  const checkoutHeading = page.getByRole("heading", { name: "Managed blockchain timestamp" });
+  await issueLocalRelease(page, "Issue COA and continue to Bitcoin proof");
+  const checkoutHeading = page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true });
   await expect(checkoutHeading).toBeVisible();
   await expect(checkoutHeading).toBeFocused();
   await expect(page.locator(".security-note")).toContainText("Payment details go directly to Stripe");
@@ -233,9 +235,9 @@ test.describe("configured sandbox timestamp service", () => {
     });
 
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Recover a timestamp order" }).click();
-    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Recover a Bitcoin proof order" }).click();
+    await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toBeVisible();
     await expect(page.getByText("Sandbox / test only")).toBeVisible();
     await expect(page.getByText(/does not prove authenticity, ownership, identity/)).toBeVisible();
     await page.getByLabel("Private recovery code").fill(token);
@@ -259,7 +261,7 @@ test.describe("configured sandbox timestamp service", () => {
 
     reportConfirmed = true;
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toBeVisible();
     await expect(page.getByLabel("Recovery code")).toHaveValue(replacementToken);
     await expect(page.getByText("Initial Bitcoin confirmation verified")).toBeVisible();
     const verifiedStatus = page.locator(".timestamp-status");
@@ -332,9 +334,9 @@ test.describe("configured sandbox timestamp service", () => {
     });
 
     await page.goto("/#builder");
-    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toHaveCount(0);
     await issueLocalRelease(page);
-    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toBeVisible();
     const checkoutButton = page.getByRole("button", { name: "Create server-priced test checkout" });
     await expect(checkoutButton).toBeDisabled();
     const deliveryEmail = page.getByLabel(/Order contact email/);
@@ -459,7 +461,7 @@ test.describe("configured sandbox timestamp service", () => {
       }));
     }, { storedToken: token, storedDigest: digest, storedOrder: orderReference, checkoutUrl });
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toHaveCount(0);
     await page.waitForTimeout(300);
     expect(authenticatedRequests).toBe(0);
 
@@ -480,7 +482,7 @@ test.describe("configured sandbox timestamp service", () => {
       hostileCheckoutUrl: `https://checkout.stripe.com.evil.test/c/pay/${checkoutSessionId}#fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8`,
     });
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Managed blockchain timestamp" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toHaveCount(0);
     expect(authenticatedRequests).toBe(0);
   });
 
@@ -509,7 +511,7 @@ test.describe("configured sandbox timestamp service", () => {
       });
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Recover a timestamp order" }).click();
+    await page.getByRole("button", { name: "Recover a Bitcoin proof order" }).click();
     await page.getByLabel("Private recovery code").fill(token);
     await page.getByRole("button", { name: "Recover in this tab" }).click();
     await expect(page.getByText("Initial Bitcoin confirmation verified")).toBeVisible();
@@ -554,7 +556,7 @@ test.describe("configured sandbox timestamp service", () => {
       await route.fulfill({ status: 401, headers: privateHeaders, body: JSON.stringify({ detail: "revoked" }) });
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Recover a timestamp order" }).click();
+    await page.getByRole("button", { name: "Recover a Bitcoin proof order" }).click();
     await page.getByLabel("Private recovery code").fill(token);
     await page.getByRole("button", { name: "Recover in this tab" }).click();
     await expect(page.getByText(/response is too large/)).toBeVisible();
@@ -580,10 +582,13 @@ test.describe("configured production timestamp service", () => {
       });
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Recover a timestamp order" }).click();
+    await page.getByRole("button", { name: "Recover a Bitcoin proof order" }).click();
     const panel = page.locator("#timestamp-service");
     await expect(panel.getByText("Live paid service")).toBeVisible();
-    await expect(panel).not.toContainText(/sandbox|future fee|phase 0|\btest\b/i);
+    await expect(panel).toContainText("For a one-time $9.99, we anchor a one-way cryptographic fingerprint of the exact signed manifest to Bitcoin and provide a downloadable proof");
+    await expect(panel).toContainText("this fingerprint existed no later than the attesting Bitcoin block");
+    await expect(panel).toContainText("The signed manifest and its file hashes reveal later changes to the presented package");
+    await expect(panel.locator(".timestamp-explainer")).not.toContainText(/sandbox|future fee|phase 0/i);
     await expect(panel.getByRole("link", { name: "Terms" })).toHaveAttribute("href", process.env.VITE_TIMESTAMP_TERMS_URL!);
     await expect(panel.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", process.env.VITE_TIMESTAMP_PRIVACY_URL!);
     await expect(panel.getByRole("link", { name: "Refund Policy" })).toHaveAttribute("href", process.env.VITE_TIMESTAMP_REFUND_URL!);
