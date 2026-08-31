@@ -847,14 +847,6 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
   });
-  await page.route("**/v1/checkout/price", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ amount_minor: 999, currency: "usd" }),
-    });
-  });
-
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /certificate is only as enduring/i })).toBeVisible();
   await expect(page.getByLabel("Weight (grams)")).toHaveValue("");
