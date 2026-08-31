@@ -22,6 +22,13 @@ class HostedCheckoutResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ProviderPrice:
+    price_id: str
+    amount_minor: int
+    currency: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderEvent:
     event_id: str
     event_type: str

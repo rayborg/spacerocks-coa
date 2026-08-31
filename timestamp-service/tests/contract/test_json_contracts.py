@@ -148,6 +148,7 @@ def test_openapi_freezes_header_bearer_and_external_schema_references() -> None:
     for schema in (
         "checkout-request",
         "checkout-response",
+        "checkout-price-response",
         "order-status",
         "timestamp-receipt",
         "rotate-token-response",
@@ -164,3 +165,13 @@ def test_openapi_freezes_rotation_and_download_headers() -> None:
     proof = contract["paths"]["/v1/orders/proof"]["get"]["responses"]["200"]
     assert set(proof["headers"]) == {"Content-Disposition", "Content-Length", "Cache-Control"}
     assert set(proof["content"]) == {"application/zip"}
+
+
+def test_openapi_freezes_public_checkout_price_contract() -> None:
+    contract = load("openapi.phase0.json")
+    price = contract["paths"]["/v1/checkout/price"]["get"]
+    assert price["security"] == []
+    assert price["responses"]["200"]["headers"]["Cache-Control"]["schema"] == {"const": "no-store"}
+    assert price["responses"]["200"]["content"]["application/json"]["schema"]["$ref"] == (
+        "./schemas/checkout-price-response.schema.json"
+    )

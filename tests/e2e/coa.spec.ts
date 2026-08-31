@@ -445,6 +445,11 @@ test("makes vertical continuation obvious and accessible from the hero", async (
     await expect(cue).toHaveAttribute("href", "#principles");
     await expect(page.locator("#principles")).toHaveCount(1);
     expect(await page.evaluate(() => window.scrollY), `initial scroll at ${width}px`).toBe(0);
+    await hero.evaluate((element) => {
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo(0, (element as HTMLElement).offsetTop);
+    });
+    await expect.poll(() => hero.evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBeLessThanOrEqual(1);
     if (artifactDirectory) {
       await page.screenshot({ path: join(artifactDirectory, `hero-viewport-${width}.png`) });
     }
@@ -841,6 +846,13 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   const errors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
+  });
+  await page.route("**/v1/checkout/price", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ amount_minor: 999, currency: "usd" }),
+    });
   });
 
   await page.goto("/");

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from email_validator import EmailNotValidError, validate_email
-from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 LowerSha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 CertificateReference = Annotated[
@@ -49,6 +49,13 @@ class CheckoutResponse(BaseModel):
     checkout_url: str
     payment_state: Literal["checkout_open"]
     fulfillment_state: Literal["awaiting_payment"]
+
+
+class CheckoutPriceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount_minor: Annotated[int, Field(ge=1, le=100_000_000)]
+    currency: Literal["usd"]
 
 
 class OrderStatusResponse(BaseModel):

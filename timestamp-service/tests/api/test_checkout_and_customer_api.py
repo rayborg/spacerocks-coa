@@ -104,6 +104,67 @@ def test_checkout_gate_blocks_before_reservation_or_provider_call(app_factory: A
         assert session.scalar(select(func.count()).select_from(IdempotencyRequest)) == 0
 
 
+def test_checkout_price_uses_server_configuration_and_gate(app_factory: Any) -> None:
+    enabled: ServiceContext = app_factory(checkout_amount_minor=999, checkout_currency="usd")
+    with TestClient(enabled.app) as client:
+        response = client.get("/v1/checkout/price")
+        cors = client.options(
+            "/v1/checkout/price",
+            headers={
+                "Origin": "https://coa.example.test",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"amount_minor": 999, "currency": "usd"}
+    assert response.headers["cache-control"] == "no-store"
+    schema = json.loads(
+        (REPOSITORY_ROOT / "contracts/schemas/checkout-price-response.schema.json").read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(response.json())
+    assert cors.status_code == 200
+    assert cors.headers["access-control-allow-origin"] == "https://coa.example.test"
+
+    disabled: ServiceContext = app_factory(checkout_enabled=False)
+    with TestClient(disabled.app) as client:
+        blocked = client.get("/v1/checkout/price")
+
+    assert blocked.status_code == 503
+    assert blocked.json() == {"detail": "checkout unavailable"}
+
+
+def test_checkout_and_public_price_fail_closed_on_provider_price_drift(app_factory: Any) -> None:
+    context: ServiceContext = app_factory(checkout_amount_minor=999)
+    context.provider.set_price("fixture_price", 1099, "usd")
+
+    with TestClient(context.app) as client:
+        price = client.get("/v1/checkout/price")
+        checkout = client.post(
+            "/v1/checkout",
+            json=checkout_payload(),
+            headers={"Idempotency-Key": idempotency_key()},
+        )
+
+    assert price.status_code == 503
+    assert price.json() == {"detail": "checkout unavailable"}
+    assert checkout.status_code == 503
+    assert checkout.json() == {"detail": "checkout unavailable"}
+    assert context.provider.checkouts == {}
+
+
+def test_public_checkout_price_has_a_dedicated_rate_limit(app_factory: Any) -> None:
+    context: ServiceContext = app_factory(checkout_price_rate_limit=1)
+
+    with TestClient(context.app) as client:
+        first = client.get("/v1/checkout/price")
+        limited = client.get("/v1/checkout/price")
+
+    assert first.status_code == 200
+    assert limited.status_code == 429
+    assert limited.json() == {"detail": "rate limit exceeded"}
+
+
 def test_checkout_gate_blocks_idempotent_replay_without_rotating_token(app_factory: Any) -> None:
     context: ServiceContext = app_factory()
     with TestClient(context.app) as client:

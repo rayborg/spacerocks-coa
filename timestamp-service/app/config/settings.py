@@ -97,6 +97,7 @@ class Settings(BaseSettings):
     resend_webhook_tolerance_seconds: int = 300
     trusted_proxy_ips: list[str] = Field(default_factory=list)
     checkout_rate_limit: int = 10
+    checkout_price_rate_limit: int = 60
     webhook_rate_limit: int = 120
     resend_webhook_rate_limit: int = 120
     status_rate_limit: int = 60
@@ -178,14 +179,10 @@ class Settings(BaseSettings):
                 raise ValueError("database_url is required when payments are enabled")
             if self.active_token_pepper_version not in self.token_peppers:
                 raise ValueError("an active strong token pepper is required when payments are enabled")
-            if self.checkout_amount_minor <= 0:
-                raise ValueError("checkout amount must be positive")
-            if (
-                len(self.checkout_currency) != 3
-                or self.checkout_currency.lower() != self.checkout_currency
-                or not self.checkout_currency.isalpha()
-            ):
-                raise ValueError("checkout currency must be a lowercase three-letter code")
+            if not 1 <= self.checkout_amount_minor <= 100_000_000:
+                raise ValueError("checkout amount must be between 1 and 100000000")
+            if self.checkout_currency != "usd":
+                raise ValueError("checkout currency must be usd")
             if not 300 <= self.token_ttl_seconds <= 90 * 24 * 60 * 60:
                 raise ValueError("token TTL must be between five minutes and 90 days")
         if self.active_token_pepper_version is not None and self.active_token_pepper_version not in self.token_peppers:

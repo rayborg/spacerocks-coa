@@ -80,6 +80,11 @@ def app_factory() -> Any:
         Base.metadata.create_all(engine)
         session_factory = create_session_factory(engine)
         provider = FixturePaymentProvider(app_env=settings.app_env)
+        provider.set_price(
+            settings.stripe_price_id or "fixture_price",
+            settings.checkout_amount_minor,
+            settings.checkout_currency,
+        )
         app = create_app(
             settings,
             session_factory=session_factory,

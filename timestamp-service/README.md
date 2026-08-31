@@ -1,15 +1,16 @@
 # Timestamp Service
 
-This directory contains the FastAPI, PostgreSQL, timestamp-worker, notification-worker, proof-bundling, Stripe, public-calendar, Bitcoin Core, and Resend implementation for the optional paid timestamp MVP. Production is not publicly live and real customer payments are unavailable. Code completeness does not authorize deployment, provider changes, public calendar submission, or payment collection.
+This directory contains the FastAPI, PostgreSQL, timestamp-worker, notification-worker, proof-bundling, Stripe, public-calendar, Bitcoin Core, and Resend implementation for the optional paid timestamp service. Code completeness alone does not authorize deployment, provider changes, public calendar submission, or payment collection.
 
 The free browser-generated, locally signed COA remains complete and independently verifiable without this service.
 
 ## Safety boundary
 
 - Safe defaults are `PAYMENT_MODE=disabled`, `CHECKOUT_ENABLED=false`, `CALENDAR_MODE=disabled`, `BITCOIN_VERIFIER=disabled`, `RESEND_SENDER_MODE=disabled`, and `RESEND_WEBHOOK_MODE=disabled`.
-- `PAYMENT_MODE=stripe_live` is supported only when settings validate `APP_ENV=production`, `STRIPE_LIVE_ENABLED=true`, matching live credentials and Price, HTTPS return origins, and non-Phase-0 product and policy versions. New checkout remains unavailable until the independent `CHECKOUT_ENABLED=true` gate is also set. Neither code gate is owner launch approval.
+- `PAYMENT_MODE=stripe_live` is supported only when settings validate `APP_ENV=production`, `STRIPE_LIVE_ENABLED=true`, matching live credentials and Price, HTTPS return origins, and non-Phase-0 product and policy versions. A restricted Stripe key must grant Price read access in addition to the permissions used for checkout and webhook reconciliation. New checkout remains unavailable until the independent `CHECKOUT_ENABLED=true` gate is also set. Neither code gate is owner launch approval.
 - Fixture payment, calendar, and Bitcoin adapters require `APP_ENV=test` and an active `pytest` process. They are test doubles, not a runnable local service mode.
 - Disabled payment mode or `CHECKOUT_ENABLED=false` exposes health and existing-order routes but new checkout is unavailable. Stripe webhooks and paid-order fulfillment remain available when only the checkout gate is off.
+- Public `GET /v1/checkout/price` is rate-limited and available only when the active one-time USD Stripe Price exactly matches the configured checkout amount and currency. New checkout repeats that provider/configuration validation before contacting Stripe.
 - `CALENDAR_MODE=public` composes `MultiCalendarTimestamper` with `HardenedCalendarTransport`. It requires staging/production and at least two allowlisted HTTPS calendar hosts; the transport rejects unsafe DNS snapshots, pins one vetted public IP per request, preserves hostname TLS/SNI, rejects redirects, and bounds fan-out and responses. Calendar pilot use still requires explicit owner authorization and independent security review.
 - `BITCOIN_VERIFIER=bitcoin_core` composes `BitcoinCoreRpcTransport` and `BitcoinCoreRpcVerifier` in staging/production. RPC must be private and authenticated; never expose it publicly.
 - `RESEND_SENDER_MODE=resend` enables the separate durable notification worker. `RESEND_WEBHOOK_MODE=resend` enables signed `POST /v1/webhooks/resend` handling.
@@ -88,7 +89,7 @@ pytest tests/api tests/payments tests/fulfillment tests/workers
 
 The fixtures never contact Stripe, public calendars, Bitcoin, or email. Use only synthetic `.test` addresses and fixture digests. A fixture `bitcoin_verified` result is deterministic test evidence, never public Bitcoin evidence. There is no supported direct fixture API/worker startup command.
 
-Stripe test mode requires `APP_ENV=test` or `staging`, `PAYMENT_MODE=stripe_test`, `STRIPE_TEST_ENABLED=true`, test-only Stripe credentials, a server-controlled test Price, and HTTPS return origins. A Stripe-test sandbox was previously deployed and checkout/refund canaries were recorded working, but that recovered state has not been freshly verified. It must not be treated as current provider evidence, enabled in routine local tests/CI, or used with live keys or real charges.
+Stripe test mode requires `APP_ENV=test` or `staging`, `PAYMENT_MODE=stripe_test`, `STRIPE_TEST_ENABLED=true`, test-only Stripe credentials with Price read access, a server-controlled one-time USD Price, and HTTPS return origins. A Stripe-test sandbox was previously deployed and checkout/refund canaries were recorded working, but that recovered state has not been freshly verified. It must not be treated as current provider evidence, enabled in routine local tests/CI, or used with live keys or real charges.
 
 ## Commands
 

@@ -63,6 +63,22 @@ def test_app_env_uses_required_unprefixed_environment_name(monkeypatch: pytest.M
         {"app_env": "test", "bitcoin_verifier": "bitcoin_core"},
         {"resend_sender_mode": "resend", "database_url": "sqlite://"},
         {"resend_webhook_mode": "resend", "database_url": "sqlite://"},
+        {
+            "app_env": "test",
+            "payment_mode": "fixture",
+            "database_url": "sqlite://",
+            "token_peppers": {1: SecretStr("x" * 32)},
+            "active_token_pepper_version": 1,
+            "checkout_currency": "isk",
+        },
+        {
+            "app_env": "test",
+            "payment_mode": "fixture",
+            "database_url": "sqlite://",
+            "token_peppers": {1: SecretStr("x" * 32)},
+            "active_token_pepper_version": 1,
+            "checkout_amount_minor": 100_000_001,
+        },
     ],
 )
 def test_unsafe_combinations_fail_closed(values: dict[str, object]) -> None:

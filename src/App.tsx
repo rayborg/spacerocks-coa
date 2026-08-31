@@ -18,7 +18,7 @@ import {
   getCertificateStyle,
 } from "./certificateStyles";
 import PaidTimestampPanel from "./components/PaidTimestampPanel";
-import { timestampServiceConfig } from "./lib/timestamp-service";
+import { createTimestampService, timestampServiceConfig, type CheckoutPrice } from "./lib/timestamp-service";
 import { formSchema } from "./lib/form-validation";
 
 const defaultValues: FormValues = {
@@ -86,6 +86,14 @@ function locationSummary(values: FormValues): string {
     .map((value) => value.trim())
     .filter((value, index, all) => value && all.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
   return parts.join(", ") || "Not entered";
+}
+
+function formatCheckoutPrice(price: CheckoutPrice): string {
+  const formatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+  return formatter.format(price.amountMinor / 100);
 }
 
 function Field({
@@ -371,6 +379,8 @@ export default function App() {
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationBusy, setGenerationBusy] = useState(false);
   const [selectedService, setSelectedService] = useState<"free" | "blockchain">("free");
+  const [blockchainPrice, setBlockchainPrice] = useState<string>();
+  const [blockchainPriceStatus, setBlockchainPriceStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string; certificateReference: string }>();
   const allPhotosAttested = photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal);
   const issueReady = isValid && Boolean(identity) && backupDownloaded && allPhotosAttested;
@@ -384,6 +394,29 @@ export default function App() {
     setLogoPreviewUrl(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
   }, [logo]);
+  useEffect(() => {
+    if (!timestampServiceConfig) return;
+    const controller = new AbortController();
+    let active = true;
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    setBlockchainPriceStatus("loading");
+    void createTimestampService(timestampServiceConfig).getCheckoutPrice(controller.signal).then((price) => {
+      if (!active) return;
+      setBlockchainPrice(formatCheckoutPrice(price));
+      setBlockchainPriceStatus("ready");
+    }).catch(() => {
+      if (!active) return;
+      setBlockchainPrice(undefined);
+      setBlockchainPriceStatus("unavailable");
+    }).finally(() => {
+      window.clearTimeout(timeout);
+    });
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
   const generateKey = async () => {
     if (generatePassphrase.length < 12) {
       setKeyStatus("Use a passphrase of at least 12 characters.");
@@ -544,14 +577,65 @@ export default function App() {
       </header>
 
       <main id="top">
+        {timestampServiceConfig ? (
+          <section className="service-options" id="coa-options" aria-labelledby="coa-options-heading">
+            <div className="service-options__intro">
+              <p className="eyebrow eyebrow--dark"><span>01</span> Choose your proof level</p>
+              <h2 id="coa-options-heading">Two COA options. One signed foundation.</h2>
+              <p>Both options create the same private, portable, cryptographically signed COA. The enhanced option adds a separately downloadable blockchain timestamp for the exact signed manifest hash.</p>
+            </div>
+            <div className="service-options__grid">
+              <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
+                <h3>Signed COA</h3>
+                <div className="service-option__price"><strong>$0</strong><span>Free · no account required</span></div>
+                <p>Create, sign, download, and verify the complete certificate package locally in your browser.</p>
+                <ul>
+                  <li>Ed25519 issuer signature</li>
+                  <li>SHA-256 manifest and file hashes</li>
+                  <li>Offline verifier included</li>
+                  <li>No account or payment</li>
+                </ul>
+                <a className="button button--outline" href="#builder" onClick={() => setSelectedService("free")}>Create free signed COA</a>
+              </article>
+              <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
+                <h3>Signed COA + blockchain timestamp</h3>
+                <div className="service-option__price" aria-live="polite">
+                  <strong>{blockchainPriceStatus === "ready" ? blockchainPrice : blockchainPriceStatus === "loading" ? "Loading..." : "Unavailable"}</strong>
+                  <span>{blockchainPriceStatus === "ready" ? "One-time managed service" : "Live checkout price"}</span>
+                </div>
+                <p>Add managed OpenTimestamps processing that anchors the exact signed <code>manifest.json</code> hash to the Bitcoin blockchain.</p>
+                <ul>
+                  <li>Everything in the free signed COA</li>
+                  <li>Independent blockchain timestamp proof</li>
+                  <li>Automated proof upgrades and Bitcoin verification</li>
+                  <li>Private recovery code and proof download</li>
+                </ul>
+                <a
+                  className="button button--gold"
+                  href={blockchainPriceStatus === "ready" ? "#builder" : undefined}
+                  aria-disabled={blockchainPriceStatus !== "ready"}
+                  onClick={(event) => {
+                    if (blockchainPriceStatus !== "ready") {
+                      event.preventDefault();
+                      return;
+                    }
+                    setSelectedService("blockchain");
+                  }}
+                >Create COA + blockchain proof</a>
+                <small>Bitcoin is the specific blockchain used. The COA and photographs are not published on-chain; only an aggregate commitment to the exact manifest hash is anchored.</small>
+              </article>
+            </div>
+          </section>
+        ) : null}
+
         <section className="hero">
           <div className="hero__orbit" aria-hidden="true"><i /><i /><i /></div>
           <div className="hero__content">
-            <p className="eyebrow"><span>01</span> Evidence that outlives the website</p>
+            <p className="eyebrow"><span>{timestampServiceConfig ? "02" : "01"}</span> Evidence that outlives the website</p>
             <h1>A certificate is only as enduring as its <em>proof.</em></h1>
             <p className="hero__lead">Create a professional meteorite COA whose signature, specimen photographs, and file hashes can be verified offline, even if this site disappears.</p>
             <div className="hero__actions">
-              <a className="button button--gold" href={timestampServiceConfig ? "#coa-options" : "#builder"}>{timestampServiceConfig ? "Compare COA options" : "Build a certificate"}</a>
+              <a className="button button--gold" href="#builder">Build a certificate</a>
               <a className="text-link" href="#verify">Verify an existing package <span aria-hidden="true">-&gt;</span></a>
             </div>
           </div>
@@ -565,48 +649,11 @@ export default function App() {
             </ol>
             <div className="ledger__foot"><span>Website dependency</span><strong>NONE</strong></div>
           </div>
-          <a className="hero__scroll-cue" href={timestampServiceConfig ? "#coa-options" : "#principles"}>
+          <a className="hero__scroll-cue" href="#principles">
             <span>Explore below</span>
             <i aria-hidden="true" />
           </a>
         </section>
-
-        {timestampServiceConfig ? (
-          <section className="service-options" id="coa-options" aria-labelledby="coa-options-heading">
-            <div className="service-options__intro">
-              <p className="eyebrow eyebrow--dark"><span>02</span> Choose your proof level</p>
-              <h2 id="coa-options-heading">Two COA options. One signed foundation.</h2>
-              <p>Both options create the same private, portable, cryptographically signed COA. The enhanced option adds a separately downloadable blockchain timestamp for the exact signed manifest hash.</p>
-            </div>
-            <div className="service-options__grid">
-              <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
-                <div className="service-option__topline"><span>Option 1</span><strong>Free</strong></div>
-                <h3>Signed COA</h3>
-                <p>Create, sign, download, and verify the complete certificate package locally in your browser.</p>
-                <ul>
-                  <li>Ed25519 issuer signature</li>
-                  <li>SHA-256 manifest and file hashes</li>
-                  <li>Offline verifier included</li>
-                  <li>No account or payment</li>
-                </ul>
-                <a className="button button--outline" href="#builder" onClick={() => setSelectedService("free")}>Create free signed COA</a>
-              </article>
-              <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
-                <div className="service-option__topline"><span>Option 2 · Enhanced</span><strong>Paid</strong></div>
-                <h3>Signed COA + blockchain timestamp</h3>
-                <p>Add managed OpenTimestamps processing that anchors the exact signed <code>manifest.json</code> hash to the Bitcoin blockchain.</p>
-                <ul>
-                  <li>Everything in the free signed COA</li>
-                  <li>Independent blockchain timestamp proof</li>
-                  <li>Automated proof upgrades and Bitcoin verification</li>
-                  <li>Private recovery code and proof download</li>
-                </ul>
-                <a className="button button--gold" href="#builder" onClick={() => setSelectedService("blockchain")}>Create COA + blockchain proof</a>
-                <small>Bitcoin is the specific blockchain used. The COA and photographs are not published on-chain; only an aggregate commitment to the exact manifest hash is anchored.</small>
-              </article>
-            </div>
-          </section>
-        ) : null}
 
         <section className="principles" id="principles" aria-label="Core principles">
           <div><strong>01</strong><span><b>Private by design</b>Your signing key and photographs never leave this browser.</span></div>
@@ -622,7 +669,7 @@ export default function App() {
             {timestampServiceConfig ? (
               <div className={`selected-service selected-service--${selectedService}`}>
                 <span>Selected option</span>
-                <strong>{selectedService === "blockchain" ? "Signed COA + paid blockchain timestamp" : "Free signed COA"}</strong>
+                <strong>{selectedService === "blockchain" ? `Signed COA + blockchain timestamp${blockchainPrice ? ` · ${blockchainPrice}` : ""}` : "Free signed COA · $0"}</strong>
                 <a href="#coa-options">Change option</a>
               </div>
             ) : null}
