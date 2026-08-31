@@ -130,9 +130,11 @@ test("advertises free and blockchain COA options before the builder", async ({ p
     if (request.url().endsWith("/v1/checkout/price")) priceRequests += 1;
   });
   await page.goto("/");
-  await expect(page.locator(".local-badge")).toContainText("Local COA signing");
-  await expect(page.locator(".local-badge")).not.toContainText("Local-only");
-  await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "COA options" })).toBeVisible();
+  const header = page.locator(".site-header");
+  await expect(header.getByRole("link", { name: "Spacerocks COA Studio home" })).toBeVisible();
+  await expect(header.getByRole("link")).toHaveCount(1);
+  await expect(header.getByRole("navigation")).toHaveCount(0);
+  await expect(header).not.toContainText(/COA options|Create|Verify|Method|Local COA signing/);
   await expect(page.locator(".ledger__foot")).toContainText("COA verification website dependency");
   await expect(page.getByRole("heading", { name: "Four open COA checks. No permanent verification middleman." })).toBeVisible();
   const options = page.locator("#coa-options");
