@@ -542,7 +542,7 @@ export default function App() {
             <div className="service-options__intro">
               <p className="eyebrow eyebrow--dark"><span>01</span> Choose your proof level</p>
               <h2 id="coa-options-heading">Choose how your COA can be checked.</h2>
-              <p>Create and download your signed COA for free. For a one-time $9.99, add a Bitcoin timestamp that lets anyone check that this exact COA existed by a certain date and has not been changed.</p>
+              <p>Create and download your signed COA for free. For a one-time $9.99, permanently anchor its unique digital fingerprint to Bitcoin, tying the exact COA to the blockchain so anyone can independently verify it later.</p>
             </div>
             <div className="service-options__grid">
               <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
@@ -557,22 +557,22 @@ export default function App() {
                 <a className="button button--navy" href="#builder" onClick={() => setSelectedService("free")}>Create free signed COA</a>
               </article>
               <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
-                <h3>Signed COA + Bitcoin Timestamp</h3>
+                <h3>Signed COA + Bitcoin Trust Anchor</h3>
                 <div className="service-option__price"><strong>$9.99</strong><span>One-time managed service</span></div>
-                <p>Get public, long-term proof that this exact COA existed by a certain date. If the COA is changed later, the proof will no longer match.</p>
+                <p>Bind the exact COA to a permanent Bitcoin record. Anyone can compare the COA with the public blockchain proof and detect any later change.</p>
                 <ul>
                   <li>Everything in the free COA</li>
-                  <li>Public timestamp secured by Bitcoin</li>
-                  <li>Downloadable proof for future checks</li>
+                  <li>Permanent trust anchor secured by Bitcoin</li>
+                  <li>Downloadable, independently verifiable proof</li>
                 </ul>
                 <a
                   className="button button--gold"
                   href="#builder"
                   onClick={() => setSelectedService("blockchain")}
-                >Add Bitcoin timestamp</a>
+                >Anchor COA to Bitcoin</a>
               </article>
             </div>
-            <p className="service-options__note">Your COA and photos stay private. Only a unique digital fingerprint is used to create the Bitcoin timestamp.</p>
+            <p className="service-options__note">Your COA and photos are not published. Bitcoin secures only a one-way digital fingerprint that binds the proof to this exact COA.</p>
           </section>
         ) : null}
 
@@ -617,7 +617,7 @@ export default function App() {
             {timestampServiceConfig ? (
               <div className={`selected-service selected-service--${selectedService}`}>
                 <span>Selected option</span>
-                <strong>{selectedService === "blockchain" ? "Signed COA + Bitcoin Timestamp · $9.99" : "Free signed COA · $0"}</strong>
+                <strong>{selectedService === "blockchain" ? "Signed COA + Bitcoin Trust Anchor · $9.99" : "Free signed COA · $0"}</strong>
                 <a href="#coa-options">Change option</a>
               </div>
             ) : null}
