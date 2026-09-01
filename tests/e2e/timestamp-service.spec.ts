@@ -116,7 +116,7 @@ test("omits the paid feature and makes zero timestamp requests without API confi
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Bitcoin-Anchored Proof", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Cryptographically Signed COA + Bitcoin-Anchored Proof" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Signed COA + Bitcoin Timestamp" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Recover a Bitcoin proof order" })).toHaveCount(0);
   await expect(page.getByText("Sandbox / test only")).toHaveCount(0);
   await page.waitForTimeout(500);
@@ -138,18 +138,18 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   await expect(page.locator(".ledger__foot")).toContainText("COA verification website dependency");
   await expect(page.getByRole("heading", { name: "Four open COA checks. No permanent verification middleman." })).toBeVisible();
   const options = page.locator("#coa-options");
-  await expect(options.getByRole("heading", { name: "Choose how your COA is proven." })).toBeVisible();
-  await expect(options.getByRole("heading", { name: "Cryptographically Signed COA", exact: true })).toBeVisible();
-  await expect(options.getByRole("heading", { name: "Cryptographically Signed COA + Bitcoin-Anchored Proof" })).toBeVisible();
-  await expect(options).toContainText("Create a signed COA for free, or add a permanent public Bitcoin commitment with independently verifiable proof for $9.99");
-  await expect(options).toContainText("Anchor a one-way commitment to the signed manifest digest and receive a downloadable verification proof");
+  await expect(options.getByRole("heading", { name: "Choose how your COA can be checked." })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Signed COA", exact: true })).toBeVisible();
+  await expect(options.getByRole("heading", { name: "Signed COA + Bitcoin Timestamp" })).toBeVisible();
+  await expect(options).toContainText("Create and download your signed COA for free. For a one-time $9.99, add a Bitcoin timestamp that lets anyone check that this exact COA existed by a certain date and has not been changed.");
+  await expect(options).toContainText("Get public, long-term proof that this exact COA existed by a certain date. If the COA is changed later, the proof will no longer match.");
   await expect(options).toContainText("$0");
   await expect(options).toContainText("$9.99");
   await expect(options).not.toContainText(/Loading price|Unavailable|Retry live price/);
   expect(priceRequests).toBe(0);
   await expect(options.getByText(/Option 1|Option 2 · Enhanced/)).toHaveCount(0);
-  await expect(options).toContainText("The Bitcoin anchor contains a one-way cryptographic commitment");
-  await expect(options.getByRole("link", { name: "Create free cryptographically signed COA" })).toHaveClass(/button--navy/);
+  await expect(options).toContainText("Your COA and photos stay private. Only a unique digital fingerprint is used to create the Bitcoin timestamp.");
+  await expect(options.getByRole("link", { name: "Create free signed COA" })).toHaveClass(/button--navy/);
   const placement = await page.evaluate(() => ({
     options: document.querySelector("#coa-options")?.getBoundingClientRect().top,
     hero: document.querySelector(".hero")?.getBoundingClientRect().top,
@@ -177,8 +177,8 @@ test("advertises free and blockchain COA options before the builder", async ({ p
     expect(fold.overflow).toBe(false);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
-  await options.getByRole("link", { name: "Choose Bitcoin-anchored proof" }).click();
-  await expect(page.locator(".selected-service")).toContainText("Cryptographically Signed COA + Bitcoin-Anchored Proof · $9.99");
+  await options.getByRole("link", { name: "Add Bitcoin timestamp" }).click();
+  await expect(page.locator(".selected-service")).toContainText("Signed COA + Bitcoin Timestamp · $9.99");
   await expect(page.getByRole("button", { name: "Issue COA and continue to Bitcoin proof" })).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await issueLocalRelease(page, "Issue COA and continue to Bitcoin proof");

@@ -541,38 +541,38 @@ export default function App() {
           <section className="service-options" id="coa-options" aria-labelledby="coa-options-heading">
             <div className="service-options__intro">
               <p className="eyebrow eyebrow--dark"><span>01</span> Choose your proof level</p>
-              <h2 id="coa-options-heading">Choose how your COA is proven.</h2>
-              <p>Create a signed COA for free, or add a permanent public Bitcoin commitment with independently verifiable proof for $9.99.</p>
+              <h2 id="coa-options-heading">Choose how your COA can be checked.</h2>
+              <p>Create and download your signed COA for free. For a one-time $9.99, add a Bitcoin timestamp that lets anyone check that this exact COA existed by a certain date and has not been changed.</p>
             </div>
             <div className="service-options__grid">
               <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
-                <h3>Cryptographically Signed COA</h3>
+                <h3>Signed COA</h3>
                 <div className="service-option__price"><strong>$0</strong><span>Free · no account required</span></div>
-                <p>Create, sign, download, and verify the complete certificate package locally.</p>
+                <p>Create, sign, and download the complete certificate package on your device.</p>
                 <ul>
-                  <li>Ed25519 + SHA-256 proof</li>
-                  <li>Offline verifier included</li>
+                  <li>Detects changes to the COA files</li>
+                  <li>Includes an offline checker</li>
                   <li>No account or payment</li>
                 </ul>
-                <a className="button button--navy" href="#builder" onClick={() => setSelectedService("free")}>Create free cryptographically signed COA</a>
+                <a className="button button--navy" href="#builder" onClick={() => setSelectedService("free")}>Create free signed COA</a>
               </article>
               <article className={`service-option service-option--blockchain${selectedService === "blockchain" ? " service-option--selected" : ""}`}>
-                <h3>Cryptographically Signed COA + Bitcoin-Anchored Proof</h3>
+                <h3>Signed COA + Bitcoin Timestamp</h3>
                 <div className="service-option__price"><strong>$9.99</strong><span>One-time managed service</span></div>
-                <p>Anchor a one-way commitment to the signed manifest digest and receive a downloadable verification proof.</p>
+                <p>Get public, long-term proof that this exact COA existed by a certain date. If the COA is changed later, the proof will no longer match.</p>
                 <ul>
                   <li>Everything in the free COA</li>
-                  <li>Bitcoin-anchored commitment</li>
-                  <li>Downloadable .ots proof</li>
+                  <li>Public timestamp secured by Bitcoin</li>
+                  <li>Downloadable proof for future checks</li>
                 </ul>
                 <a
                   className="button button--gold"
                   href="#builder"
                   onClick={() => setSelectedService("blockchain")}
-                >Choose Bitcoin-anchored proof</a>
+                >Add Bitcoin timestamp</a>
               </article>
             </div>
-            <p className="service-options__note">The Bitcoin anchor contains a one-way cryptographic commitment, not the COA or photographs.</p>
+            <p className="service-options__note">Your COA and photos stay private. Only a unique digital fingerprint is used to create the Bitcoin timestamp.</p>
           </section>
         ) : null}
 
@@ -617,7 +617,7 @@ export default function App() {
             {timestampServiceConfig ? (
               <div className={`selected-service selected-service--${selectedService}`}>
                 <span>Selected option</span>
-                <strong>{selectedService === "blockchain" ? "Cryptographically Signed COA + Bitcoin-Anchored Proof · $9.99" : "Free cryptographically signed COA · $0"}</strong>
+                <strong>{selectedService === "blockchain" ? "Signed COA + Bitcoin Timestamp · $9.99" : "Free signed COA · $0"}</strong>
                 <a href="#coa-options">Change option</a>
               </div>
             ) : null}
