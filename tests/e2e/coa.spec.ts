@@ -453,11 +453,9 @@ test("enforces fresh official evidence across value and mode changes and validat
   await page.locator('input[name="meteoriteType"]').fill("Chondrite");
   await page.locator('input[name="classification"]').fill("Carbonaceous chondrite");
   await page.locator('input[name="meteoriteSubclass"]').fill("CM2");
-  await page.locator('input[name="metbullCode"]').fill("68063");
   const officialUrl = page.locator('input[name="officialReferenceUrl"]');
-  await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68064");
-  await expect(page.getByText("Enter the exact Meteoritical Bulletin URL for this code.")).toBeVisible();
   await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68063");
+  await expect(page.locator('input[name="metbullCode"]')).toHaveValue("68063");
   const attestation = page.locator('input[name="officialNameVerified"]');
   await attestation.check();
   await expect(attestation).toBeChecked();
@@ -477,9 +475,9 @@ test("enforces fresh official evidence across value and mode changes and validat
     await expect(attestation).toBeChecked();
   }
 
-  await page.locator('input[name="metbullCode"]').fill("68064");
-  await expect(attestation).not.toBeChecked();
   await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68064");
+  await expect(page.locator('input[name="metbullCode"]')).toHaveValue("68064");
+  await expect(attestation).not.toBeChecked();
   await attestation.check();
   await officialUrl.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68065");
   await expect(attestation).not.toBeChecked();
@@ -1523,7 +1521,6 @@ test("issues and verifies a minimal package without optional PII", async ({ page
   await page.locator('input[name="meteoriteType"]').fill("Stale type");
   await page.locator('input[name="classification"]').fill("Stale class");
   await page.locator('input[name="meteoriteSubclass"]').fill("Stale subclass");
-  await page.locator('input[name="metbullCode"]').fill("99999");
   await page.locator('input[name="officialReferenceUrl"]').fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=99999");
   await page.locator('input[name="officialNameVerified"]').check();
   await page.getByRole("radio", { name: /Unclassified/ }).check();
@@ -1648,7 +1645,6 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('input[name="locality"]').fill("Example Township");
   await page.locator('input[name="latitude"]').fill("45.4215 N");
   await page.locator('input[name="longitude"]').fill("75.6972 W");
-  await page.locator('input[name="metbullCode"]').fill("12345");
   await page.locator('input[name="officialReferenceUrl"]').fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
   await page.getByLabel("Missing MetBull classification details").check();
   await expect(page.locator('input[name="meteoriteType"]')).toHaveValue("");

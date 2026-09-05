@@ -42,7 +42,8 @@ test("autofills only authoritative MetBull fields and requires fresh attestation
   await page.getByLabel("Locality / city (optional)").fill("Issuer locality");
   await page.getByLabel("Finder name (optional)").fill("Documented finder");
   await page.getByLabel("Previous owner (optional)").fill("Documented prior owner");
-  await page.getByLabel("Meteoritical Bulletin code").fill("87447");
+  await page.getByLabel("Official Meteoritical Bulletin URL").fill(record.official_url);
+  await expect(page.getByLabel("Meteoritical Bulletin code (from URL)")).toHaveValue("87447");
   await page.getByLabel("Official name verification").check();
 
   expect(requests).toBe(0);
@@ -76,10 +77,11 @@ test("ignores a stale lookup after the code changes", async ({ page }) => {
   });
   await page.goto("/#builder");
   await page.getByRole("radio", { name: /Official/ }).click();
-  const code = page.getByLabel("Meteoritical Bulletin code");
-  await code.fill("87447");
+  const url = page.getByLabel("Official Meteoritical Bulletin URL");
+  const code = page.getByLabel("Meteoritical Bulletin code (from URL)");
+  await url.fill(record.official_url);
   await page.getByRole("button", { name: "Fill from Meteoritical Bulletin" }).click();
-  await code.fill("12345");
+  await url.fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
   release?.();
   await expect(page.getByLabel("Official canonical meteorite name")).not.toHaveValue("Northwest Africa 18652");
   await expect(code).toHaveValue("12345");

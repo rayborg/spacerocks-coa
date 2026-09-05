@@ -22,6 +22,11 @@ import { createTimestampService, MetbullLookupError, timestampServiceConfig } fr
 import { formSchema } from "./lib/form-validation";
 
 const metbullLookupEnabled = Boolean(timestampServiceConfig) && import.meta.env.VITE_METBULL_LOOKUP_ENABLED === "true";
+const METBULL_URL_PATTERN = /^https:\/\/www\.lpi\.usra\.edu\/meteor\/metbull\.cfm\?code=([1-9][0-9]{0,8})$/;
+
+function metbullCodeFromUrl(value: string): string {
+  return value.trim().match(METBULL_URL_PATTERN)?.[1] ?? "";
+}
 import {
   analyzePhotoDimensions,
   describePhotoAnalysis,
@@ -430,6 +435,10 @@ export default function App() {
     setValue("officialClassificationExceptionAttested", false, { shouldDirty: true, shouldValidate: true });
     resetOfficialAttestation();
   };
+  const metbullUrlChanged = (event: React.ChangeEvent<HTMLInputElement>) => {
+    metbullSourceChanged();
+    setValue("metbullCode", metbullCodeFromUrl(event.target.value), { shouldDirty: true, shouldValidate: true });
+  };
   const classificationExceptionChanged = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
       for (const field of ["meteoriteType", "meteoriteSubclass"] as const) {
@@ -575,7 +584,13 @@ export default function App() {
 
   const lookupMetbull = async () => {
     if (!timestampServiceConfig || !metbullLookupEnabled) return;
-    const code = getValues("metbullCode").trim();
+    const code = metbullCodeFromUrl(getValues("officialReferenceUrl"));
+    if (!code) {
+      setMetbullError(true);
+      setMetbullStatus("Paste the complete official Meteoritical Bulletin URL before using autofill.");
+      await trigger(["metbullCode", "officialReferenceUrl"]);
+      return;
+    }
     cancelMetbullLookup();
     const controller = new AbortController();
     const id = Date.now() + Math.random();
@@ -946,19 +961,19 @@ export default function App() {
                   </fieldset>
                   {meteoriteIdentity === "official" ? (
                     <>
-                      <Field label="Meteoritical Bulletin code" error={errors.metbullCode?.message}>
-                        <input required aria-required="true" inputMode="numeric" placeholder="e.g., 12345" {...register("metbullCode", { onChange: metbullSourceChanged })} />
+                      <Field label="Official Meteoritical Bulletin URL" wide error={errors.officialReferenceUrl?.message}>
+                        <input required aria-required="true" type="url" placeholder="https://www.lpi.usra.edu/meteor/metbull.cfm?code=87447" {...register("officialReferenceUrl", { onChange: metbullUrlChanged })} />
                       </Field>
                       {metbullLookupEnabled ? (
                         <div className="metbull-lookup field--wide">
-                          <button type="button" className="button button--outline button--small" disabled={metbullBusy} onClick={() => void lookupMetbull()}>
+                          <button type="button" className="button button--outline button--small" disabled={metbullBusy || !metbullCodeFromUrl(watchedValues.officialReferenceUrl ?? "")} onClick={() => void lookupMetbull()}>
                             {metbullBusy ? "Looking up official record..." : "Fill from Meteoritical Bulletin"}
                           </button>
                           {metbullStatus ? <p className={`inline-status${metbullError ? " inline-status--error" : ""}`} role={metbullError ? "alert" : "status"} aria-live="polite">{metbullStatus}</p> : null}
                         </div>
                       ) : null}
-                      <Field label="Official Meteoritical Bulletin URL" wide error={errors.officialReferenceUrl?.message}>
-                        <input required aria-required="true" type="url" placeholder="Filled automatically from the bulletin code" {...register("officialReferenceUrl", { onChange: metbullSourceChanged })} />
+                      <Field label="Meteoritical Bulletin code (from URL)" error={errors.metbullCode?.message}>
+                        <input readOnly aria-readonly="true" placeholder="Extracted automatically" {...register("metbullCode")} />
                       </Field>
                     </>
                   ) : null}
