@@ -53,7 +53,7 @@ test("autofills only authoritative MetBull fields and requires fresh attestation
   await expect(page.getByLabel("Official canonical meteorite name")).toHaveValue("Northwest Africa 18652");
   await expect(page.getByLabel("Meteorite class")).toHaveValue("Relict iron");
   await expect(page.getByLabel("Fall or find status")).toHaveValue("Find");
-  await expect(page.getByLabel("Country")).toHaveValue("Western Sahara");
+  await expect(page.getByLabel("Country")).toHaveValue("Morocco");
   await expect(page.getByLabel("Official Meteoritical Bulletin URL")).toHaveValue(record.official_url);
   await expect(page.getByLabel("Official name verification")).not.toBeChecked();
 

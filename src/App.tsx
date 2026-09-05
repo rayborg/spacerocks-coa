@@ -169,6 +169,10 @@ function hasOptionalValue(value: string): boolean {
   return Boolean(normalized) && !["none", "n/a", "na", "not applicable", "not recorded"].includes(normalized);
 }
 
+function countryForMetbullAutofill(code: number, country?: string): string | undefined {
+  return code === 87447 && country === "Western Sahara" ? "Morocco" : country;
+}
+
 interface ImageDimensions {
   pixelWidth: number;
   pixelHeight: number;
@@ -673,7 +677,8 @@ export default function App() {
         }
       }
       setValue("fallStatus", record.fallOrFind, { shouldDirty: true, shouldValidate: true });
-      if (record.country !== undefined) setValue("country", record.country, { shouldDirty: true, shouldValidate: true });
+      const country = countryForMetbullAutofill(record.code, record.country);
+      if (country !== undefined) setValue("country", country, { shouldDirty: true, shouldValidate: true });
       if (record.latitude !== undefined) setValue("latitude", record.latitude, { shouldDirty: true, shouldValidate: true });
       if (record.longitude !== undefined) setValue("longitude", record.longitude, { shouldDirty: true, shouldValidate: true });
       setValue("metbullCode", String(record.code), { shouldDirty: true, shouldValidate: true });
