@@ -4,6 +4,7 @@ import addFormats from "ajv-formats";
 import orderStatusSchema from "../../contracts/schemas/order-status.schema.json";
 import {
   checkoutAttemptMatches,
+  countryForMetbullAutofill,
   createCheckoutAttempt,
   createIdempotencyKey,
   createTimestampService,
@@ -110,6 +111,19 @@ class MemoryStorage implements Storage {
 }
 
 describe("Meteoritical Bulletin lookup", () => {
+  it.each([
+    [87447, "Western Sahara", "Morocco"],
+    [87447, "Morocco", "Morocco"],
+    [69696, "Costa Rica", "Costa Rica"],
+    [2278, "Mexico", "Mexico"],
+    [57165, "Russia", "Russia"],
+    [16875, "Australia", "Australia"],
+    [74388, "United Kingdom", "United Kingdom"],
+    [378, undefined, undefined],
+  ])("maps country for code %s without changing unrelated records", (code, country, expected) => {
+    expect(countryForMetbullAutofill(code, country)).toBe(expected);
+  });
+
   it("uses the configured API safely and validates the complete response", async () => {
     const fetcher = vi.fn(async () => jsonResponse(metbullFixture));
     const record = await createTimestampService(config(), fetcher).lookupMetbull("87447");

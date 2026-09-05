@@ -335,6 +335,23 @@ test("starts with blank content, provisional preview labels, and readable respon
   }
 });
 
+test("ignores retired query-prefill data", async ({ page }) => {
+  const retiredPrefill = Buffer.from(JSON.stringify({
+    issuerName: "Should not load",
+    certificateId: "SHOULD-NOT-LOAD",
+    photoCaption: "Should not load",
+  })).toString("base64url");
+  await page.goto(`/?prefill=${retiredPrefill}#builder`);
+  await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("");
+  await expect(page.locator('input[name="certificateId"]')).toHaveValue("");
+  await page.locator(".photo-drop input[type=file]").setInputFiles({
+    name: "retired-prefill-check.png",
+    mimeType: "image/png",
+    buffer: onePixelPng,
+  });
+  await expect(page.getByLabel("Caption (optional)", { exact: true })).toHaveValue("");
+});
+
 test("omits literal None optional values from the live certificate preview", async ({ page }) => {
   await page.goto("/#builder");
   await page.getByRole("radio", { name: /Museum Type/ }).check();
@@ -350,61 +367,6 @@ test("omits literal None optional values from the live certificate preview", asy
   await expect(preview.locator(".certificate-preview__catalog-note")).toHaveCount(0);
   await expect(preview.locator(".certificate-preview__measurements")).toHaveCount(0);
   await expect(preview).not.toContainText(/None|not applicable|N\/A/i);
-});
-
-test("loads private query-prefill values without affecting the normal blank form", async ({ page }) => {
-  const prefill = Buffer.from(JSON.stringify({
-    issuerName: "Raymond Borges Hink",
-    collectionName: "Spacerocks",
-    issuerEmail: "spacerocks.club@gmail.com",
-    issuerPhone: "+1 865 231 0279",
-    issuerAddress: "7515 Falling Leaves Circle Northwest Apt. 2B, Knoxville, TN 37909",
-    certificateId: "COA-2026-0001",
-    issueDate: "2026-09-05",
-    certificateVersion: "1.0",
-    certificateStatus: "active",
-    certificateStyle: "museum-type",
-    certificateTheme: "observatory-navy",
-    meteoriteIdentity: "official",
-    officialReferenceUrl: "https://www.lpi.usra.edu/meteor/metbull.cfm?code=87447",
-    metbullCode: "87447",
-    meteoriteName: "Northwest Africa 18652",
-    meteoriteType: "Iron relic",
-    classification: "Relict iron",
-    meteoriteSubclass: "N/A",
-    officialClassificationExceptionAttested: true,
-    officialNameVerified: true,
-    weightGrams: "2.4",
-    weightPrecision: "0.1",
-    specimenForm: "Fragment",
-    numberOfPieces: "1",
-    preparationState: "TN",
-    fallStatus: "Find",
-    country: "Morocco",
-    region: "TN",
-    locality: "Western Sahara",
-    finderName: "Imad Choukri",
-    photoCaption: "Meteorite specimen with 1CM scale cube",
-    photoCaptureDate: "2026-09-05",
-  })).toString("base64url");
-  await page.goto(`/?prefill=${prefill}#builder`);
-
-  await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("Raymond Borges Hink");
-  await expect(page.getByLabel("Official canonical meteorite name")).toHaveValue("Northwest Africa 18652");
-  await expect(page.getByLabel("Meteoritical Bulletin code (from URL)")).toHaveValue("87447");
-  await expect(page.getByLabel("Missing MetBull classification details")).toBeChecked();
-  await expect(page.getByLabel("Official name verification")).toBeChecked();
-  await expect(page.getByLabel("Number of pieces")).toHaveValue("1");
-  await expect(page.locator("#issuance-readiness")).not.toContainText("Complete the required form fields.");
-  await expect(page.locator("#issuance-readiness")).toContainText("Generate or import a signing identity.");
-
-  await page.locator(".photo-drop input[type=file]").setInputFiles({
-    name: "test-specimen.png",
-    mimeType: "image/png",
-    buffer: onePixelPng,
-  });
-  await expect(page.getByLabel("Caption (optional)", { exact: true })).toHaveValue("Meteorite specimen with 1CM scale cube");
-  await expect(page.getByLabel("Capture date (optional)", { exact: true })).toHaveValue("2026-09-05");
 });
 
 test("accepts decoded photo shapes, previews a contain fit, and cleans object URLs", async ({ page }) => {

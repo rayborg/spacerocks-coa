@@ -48,7 +48,17 @@ async def test_snapshot_distinguishes_unknown_and_nonofficial_codes() -> None:
 
 @pytest.mark.parametrize(
     ("code", "expected_country"),
-    [(1, "Germany"), (7, "United States"), (378, None), (86355, None)],
+    [
+        (1, "Germany"),
+        (7, "United States"),
+        (2278, "Mexico"),
+        (16875, "Australia"),
+        (57165, "Russia"),
+        (69696, "Costa Rica"),
+        (74388, "United Kingdom"),
+        (378, None),
+        (86355, None),
+    ],
 )
 @pytest.mark.asyncio
 async def test_bundled_snapshot_maps_only_recognized_country_places(code: int, expected_country: str | None) -> None:

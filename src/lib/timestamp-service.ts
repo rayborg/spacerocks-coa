@@ -112,6 +112,10 @@ export interface MetbullRecord {
   longitude?: string;
 }
 
+export function countryForMetbullAutofill(code: number, country?: string): string | undefined {
+  return code === 87447 && country === "Western Sahara" ? "Morocco" : country;
+}
+
 type JsonRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is JsonRecord {

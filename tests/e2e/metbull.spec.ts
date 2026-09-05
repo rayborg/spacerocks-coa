@@ -14,6 +14,33 @@ const record = {
   longitude: null,
 };
 
+const ordinaryRecords = [
+  { code: 69696, canonical_name: "Aguas Zarcas", recommended_classification: "CM2", fall_or_find: "Fall", year_found: 2019, country: "Costa Rica", latitude: "10.391400", longitude: "-84.341270" },
+  { code: 2278, canonical_name: "Allende", recommended_classification: "CV3", fall_or_find: "Fall", year_found: 1969, country: "Mexico", latitude: "26.966670", longitude: "-105.316670" },
+  { code: 57165, canonical_name: "Chelyabinsk", recommended_classification: "LL5", fall_or_find: "Fall", year_found: 2013, country: "Russia", latitude: "54.816670", longitude: "61.116670" },
+  { code: 16875, canonical_name: "Murchison", recommended_classification: "CM2", fall_or_find: "Fall", year_found: 1969, country: "Australia", latitude: "-36.616670", longitude: "145.200000" },
+  { code: 74388, canonical_name: "Winchcombe", recommended_classification: "CM2", fall_or_find: "Fall", year_found: 2021, country: "United Kingdom", latitude: "51.945000", longitude: "-2.032000" },
+].map((entry) => ({
+  ...entry,
+  official_url: `https://www.lpi.usra.edu/meteor/metbull.cfm?code=${entry.code}`,
+  record_status: "Official",
+  official_name: true,
+}));
+
+const recordWithoutCountry = {
+  code: 378,
+  official_url: "https://www.lpi.usra.edu/meteor/metbull.cfm?code=378",
+  canonical_name: "Adelie Land",
+  record_status: "Official",
+  official_name: true,
+  recommended_classification: "L5",
+  fall_or_find: "Find",
+  year_found: 1912,
+  country: null,
+  latitude: "-67.183330",
+  longitude: "142.383330",
+};
+
 test("autofills only authoritative MetBull fields and requires fresh attestation", async ({ page }) => {
   const apiUrl = process.env.VITE_TIMESTAMP_API_URL;
   test.skip(!apiUrl, "timestamp API configuration is required");
@@ -65,6 +92,55 @@ test("autofills only authoritative MetBull fields and requires fresh attestation
   await expect(page.getByLabel("Locality / city (optional)")).toHaveValue("Issuer locality");
   await expect(page.getByLabel("Finder name (optional)")).toHaveValue("Documented finder");
   await expect(page.getByLabel("Previous owner (optional)")).toHaveValue("Documented prior owner");
+});
+
+test("autofills unrelated meteorites without changing their countries or coordinates", async ({ page }) => {
+  const apiUrl = process.env.VITE_TIMESTAMP_API_URL;
+  test.skip(!apiUrl, "timestamp API configuration is required");
+  for (const entry of ordinaryRecords) {
+    await page.route(`${apiUrl}/v1/meteorites/metbull?code=${entry.code}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "cache-control": "no-store" },
+        body: JSON.stringify(entry),
+      });
+    });
+  }
+  await page.route(`${apiUrl}/v1/meteorites/metbull?code=${recordWithoutCountry.code}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "cache-control": "no-store" },
+      body: JSON.stringify(recordWithoutCountry),
+    });
+  });
+
+  await page.goto("/#builder");
+  await page.getByRole("radio", { name: /Official/ }).click();
+  await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
+  const url = page.getByLabel("Official Meteoritical Bulletin URL");
+  const lookup = page.getByRole("button", { name: "Fill from Meteoritical Bulletin" });
+  for (const entry of ordinaryRecords) {
+    await url.fill(entry.official_url);
+    await expect(page.getByLabel("Meteoritical Bulletin code (from URL)")).toHaveValue(String(entry.code));
+    await lookup.click();
+    await expect(page.getByRole("status")).toContainText(`Loaded ${entry.canonical_name}`);
+    await expect(page.getByLabel("Official canonical meteorite name")).toHaveValue(entry.canonical_name);
+    await expect(page.getByLabel("Meteorite class")).toHaveValue(entry.recommended_classification);
+    await expect(page.getByLabel("Fall or find status")).toHaveValue(entry.fall_or_find);
+    await expect(page.getByLabel("Country")).toHaveValue(entry.country);
+    await expect(page.getByLabel("Latitude (optional)")).toHaveValue(entry.latitude);
+    await expect(page.getByLabel("Longitude (optional)")).toHaveValue(entry.longitude);
+  }
+  await page.getByLabel("Country").fill("Antarctica");
+  await url.fill(recordWithoutCountry.official_url);
+  await lookup.click();
+  await expect(page.getByRole("status")).toContainText(`Loaded ${recordWithoutCountry.canonical_name}`);
+  await expect(page.getByLabel("Official canonical meteorite name")).toHaveValue(recordWithoutCountry.canonical_name);
+  await expect(page.getByLabel("Country")).toHaveValue("Antarctica");
+  await expect(page.getByLabel("Latitude (optional)")).toHaveValue(recordWithoutCountry.latitude);
+  await expect(page.getByLabel("Longitude (optional)")).toHaveValue(recordWithoutCountry.longitude);
 });
 
 test("revalidates missing type and subclass immediately after the rare-record attestation", async ({ page }) => {
