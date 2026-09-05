@@ -481,6 +481,11 @@ export default function App() {
     }
   }, [meteoriteIdentity, trigger]);
   useEffect(() => {
+    if (meteoriteIdentity === "official") {
+      void trigger(["meteoriteType", "meteoriteSubclass", "officialClassificationExceptionAttested"]);
+    }
+  }, [meteoriteIdentity, officialClassificationExceptionAttested, trigger]);
+  useEffect(() => {
     void trigger(["locality", "region", "latitude", "longitude"]);
   }, [watchedValues.locality, watchedValues.region, watchedValues.latitude, watchedValues.longitude, trigger]);
   useEffect(() => {

@@ -67,6 +67,26 @@ test("autofills only authoritative MetBull fields and requires fresh attestation
   await expect(page.getByLabel("Previous owner (optional)")).toHaveValue("Documented prior owner");
 });
 
+test("revalidates missing type and subclass immediately after the rare-record attestation", async ({ page }) => {
+  const apiUrl = process.env.VITE_TIMESTAMP_API_URL;
+  test.skip(!apiUrl, "timestamp API configuration is required");
+  await page.route(`${apiUrl}/v1/meteorites/metbull?code=87447`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", headers: { "cache-control": "no-store" }, body: JSON.stringify(record) });
+  });
+  await page.goto("/#builder");
+  await page.getByRole("radio", { name: /Official/ }).click();
+  await page.getByLabel("Official Meteoritical Bulletin URL").fill(record.official_url);
+  await page.getByRole("button", { name: "Fill from Meteoritical Bulletin" }).click();
+  await expect(page.getByRole("status")).toContainText("Loaded Northwest Africa 18652");
+  await expect(page.getByLabel("Meteorite type")).toHaveValue("");
+  await expect(page.getByLabel("Meteorite subclass")).toHaveValue("");
+  await page.getByLabel("Missing MetBull classification details").check();
+  await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
+  await page.getByLabel("Official name verification").check();
+  await expect(page.getByText("Enter the official value or attest below that the linked MetBull entry does not provide it.")).toHaveCount(0);
+  await expect(page.getByText("Use this exception only when the official entry omits the type or subclass.")).toHaveCount(0);
+});
+
 test("ignores a stale lookup after the code changes", async ({ page }) => {
   const apiUrl = process.env.VITE_TIMESTAMP_API_URL;
   test.skip(!apiUrl, "timestamp API configuration is required");
