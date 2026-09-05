@@ -63,7 +63,6 @@ export interface PhotoInput {
   isUnmodifiedOriginal: boolean;
   pixelWidth: number;
   pixelHeight: number;
-  displayCrop?: DisplayCrop;
 }
 
 export interface DisplayCrop {

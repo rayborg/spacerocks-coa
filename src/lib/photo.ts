@@ -3,12 +3,9 @@ import type { DisplayCrop } from "../types";
 export const PHOTO_TARGET_ASPECT = "112:91" as const;
 export const PHOTO_TARGET_WIDTH = 112;
 export const PHOTO_TARGET_HEIGHT = 91;
-export const PHOTO_MINIMUM_WIDTH = 560;
-export const PHOTO_MINIMUM_HEIGHT = 455;
 export const PHOTO_RECOMMENDED_WIDTH = 1120;
 export const PHOTO_RECOMMENDED_HEIGHT = 910;
 const PHOTO_MAXIMUM_AREA_LOSS_DENOMINATOR = 20;
-export const PHOTO_MAXIMUM_AREA_LOSS = 1 / PHOTO_MAXIMUM_AREA_LOSS_DENOMINATOR;
 export const PHOTO_MAXIMUM_DIMENSION = 100_000;
 export const PHOTO_CROP_ALGORITHM = "center-cover-v1" as const;
 
@@ -20,18 +17,15 @@ export type PhotoDimensionAnalysis =
       pixelWidth: number;
       pixelHeight: number;
       sourceAspect: number;
-      areaLoss: number;
-      displayCrop: DisplayCrop;
-      quality: "minimum" | "recommended";
+      matchesTargetAspect: boolean;
+      quality: "accepted" | "recommended";
     }
   | {
       valid: false;
       pixelWidth: number;
       pixelHeight: number;
       sourceAspect: number;
-      areaLoss: number;
-      reason: "invalid-dimensions" | "undersized" | "excessive-crop";
-      candidateCrop?: DisplayCrop;
+      reason: "invalid-dimensions";
     };
 
 export function isSupportedPhotoMimeType(type: string): boolean {
@@ -68,49 +62,7 @@ export function analyzePhotoDimensions(pixelWidth: number, pixelHeight: number):
       pixelWidth,
       pixelHeight,
       sourceAspect: Number.NaN,
-      areaLoss: 1,
       reason: "invalid-dimensions",
-    };
-  }
-
-  const scale = Math.floor(Math.min(pixelWidth / PHOTO_TARGET_WIDTH, pixelHeight / PHOTO_TARGET_HEIGHT));
-  const cropWidth = PHOTO_TARGET_WIDTH * scale;
-  const cropHeight = PHOTO_TARGET_HEIGHT * scale;
-  const sourceArea = pixelWidth * pixelHeight;
-  const cropArea = cropWidth * cropHeight;
-  const lostArea = sourceArea - cropArea;
-  const areaLoss = lostArea / sourceArea;
-  const candidateCrop: DisplayCrop = {
-    // Floor keeps the crop centered and assigns any unmatched odd pixel to the right/bottom edge.
-    x: Math.floor((pixelWidth - cropWidth) / 2),
-    y: Math.floor((pixelHeight - cropHeight) / 2),
-    width: cropWidth,
-    height: cropHeight,
-    targetAspect: PHOTO_TARGET_ASPECT,
-    algorithm: PHOTO_CROP_ALGORITHM,
-  };
-
-  if (scale < PHOTO_MINIMUM_WIDTH / PHOTO_TARGET_WIDTH) {
-    return {
-      valid: false,
-      pixelWidth,
-      pixelHeight,
-      sourceAspect: pixelWidth / pixelHeight,
-      areaLoss,
-      reason: "undersized",
-      candidateCrop,
-    };
-  }
-
-  if (lostArea * PHOTO_MAXIMUM_AREA_LOSS_DENOMINATOR > sourceArea) {
-    return {
-      valid: false,
-      pixelWidth,
-      pixelHeight,
-      sourceAspect: pixelWidth / pixelHeight,
-      areaLoss,
-      reason: "excessive-crop",
-      candidateCrop,
     };
   }
 
@@ -119,41 +71,50 @@ export function analyzePhotoDimensions(pixelWidth: number, pixelHeight: number):
     pixelWidth,
     pixelHeight,
     sourceAspect: pixelWidth / pixelHeight,
-    areaLoss,
-    displayCrop: candidateCrop,
-    quality: cropWidth >= PHOTO_RECOMMENDED_WIDTH && cropHeight >= PHOTO_RECOMMENDED_HEIGHT
+    matchesTargetAspect: pixelWidth * PHOTO_TARGET_HEIGHT === pixelHeight * PHOTO_TARGET_WIDTH,
+    quality: pixelWidth >= PHOTO_RECOMMENDED_WIDTH
+      && pixelHeight >= PHOTO_RECOMMENDED_HEIGHT
+      && pixelWidth * PHOTO_TARGET_HEIGHT === pixelHeight * PHOTO_TARGET_WIDTH
       ? "recommended"
-      : "minimum",
+      : "accepted",
   };
 }
 
 export function describePhotoAnalysis(analysis: PhotoDimensionAnalysis): string {
   const dimensions = `${analysis.pixelWidth} x ${analysis.pixelHeight} px`;
   const ratio = Number.isFinite(analysis.sourceAspect) ? analysis.sourceAspect.toFixed(4) : "invalid";
-  const loss = `${(analysis.areaLoss * 100).toFixed(2)}%`;
   if (analysis.valid) {
-    const crop = analysis.displayCrop;
-    const quality = analysis.quality === "recommended" ? "recommended resolution met" : "minimum resolution met";
-    return `${dimensions}; source ratio ${ratio}; ${loss} source-area loss. Valid 112:91 centered display crop ${crop.width} x ${crop.height} px at (${crop.x}, ${crop.y}); ${quality}.`;
+    const quality = analysis.quality === "recommended"
+      ? "Optimal 112:91 landscape recommendation met."
+      : "Accepted; 112:91 landscape at 1120 x 910 px or larger is recommended, and higher resolution improves print quality.";
+    return `${dimensions}; source ratio ${ratio}. The complete image will be centered and contained without cropping, stretching, or distortion. ${quality}`;
   }
-  if (analysis.reason === "undersized") {
-    return `${dimensions}; source ratio ${ratio}; ${loss} source-area loss. Not suitable for the primary display photo: the largest 112:91 crop is smaller than the 560 x 455 px minimum. Use a larger landscape JPEG, PNG, or WebP.`;
-  }
-  if (analysis.reason === "excessive-crop") {
-    return `${dimensions}; source ratio ${ratio}; ${loss} source-area loss. Not suitable for the primary display photo because more than 5% would be removed. Reframe to 112:91 landscape or within the 5% crop-loss limit.`;
-  }
-  return "The image reports invalid pixel dimensions. Use a browser-decodable JPEG, PNG, or WebP.";
+  return `The image reports invalid or unsafe pixel dimensions. Each dimension must be between 1 and ${PHOTO_MAXIMUM_DIMENSION.toLocaleString("en-US")} px.`;
 }
 
-export function matchesRecordedCrop(
+export function matchesLegacyRecordedCrop(
   pixelWidth: number,
   pixelHeight: number,
   displayCrop: DisplayCrop | undefined,
 ): boolean {
-  const analysis = analyzePhotoDimensions(pixelWidth, pixelHeight);
-  if (!displayCrop) return !analysis.valid;
-  if (!analysis.valid) return false;
-  return Object.entries(analysis.displayCrop).every(
+  if (!Number.isInteger(pixelWidth) || !Number.isInteger(pixelHeight) || pixelWidth <= 0 || pixelHeight <= 0) return false;
+  const scale = Math.floor(Math.min(pixelWidth / PHOTO_TARGET_WIDTH, pixelHeight / PHOTO_TARGET_HEIGHT));
+  const cropWidth = PHOTO_TARGET_WIDTH * scale;
+  const cropHeight = PHOTO_TARGET_HEIGHT * scale;
+  const sourceArea = pixelWidth * pixelHeight;
+  const cropArea = cropWidth * cropHeight;
+  const suitable = scale >= 5 && (sourceArea - cropArea) * PHOTO_MAXIMUM_AREA_LOSS_DENOMINATOR <= sourceArea;
+  if (!displayCrop) return !suitable;
+  if (!suitable) return false;
+  const expected: DisplayCrop = {
+    x: Math.floor((pixelWidth - cropWidth) / 2),
+    y: Math.floor((pixelHeight - cropHeight) / 2),
+    width: cropWidth,
+    height: cropHeight,
+    targetAspect: PHOTO_TARGET_ASPECT,
+    algorithm: PHOTO_CROP_ALGORITHM,
+  };
+  return Object.entries(expected).every(
     ([key, value]) => displayCrop[key as keyof DisplayCrop] === value,
   );
 }

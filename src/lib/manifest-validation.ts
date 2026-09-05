@@ -12,7 +12,7 @@ export type ManifestVersion = "v1" | "v2" | "mismatch" | "unknown";
 
 export interface ManifestValidationResult {
   version: ManifestVersion;
-  schemaVersion?: "1.0.0" | "2.0.0" | "2.1.0";
+  schemaVersion?: "1.0.0" | "2.0.0" | "2.1.0" | "2.2.0";
   valid?: boolean;
   errors?: ErrorObject[] | null;
   validator?: ValidateFunction;
@@ -25,7 +25,7 @@ export function validateManifestVersion(manifest: Record<string, unknown>): Mani
   }
   if (
     identifiers[0] === "coa-manifest-v2.schema.json"
-    && (identifiers[1] === "2.0.0" || identifiers[1] === "2.1.0")
+    && (identifiers[1] === "2.0.0" || identifiers[1] === "2.1.0" || identifiers[1] === "2.2.0")
     && identifiers[2] === 2
   ) {
     return {
@@ -38,7 +38,7 @@ export function validateManifestVersion(manifest: Record<string, unknown>): Mani
   }
 
   const usesKnownIdentifier = ["coa-manifest-v1.schema.json", "coa-manifest-v2.schema.json"].includes(String(identifiers[0]))
-    || ["1.0.0", "2.0.0", "2.1.0"].includes(String(identifiers[1]))
+    || ["1.0.0", "2.0.0", "2.1.0", "2.2.0"].includes(String(identifiers[1]))
     || identifiers[2] === 1
     || identifiers[2] === 2;
   return { version: usesKnownIdentifier ? "mismatch" : "unknown" };

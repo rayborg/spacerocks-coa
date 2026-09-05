@@ -4,10 +4,8 @@ import { publicKeyFingerprint, pemToDer } from "./crypto";
 import { sha256Hex, utf8 } from "./core";
 import { validateManifestVersion, validateOfficialMeteoriteIdentity } from "./manifest-validation";
 import {
-  PHOTO_CROP_ALGORITHM,
   PHOTO_MAXIMUM_DIMENSION,
-  PHOTO_TARGET_ASPECT,
-  analyzePhotoDimensions,
+  matchesLegacyRecordedCrop,
   matchesPhotoMimeSignature,
 } from "./photo";
 
@@ -102,7 +100,9 @@ export function validatePhotographMetadata(
   const photographs = Array.isArray(manifest.photographs) ? manifest.photographs : [];
   const files = Array.isArray(manifest.files) ? manifest.files : [];
   const failures: string[] = [];
-  const isNewFormat = manifest.schemaVersion === "2.1.0";
+  const isLegacyCropFormat = manifest.schemaVersion === "2.1.0";
+  const isContainFormat = manifest.schemaVersion === "2.2.0";
+  const hasDimensions = isLegacyCropFormat || isContainFormat;
   const seenPhotoPaths = new Set<string>();
 
   photographs.forEach((photo: Record<string, any>, index: number) => {
@@ -119,12 +119,12 @@ export function validatePhotographMetadata(
       for (const property of ["sha256", "bytes", "mediaType"] as const) {
         if (photo[property] !== fileEntry[property]) failures.push(`${label} ${property} disagrees with its file entry`);
       }
-      if (isNewFormat && fileEntry.role !== "exact original specimen photograph") {
+      if (hasDimensions && fileEntry.role !== "exact original specimen photograph") {
         failures.push(`${label} file role is not exact original specimen photograph`);
       }
     }
 
-    if (!isNewFormat) return;
+    if (!hasDimensions) return;
     const pixelWidth = photo.pixelWidth;
     const pixelHeight = photo.pixelHeight;
     if (
@@ -144,27 +144,21 @@ export function validatePhotographMetadata(
       failures.push(`${label} decoded dimensions disagree with its signed dimensions`);
     }
 
-    const analysis = analyzePhotoDimensions(pixelWidth, pixelHeight);
     const crop = photo.displayCrop;
+    if (isContainFormat) {
+      if (Object.prototype.hasOwnProperty.call(photo, "displayCrop")) {
+        failures.push(`${label} has unexpected crop metadata in schema 2.2`);
+      }
+      return;
+    }
     if (!crop) {
-      if (analysis.valid) failures.push(`${label} is display-suitable but has no signed display crop`);
+      if (!matchesLegacyRecordedCrop(pixelWidth, pixelHeight, undefined)) {
+        failures.push(`${label} is display-suitable but has no signed display crop`);
+      }
       if (index === 0) failures.push("the primary photograph has no valid signed display crop");
       return;
     }
-    if (!analysis.valid) {
-      failures.push(`${label} records a crop for an unsuitable source image`);
-      return;
-    }
-    const expected = analysis.displayCrop;
-    if (
-      crop.x !== expected.x
-      || crop.y !== expected.y
-      || crop.width !== expected.width
-      || crop.height !== expected.height
-      || crop.targetAspect !== PHOTO_TARGET_ASPECT
-      || crop.algorithm !== PHOTO_CROP_ALGORITHM
-      || crop.width * 91 !== crop.height * 112
-    ) {
+    if (!matchesLegacyRecordedCrop(pixelWidth, pixelHeight, crop)) {
       failures.push(`${label} crop is not the deterministic centered 112:91 rectangle`);
     }
   });
@@ -173,7 +167,7 @@ export function validatePhotographMetadata(
   return {
     valid: failures.length === 0,
     detail: failures.length === 0
-      ? `${photographs.length} photograph record${photographs.length === 1 ? "" : "s"} match signed file facts${isNewFormat ? ", decoded dimensions, and deterministic crop semantics" : " (legacy 2.0 format)"}.`
+      ? `${photographs.length} photograph record${photographs.length === 1 ? "" : "s"} match signed file facts${isLegacyCropFormat ? ", decoded dimensions, and deterministic crop semantics" : isContainFormat ? ", decoded dimensions, and schema 2.2 no-crop semantics" : " (legacy 2.0 format)"}.`
       : failures.slice(0, 5).join("; "),
     failures,
   };
@@ -352,7 +346,7 @@ export async function verifyCertificateZip(file: File): Promise<VerificationResu
     const preflightMetadata = validatePhotographMetadata(manifest);
     if (
       preflightMetadata.valid
-      && manifestValidation.schemaVersion === "2.1.0"
+       && (manifestValidation.schemaVersion === "2.1.0" || manifestValidation.schemaVersion === "2.2.0")
       && Array.isArray(manifest.photographs)
     ) {
       for (const [index, photo] of manifest.photographs.entries()) {

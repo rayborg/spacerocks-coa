@@ -3,7 +3,7 @@ import { validatePhotographMetadata } from "./verifier";
 
 const sha256 = "a".repeat(64);
 
-function manifest(schemaVersion: "2.0.0" | "2.1.0" = "2.1.0") {
+function manifest(schemaVersion: "2.0.0" | "2.1.0" | "2.2.0" = "2.1.0") {
   const photo = {
     path: "original-photographs/specimen.png",
     originalFilename: "specimen.png",
@@ -11,9 +11,10 @@ function manifest(schemaVersion: "2.0.0" | "2.1.0" = "2.1.0") {
     bytes: 123,
     sha256,
     isUnmodifiedOriginal: true,
-    ...(schemaVersion === "2.1.0" ? {
+    ...(schemaVersion === "2.1.0" || schemaVersion === "2.2.0" ? {
       pixelWidth: 561,
       pixelHeight: 456,
+      ...(schemaVersion === "2.1.0" ? {
       displayCrop: {
         x: 0,
         y: 0,
@@ -22,6 +23,7 @@ function manifest(schemaVersion: "2.0.0" | "2.1.0" = "2.1.0") {
         targetAspect: "112:91",
         algorithm: "center-cover-v1",
       },
+      } : {}),
     } : {}),
   };
   return {
@@ -38,12 +40,26 @@ function manifest(schemaVersion: "2.0.0" | "2.1.0" = "2.1.0") {
 }
 
 describe("photograph metadata verification", () => {
-  it("accepts legacy 2.0 file binding and strict 2.1 geometry", () => {
+  it("accepts legacy 2.0 file binding, strict 2.1 geometry, and no-crop 2.2 dimensions", () => {
     expect(validatePhotographMetadata(manifest("2.0.0")).valid).toBe(true);
     expect(validatePhotographMetadata(
       manifest(),
       new Map([["original-photographs/specimen.png", { pixelWidth: 561, pixelHeight: 456 }]]),
     ).valid).toBe(true);
+    const contained = manifest("2.2.0");
+    contained.photographs[0].pixelWidth = 1;
+    contained.photographs[0].pixelHeight = 100000;
+    expect(validatePhotographMetadata(
+      contained,
+      new Map([["original-photographs/specimen.png", { pixelWidth: 1, pixelHeight: 100000 }]]),
+    ).valid).toBe(true);
+  });
+
+  it("rejects crop metadata under the schema 2.2 no-crop policy", () => {
+    const changed = structuredClone(manifest("2.2.0"));
+    (changed.photographs[0] as Record<string, unknown>).displayCrop = null;
+    expect(validatePhotographMetadata(changed).failures)
+      .toContain("photograph 1 has unexpected crop metadata in schema 2.2");
   });
 
   it.each(["sha256", "bytes", "mediaType"] as const)("rejects disagreement in %s", (property) => {

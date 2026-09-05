@@ -73,7 +73,7 @@ function v1Manifest() {
 
 function v2Manifest(
   identity: "official" | "unclassified" = "unclassified",
-  schemaVersion: "2.0.0" | "2.1.0" = "2.0.0",
+  schemaVersion: "2.0.0" | "2.1.0" | "2.2.0" = "2.0.0",
 ) {
   const official = identity === "official";
   const base = commonManifest();
@@ -82,12 +82,14 @@ function v2Manifest(
     $schema: "coa-manifest-v2.schema.json",
     schemaVersion,
     packageVersion: 2,
-    photographs: schemaVersion === "2.1.0"
+    photographs: schemaVersion === "2.1.0" || schemaVersion === "2.2.0"
       ? base.photographs.map((photo) => ({
           ...photo,
           pixelWidth: 560,
           pixelHeight: 455,
-          displayCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
+          ...(schemaVersion === "2.1.0" ? {
+            displayCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
+          } : {}),
         }))
       : base.photographs,
     specimen: {
@@ -116,10 +118,11 @@ function v2Manifest(
 }
 
 describe("manifest validation", () => {
-  it("validates legacy 2.0 and strict 2.1 manifests", () => {
+  it("validates legacy 2.0, strict-crop 2.1, and contain-fit 2.2 manifests", () => {
     expect(validateManifestVersion(v1Manifest())).toMatchObject({ version: "v1", valid: true });
     expect(validateManifestVersion(v2Manifest("unclassified"))).toMatchObject({ version: "v2", schemaVersion: "2.0.0", valid: true });
     expect(validateManifestVersion(v2Manifest("official", "2.1.0"))).toMatchObject({ version: "v2", schemaVersion: "2.1.0", valid: true });
+    expect(validateManifestVersion(v2Manifest("unclassified", "2.2.0"))).toMatchObject({ version: "v2", schemaVersion: "2.2.0", valid: true });
   });
 
   it("fails mismatched known identifiers instead of treating them as legacy", () => {
@@ -153,6 +156,13 @@ describe("manifest validation", () => {
     const newWithoutCrop = structuredClone(v2Manifest("unclassified", "2.1.0"));
     delete (newWithoutCrop.photographs[0] as Record<string, any>).displayCrop;
     expect(() => assertV2Manifest(newWithoutCrop)).toThrow();
+    const containedPhoto = structuredClone(v2Manifest("unclassified", "2.2.0"));
+    Object.assign(containedPhoto.photographs[0], { pixelWidth: 1, pixelHeight: 100000 });
+    expect(() => assertV2Manifest(containedPhoto)).not.toThrow();
+    Object.assign(containedPhoto.photographs[0], {
+      displayCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
+    });
+    expect(() => assertV2Manifest(containedPhoto)).toThrow();
     const invalidCoordinate = structuredClone(v2Manifest());
     Object.assign(invalidCoordinate.specimen.fall, { latitude: "91 N", longitude: "75 N" });
     expect(() => assertV2Manifest(invalidCoordinate)).toThrow();

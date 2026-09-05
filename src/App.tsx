@@ -102,20 +102,6 @@ function locationSummary(values: FormValues): string {
   return parts.join(", ") || "Not entered";
 }
 
-function displayCropStyle(photo: PhotoInput): React.CSSProperties | undefined {
-  const crop = photo.displayCrop;
-  if (!crop) return undefined;
-  return {
-    position: "absolute",
-    width: `${photo.pixelWidth / crop.width * 100}%`,
-    height: `${photo.pixelHeight / crop.height * 100}%`,
-    maxWidth: "none",
-    left: `${-crop.x / crop.width * 100}%`,
-    top: `${-crop.y / crop.height * 100}%`,
-    objectFit: "contain",
-  };
-}
-
 interface ImageDimensions {
   pixelWidth: number;
   pixelHeight: number;
@@ -270,14 +256,14 @@ function CertificatePreview({
               <p>{classificationSummary(values)}</p>
             </div>
             <div className="certificate-preview__photo">
-              {photo?.displayCrop ? (
-                <span className="certificate-preview__photo-viewport" data-display-crop={`${photo.displayCrop.x},${photo.displayCrop.y},${photo.displayCrop.width},${photo.displayCrop.height}`}>
-                  <img style={displayCropStyle(photo)} src={photo.previewUrl} alt={photo.caption || "Centered display crop of uploaded specimen"} />
+              {photo ? (
+                <span className="certificate-preview__photo-viewport" data-photo-fit="contain">
+                  <img src={photo.previewUrl} alt={photo.caption || "Complete uploaded specimen photograph"} />
                 </span>
-              ) : <span>Valid display photo required</span>}
+              ) : <span>Source photo required</span>}
               {isMuseumLedger || isMuseumType ? (
                 <small className="certificate-preview__photo-caption">
-                  Display crop 01
+                  Contain fit 01
                 </small>
               ) : null}
             </div>
@@ -499,8 +485,8 @@ export default function App() {
   const photoUrlsRef = useRef(new Set<string>());
   const mountedRef = useRef(true);
   const allPhotosAttested = photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal);
-  const primaryPhotoReady = Boolean(photos[0]?.displayCrop);
-  const issueReady = isValid && Boolean(identity) && backupDownloaded && allPhotosAttested && primaryPhotoReady;
+  const sourcePhotoReady = photos.length > 0;
+  const issueReady = isValid && Boolean(identity) && backupDownloaded && allPhotosAttested && sourcePhotoReady;
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -649,7 +635,7 @@ export default function App() {
       setPhotoStatus("Original photographs and issuer assets cannot exceed 200 MB in one package.");
       return;
     }
-    setPhotoStatus("Checking image type, decoded pixels, dimensions, and display crop locally...");
+    setPhotoStatus("Checking image type, decoded pixels, and safe dimensions locally...");
     const accepted: PhotoInput[] = [];
     const rejected: string[] = [];
     for (const file of selected) {
@@ -660,6 +646,10 @@ export default function App() {
       try {
         const { pixelWidth, pixelHeight } = await decodePhotoDimensions(file);
         const analysis = analyzePhotoDimensions(pixelWidth, pixelHeight);
+        if (!analysis.valid) {
+          rejected.push(`${file.name}: ${describePhotoAnalysis(analysis)}`);
+          continue;
+        }
         const previewUrl = URL.createObjectURL(file);
         photoUrlsRef.current.add(previewUrl);
         accepted.push({
@@ -671,7 +661,6 @@ export default function App() {
           isUnmodifiedOriginal: false,
           pixelWidth,
           pixelHeight,
-          displayCrop: analysis.valid ? analysis.displayCrop : undefined,
         });
       } catch (error) {
         rejected.push(`${file.name}: ${error instanceof Error ? error.message : "the image could not be decoded."}`);
@@ -685,7 +674,7 @@ export default function App() {
       return;
     }
     if (accepted.length) setPhotos((current) => [...current, ...accepted]);
-    setPhotoStatus(rejected.length ? rejected.join(" ") : "All selected files decoded successfully. Review each photo's display status.");
+    setPhotoStatus(rejected.length ? rejected.join(" ") : "All selected files decoded successfully and will be contained without cropping or distortion.");
   };
 
   const updatePhoto = (id: string, changes: Partial<PhotoInput>) => {
@@ -721,11 +710,6 @@ export default function App() {
       setGenerationStatus("Confirm that every listed source file is an unmodified original photograph of this exact specimen.");
       return;
     }
-    if (!photos[0].displayCrop) {
-      setGenerationStatus("The first photograph must meet the 112:91 display ratio and 560 x 455 px minimum within the 5% crop-loss limit. Reframe it or remove it so a suitable photo is first.");
-      return;
-    }
-
     setGenerationBusy(true);
     setGenerationStatus("Rendering, hashing, signing, and packaging entirely in this browser...");
     try {
@@ -1117,12 +1101,12 @@ export default function App() {
               </details>
 
               <section className="evidence-section">
-                <div className="evidence-section__head"><span>05</span><div><strong>Source-original specimen photographs</strong><small>At least one unmodified source with a valid display crop is mandatory</small></div></div>
+                <div className="evidence-section__head"><span>05</span><div><strong>Source-original specimen photographs</strong><small>At least one decoded, attested source photograph is mandatory</small></div></div>
                 <div className="photo-requirements" aria-labelledby="photo-requirements-title">
-                  <strong id="photo-requirements-title">Certificate display photo requirements</strong>
-                  <p><b>Ratio:</b> 112:91 landscape. <b>Minimum usable crop:</b> 560 x 455 px. <b>Recommended:</b> 1120 x 910 px or larger.</p>
-                  <p>The browser validates decoded pixel dimensions, not EXIF metadata or a trusted DPI value. A deterministic geometric center crop is accepted only when it removes no more than 5% of source area; it does not perform visual subject detection.</p>
-                  <p>The source file remains unchanged and is packaged and hashed byte-for-byte. The crop is presentation metadata only; it does not replace or modify the original evidence.</p>
+                  <strong id="photo-requirements-title">Certificate display photo recommendations</strong>
+                  <p><b>Optimal ratio:</b> 112:91 landscape. <b>Recommended resolution:</b> 1120 x 910 px or larger. Higher resolution improves print quality.</p>
+                  <p>Any safely decoded JPEG, PNG, or WebP is accepted. The complete photo is centered and resized to fit the certificate frame without cropping, changing its width:height ratio, or distortion; empty space may remain.</p>
+                  <p>The browser validates decoded pixel dimensions, not EXIF metadata, and embedded DPI is not trusted. The source file remains unchanged and is packaged and hashed byte-for-byte.</p>
                 </div>
                 <label
                   className="photo-drop"
@@ -1144,19 +1128,19 @@ export default function App() {
                     const analysisId = `photo-analysis-${photo.id}`;
                     return (
                     <article className="photo-item" key={photo.id}>
-                      <img className={photo.displayCrop ? "photo-item__crop-preview" : "photo-item__source-preview"} src={photo.previewUrl} alt="" />
+                      <img className="photo-item__source-preview" src={photo.previewUrl} alt="" />
                       <div className="photo-item__fields">
                         <div className="photo-item__heading">
                           <div className="photo-item__meta"><span>Source original {String(index + 1).padStart(2, "0")}{index === 0 ? " / primary" : ""}</span><strong>{photo.file.name}</strong><small>{(photo.file.size / 1024 / 1024).toFixed(2)} MB</small></div>
                           <button type="button" className="remove-button" onClick={() => removePhoto(photo.id)} aria-label={`Remove ${photo.file.name}`}>Remove</button>
                         </div>
                         <p id={analysisId} className={`photo-analysis photo-analysis--${analysis.valid ? "valid" : "invalid"}`} role={analysis.valid ? "status" : "alert"}>
-                          <strong>{analysis.valid ? "Valid display crop" : index === 0 ? "Primary photo blocks issuance" : "Exact evidence only; not suitable for display"}</strong>
+                          <strong>{analysis.valid ? "Accepted for contained display" : "Unsafe decoded dimensions"}</strong>
                           <span>{describePhotoAnalysis(analysis)}</span>
                         </p>
                         <label>Caption (optional)<input placeholder="Optional - e.g., front face" value={photo.caption} onChange={(event) => updatePhoto(photo.id, { caption: event.target.value })} /></label>
                         <label>Capture date (optional)<input type="date" placeholder="Optional - e.g., 2026-07-29" value={photo.captureDate} onChange={(event) => updatePhoto(photo.id, { captureDate: event.target.value })} /></label>
-                        <label className="attestation"><input aria-describedby={analysisId} type="checkbox" checked={photo.isUnmodifiedOriginal} onChange={(event) => updatePhoto(photo.id, { isUnmodifiedOriginal: event.target.checked })} /><span>I attest that this source file is an exact, unmodified original photograph of the specimen. I understand the certificate uses the recorded centered presentation crop while preserving and hashing the original unchanged.</span></label>
+                        <label className="attestation"><input aria-describedby={analysisId} type="checkbox" checked={photo.isUnmodifiedOriginal} onChange={(event) => updatePhoto(photo.id, { isUnmodifiedOriginal: event.target.checked })} /><span>I attest that this source file is an exact, unmodified original photograph of the specimen. I understand the certificate contains the complete image without cropping while preserving and hashing the original unchanged.</span></label>
                       </div>
                     </article>
                     );
@@ -1216,7 +1200,6 @@ export default function App() {
                       {!identity ? <li>Generate or import a signing identity.</li> : null}
                       {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
                       {photos.length === 0 ? <li>Add at least one source-original specimen photograph.</li> : null}
-                      {photos.length > 0 && !primaryPhotoReady ? <li>The first photo needs a valid 112:91 centered display crop of at least 560 x 455 px with no more than 5% source-area loss. Reframe it or remove it so a suitable photo is first.</li> : null}
                       {photos.length > 0 && !allPhotosAttested ? <li>Attest every source photograph is an unmodified original.</li> : null}
                     </ul>
                   ) : null}
@@ -1275,7 +1258,7 @@ export default function App() {
               <div className="preview-checks">
                 <span className={identity ? "complete" : ""}><i />Signing identity</span>
                 <span className={photos.length ? "complete" : ""}><i />Source-original evidence</span>
-                <span className={primaryPhotoReady ? "complete" : ""}><i />Valid display crop</span>
+                <span className={sourcePhotoReady ? "complete" : ""}><i />Contained source photo</span>
                 <span className={allPhotosAttested ? "complete" : ""}><i />Photo attestation</span>
                 <span><i />Offline verifier included</span>
               </div>

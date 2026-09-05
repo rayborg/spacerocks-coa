@@ -326,7 +326,7 @@ test("starts with blank content, provisional preview labels, and readable respon
   }
 });
 
-test("validates decoded certificate-photo pixels and cleans preview object URLs", async ({ page }) => {
+test("accepts decoded photo shapes, previews a contain fit, and cleans object URLs", async ({ page }) => {
   await page.addInitScript(() => {
     const trackedWindow = window as typeof window & { __revokedPhotoUrls?: string[] };
     trackedWindow.__revokedPhotoUrls = [];
@@ -340,45 +340,48 @@ test("validates decoded certificate-photo pixels and cleans preview object URLs"
 
   const requirements = page.locator(".photo-requirements");
   await expect(requirements).toContainText("112:91 landscape");
-  await expect(requirements).toContainText("560 x 455 px");
   await expect(requirements).toContainText("1120 x 910 px or larger");
-  await expect(requirements).toContainText("decoded pixel dimensions, not EXIF metadata or a trusted DPI value");
+  await expect(requirements).toContainText("Higher resolution improves print quality");
+  await expect(requirements).toContainText("embedded DPI is not trusted");
+  await expect(requirements).toContainText("without cropping, changing its width:height ratio, or distortion");
   await expect(requirements).toContainText("source file remains unchanged");
 
   const upload = page.locator(".photo-drop input[type=file]");
-  await upload.setInputFiles({ name: "near-ratio.png", mimeType: "image/png", buffer: solidPng(560, 478) });
-  const validCard = page.locator(".photo-item").first();
-  await expect(validCard.locator(".photo-analysis")).toContainText("Valid display crop");
-  await expect(validCard.locator(".photo-analysis")).toContainText("560 x 478 px");
-  await expect(validCard.locator(".photo-analysis")).toContainText("crop 560 x 455 px at (0, 11)");
-  const previewUrl = await validCard.locator("img").getAttribute("src");
+  await upload.setInputFiles({ name: "square-low-res.png", mimeType: "image/png", buffer: solidPng(8, 8) });
+  const squareCard = page.locator(".photo-item").first();
+  await expect(squareCard.locator(".photo-analysis")).toContainText("Accepted for contained display");
+  await expect(squareCard.locator(".photo-analysis")).toContainText("8 x 8 px");
+  await expect(squareCard.locator(".photo-analysis")).toContainText("complete image will be centered and contained");
+  const previewUrl = await squareCard.locator("img").getAttribute("src");
   expect(previewUrl).toMatch(/^blob:/);
 
-  await validCard.getByRole("button", { name: "Remove near-ratio.png" }).click();
-  await upload.setInputFiles({ name: "odd-pixel-border.png", mimeType: "image/png", buffer: solidPng(561, 456) });
-  const cropViewport = page.locator(".certificate-preview__photo-viewport");
-  await expect(cropViewport).toHaveAttribute("data-display-crop", "0,0,560,455");
-  const cropGeometry = await cropViewport.evaluate((element) => {
+  await upload.setInputFiles([
+    { name: "extreme-wide.png", mimeType: "image/png", buffer: solidPng(1200, 20) },
+    { name: "extreme-tall.png", mimeType: "image/png", buffer: solidPng(20, 1200) },
+    { name: "portrait.png", mimeType: "image/png", buffer: solidPng(400, 800) },
+  ]);
+  await expect(page.locator(".photo-item")).toHaveCount(4);
+  for (const card of await page.locator(".photo-item").all()) {
+    await expect(card.locator(".photo-analysis")).toContainText("Accepted for contained display");
+  }
+
+  const containViewport = page.locator(".certificate-preview__photo-viewport");
+  await expect(containViewport).toHaveAttribute("data-photo-fit", "contain");
+  const containGeometry = await containViewport.evaluate((element) => {
     const viewport = element.getBoundingClientRect();
     const image = element.querySelector("img") as HTMLImageElement;
-    const imageBox = image.getBoundingClientRect();
+    const style = getComputedStyle(image);
     return {
       viewportRatio: viewport.width / viewport.height,
-      imageRatio: imageBox.width / imageBox.height,
       naturalRatio: image.naturalWidth / image.naturalHeight,
-      widthScale: imageBox.width / viewport.width,
-      heightScale: imageBox.height / viewport.height,
+      objectFit: style.objectFit,
+      objectPosition: style.objectPosition,
     };
   });
-  expect(cropGeometry.viewportRatio).toBeCloseTo(112 / 91, 3);
-  expect(cropGeometry.imageRatio).toBeCloseTo(cropGeometry.naturalRatio, 4);
-  expect(cropGeometry.widthScale).toBeCloseTo(561 / 560, 3);
-  expect(cropGeometry.heightScale).toBeCloseTo(456 / 455, 3);
-
-  await upload.setInputFiles({ name: "too-tall.png", mimeType: "image/png", buffer: solidPng(560, 479) });
-  const unsuitableCard = page.locator(".photo-item").nth(1);
-  await expect(unsuitableCard.locator(".photo-analysis")).toContainText("Exact evidence only; not suitable for display");
-  await expect(unsuitableCard.locator(".photo-analysis")).toContainText("more than 5% would be removed");
+  expect(containGeometry.viewportRatio).toBeCloseTo(112 / 91, 2);
+  expect(containGeometry.naturalRatio).toBe(1);
+  expect(containGeometry.objectFit).toBe("contain");
+  expect(containGeometry.objectPosition).toBe("50% 50%");
 
   await upload.setInputFiles({
     name: "spoofed.png",
@@ -392,12 +395,12 @@ test("validates decoded certificate-photo pixels and cleans preview object URLs"
     buffer: Buffer.from("GIF89a"),
   });
   await expect(page.locator(".inline-status")).toContainText("unsupported MIME type");
-  await expect(page.locator(".photo-item")).toHaveCount(2);
+  await expect(page.locator(".photo-item")).toHaveCount(4);
 
   const currentPreviewUrl = await page.locator(".photo-item").first().locator("img").getAttribute("src");
-  await page.locator(".photo-item").first().getByRole("button", { name: "Remove odd-pixel-border.png" }).click();
-  await expect(page.getByText("Primary photo blocks issuance")).toBeVisible();
-  await expect(page.getByText(/The first photo needs a valid 112:91 centered display crop/)).toBeVisible();
+  await page.locator(".photo-item").first().getByRole("button", { name: "Remove square-low-res.png" }).click();
+  await expect(page.getByText("Primary photo blocks issuance")).toHaveCount(0);
+  await expect(page.locator(".certificate-preview__photo-viewport img")).toHaveAttribute("src", /blob:/);
   await expect.poll(() => page.evaluate((url) => {
     const trackedWindow = window as typeof window & { __revokedPhotoUrls?: string[] };
     return trackedWindow.__revokedPhotoUrls?.includes(url!) ?? false;
@@ -882,7 +885,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
   expect(museumSignature.factLabelColor).not.toBe("rgb(0, 0, 0)");
-  expect(museumSignature.photoCaption).toContain("Display crop 01");
+  expect(museumSignature.photoCaption).toContain("Contain fit 01");
   expect(museumSignature.photoCaptionFits).toBe(true);
   expect(museumSignature.photoCaptionWhiteSpace).toBe("nowrap");
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);
@@ -1231,6 +1234,7 @@ test("exports adaptive logos without crop or distortion in both certificate styl
       sourceWidth: number;
       sourceHeight: number;
       logoDraw: { x: number; y: number; width: number; height: number };
+      photoDraw: { x: number; y: number; width: number; height: number };
       titleDraw: { x: number; y: number };
       pngBytes: number;
       pdfBytes: number;
@@ -1239,6 +1243,7 @@ test("exports adaptive logos without crop or distortion in both certificate styl
     const originalFillText = CanvasRenderingContext2D.prototype.fillText;
     let expectedLogo = { width: 0, height: 0 };
     let logoDraw: { x: number; y: number; width: number; height: number } | undefined;
+    let photoDraw: { x: number; y: number; width: number; height: number } | undefined;
     let titleDraw: { x: number; y: number } | undefined;
 
     CanvasRenderingContext2D.prototype.drawImage = function (...args: any[]) {
@@ -1249,6 +1254,12 @@ test("exports adaptive logos without crop or distortion in both certificate styl
         && args.length === 5) {
         logoDraw = { x: args[1], y: args[2], width: args[3], height: args[4] };
       }
+      if (image instanceof HTMLImageElement
+        && image.naturalWidth === 100
+        && image.naturalHeight === 100
+        && args.length === 5) {
+        photoDraw = { x: args[1], y: args[2], width: args[3], height: args[4] };
+      }
       return originalDrawImage.apply(this, args as any);
     };
     CanvasRenderingContext2D.prototype.fillText = function (...args) {
@@ -1258,12 +1269,13 @@ test("exports adaptive logos without crop or distortion in both certificate styl
 
     try {
       const photo = new File([
-        '<svg xmlns="http://www.w3.org/2000/svg" width="560" height="455"><rect width="560" height="455" fill="#333"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#333"/></svg>',
       ], "specimen.svg", { type: "image/svg+xml" });
       for (const style of styles) {
         for (const [sourceWidth, sourceHeight] of variants) {
           expectedLogo = { width: sourceWidth, height: sourceHeight };
           logoDraw = undefined;
+          photoDraw = undefined;
           titleDraw = undefined;
           const logo = new File([
             `<svg xmlns="http://www.w3.org/2000/svg" width="${sourceWidth}" height="${sourceHeight}" viewBox="0 0 ${sourceWidth} ${sourceHeight}"><rect width="100%" height="100%" fill="none"/><path d="M0 0L${sourceWidth} ${sourceHeight}M${sourceWidth} 0L0 ${sourceHeight}" stroke="#b87518" stroke-width="8"/></svg>`,
@@ -1274,11 +1286,10 @@ test("exports adaptive logos without crop or distortion in both certificate styl
             recordHash: "a".repeat(64),
             qrPayload: `https://example.invalid/${style}/${sourceWidth}x${sourceHeight}`,
             mainPhoto: photo,
-            mainPhotoCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
             logo,
           });
-          if (!logoDraw || !titleDraw) throw new Error(`Missing export geometry for ${style} ${sourceWidth}x${sourceHeight}`);
-          output.push({ style, sourceWidth, sourceHeight, logoDraw, titleDraw, pngBytes: rendered.png.byteLength, pdfBytes: rendered.pdf.byteLength });
+          if (!logoDraw || !photoDraw || !titleDraw) throw new Error(`Missing export geometry for ${style} ${sourceWidth}x${sourceHeight}`);
+          output.push({ style, sourceWidth, sourceHeight, logoDraw, photoDraw, titleDraw, pngBytes: rendered.png.byteLength, pdfBytes: rendered.pdf.byteLength });
         }
       }
       return output;
@@ -1295,6 +1306,8 @@ test("exports adaptive logos without crop or distortion in both certificate styl
     const previousScale = Math.min(previousMaximum.width / result.sourceWidth, previousMaximum.height / result.sourceHeight);
     const previousArea = result.sourceWidth * previousScale * result.sourceHeight * previousScale;
     expect(result.logoDraw.width / result.logoDraw.height, `${result.style} ${result.sourceWidth}x${result.sourceHeight} ratio`).toBeCloseTo(sourceRatio, 8);
+    expect(result.photoDraw.width).toBe(455);
+    expect(result.photoDraw.height).toBe(455);
     expect(result.logoDraw.width * result.logoDraw.height, `${result.style} ${result.sourceWidth}x${result.sourceHeight} area`).toBeGreaterThanOrEqual(previousArea * 3);
     if (result.style === "celestial-formal") {
       expect(result.logoDraw.x + result.logoDraw.width).toBeLessThan(result.titleDraw.x);
@@ -1476,7 +1489,6 @@ test("keeps unbroken Museum Type export notes inside their ruled panel", async (
         recordHash: "a".repeat(64),
         qrPayload: "https://example.invalid/verify/WRAP-TEST-0001",
         mainPhoto: photo,
-        mainPhotoCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
       });
       return draws;
     } finally {
@@ -1567,7 +1579,7 @@ test("issues and verifies a minimal package without optional PII", async ({ page
 
   expect(manifest).toEqual(expect.objectContaining({
     $schema: "coa-manifest-v2.schema.json",
-    schemaVersion: "2.1.0",
+    schemaVersion: "2.2.0",
     packageVersion: 2,
   }));
   expect(manifest.issuer).toEqual(expect.objectContaining({
@@ -1780,7 +1792,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(manifest.certificate.visualStyle).toBe("museum-type");
   expect(manifest).toEqual(expect.objectContaining({
     $schema: "coa-manifest-v2.schema.json",
-    schemaVersion: "2.1.0",
+    schemaVersion: "2.2.0",
     packageVersion: 2,
   }));
   expect(manifest.certificate.visualTheme).toBe("royal-amethyst");
@@ -1811,8 +1823,8 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(manifest.photographs[0]).toEqual(expect.objectContaining({
     pixelWidth: 560,
     pixelHeight: 455,
-    displayCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
   }));
+  expect(manifest.photographs[0]).not.toHaveProperty("displayCrop");
   const originalPhoto = await archive.file(`${root}${manifest.photographs[0].path}`)!.async("nodebuffer");
   expect(originalPhoto).toEqual(certificatePhotoPng);
   expect(manifest.photographs[0].sha256).toBe(createHash("sha256").update(certificatePhotoPng).digest("hex"));
@@ -1870,7 +1882,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     certificate: { visualStyle?: string; visualTheme?: string };
     specimen: unknown;
   };
-  expect(certificateRecord.schemaVersion).toBe("2.1.0");
+  expect(certificateRecord.schemaVersion).toBe("2.2.0");
   expect(certificateRecord.certificate.visualStyle).toBe("museum-type");
   expect(certificateRecord.certificate.visualTheme).toBe("royal-amethyst");
   expect(certificateRecord.specimen).toEqual(manifest.specimen);
@@ -1881,7 +1893,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(certificateText).toContain("missing type/subclass attested from linked MetBull entry");
   expect(certificateText).toContain("Meteorite type: Not provided by Meteoritical Bulletin");
   expect(certificateText).toContain("Official reference: https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
-  expect(certificateText).toContain("Certificate presentation uses signed center-cover-v1 crop x=0, y=0, width=560, height=455, target=112:91.");
+  expect(certificateText).toContain("centers and contains the complete image without cropping, stretching, or distortion");
   const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v2.schema.json`)!.async("text")) as {
     properties: {
       certificate: {
@@ -1919,11 +1931,11 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
       encoding: "utf8",
     });
     expect(verifierOutput).toContain("PACKAGE VERIFICATION PASSED");
-    expect(verifierOutput).toContain("OK    photograph metadata (2.1 crop semantics)");
+    expect(verifierOutput).toContain("OK    photograph metadata (2.2 no-crop dimensions)");
 
     const offlineManifestPath = join(extractedRoot, "manifest.json");
     const offlineManifest = JSON.parse(await readFile(offlineManifestPath, "utf8"));
-    offlineManifest.photographs[0].displayCrop.x = 1;
+    offlineManifest.photographs[0].displayCrop = null;
     await writeFile(offlineManifestPath, JSON.stringify(offlineManifest));
     const tamperedOffline = spawnSync("python3", ["verify.py"], { cwd: extractedRoot, encoding: "utf8" });
     expect(tamperedOffline.status).toBe(1);
@@ -1939,7 +1951,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
 
   const metadataArchive = await JSZip.loadAsync(packageBuffer);
   const metadataManifest = JSON.parse(await metadataArchive.file(`${root}manifest.json`)!.async("text"));
-  metadataManifest.photographs[0].displayCrop.x = 1;
+  metadataManifest.photographs[0].displayCrop = null;
   metadataManifest.photographs[0].bytes += 1;
   metadataArchive.file(`${root}manifest.json`, JSON.stringify(metadataManifest));
   await page.locator(".verifier input[type=file]").setInputFiles({

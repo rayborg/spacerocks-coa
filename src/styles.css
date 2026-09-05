@@ -1351,13 +1351,9 @@ a {
 .photo-item > img {
   width: 112px;
   height: 91px;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   background: var(--navy);
-}
-
-.photo-item > img.photo-item__source-preview {
-  object-fit: contain;
 }
 
 .photo-item__fields {
@@ -2372,7 +2368,7 @@ a {
 }
 
 .certificate-preview--museum-type .certificate-preview__photo img {
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .certificate-preview--museum-type .certificate-preview__photo-caption {
@@ -2832,7 +2828,8 @@ a {
 .certificate-preview__photo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
 }
 
 .certificate-preview .certificate-preview__photo {
@@ -2847,8 +2844,8 @@ a {
   left: 0;
   display: block;
   width: 100%;
+  height: 100%;
   overflow: hidden;
-  aspect-ratio: 112 / 91;
 }
 
 .certificate-preview__photo-caption {

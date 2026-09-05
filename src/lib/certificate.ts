@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
-import type { DisplayCrop, FormValues } from "../types";
+import type { FormValues } from "../types";
 import { certificateFooterLayout, getCertificateTheme } from "../certificateThemes";
 import type { CertificateStyleId } from "../certificateStyles";
 import { displayDate } from "./core";
@@ -41,7 +41,6 @@ export interface CertificateRenderInput {
   recordHash: string;
   qrPayload: string;
   mainPhoto: File;
-  mainPhotoCrop: DisplayCrop;
   logo?: File;
 }
 
@@ -161,28 +160,6 @@ async function dataUrlToImage(url: string): Promise<HTMLImageElement> {
   return image;
 }
 
-function drawRecordedCrop(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  crop: DisplayCrop,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
-  if (
-    crop.x < 0
-    || crop.y < 0
-    || crop.width <= 0
-    || crop.height <= 0
-    || crop.x + crop.width > image.naturalWidth
-    || crop.y + crop.height > image.naturalHeight
-  ) {
-    throw new Error("The recorded display crop is outside the decoded source photograph.");
-  }
-  context.drawImage(image, crop.x, crop.y, crop.width, crop.height, x, y, width, height);
-}
-
 function drawContainedImage(
   context: CanvasRenderingContext2D,
   image: HTMLImageElement,
@@ -191,13 +168,13 @@ function drawContainedImage(
   width: number,
   height: number,
 ) {
-  const { width: drawWidth, height: drawHeight } = fitImageWithin(
+  const fitted = fitImageWithin(
     image.naturalWidth,
     image.naturalHeight,
     width,
     height,
   );
-  context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+  context.drawImage(image, x + fitted.x, y + fitted.y, fitted.width, fitted.height);
 }
 
 export function fitImageWithin(
@@ -205,12 +182,19 @@ export function fitImageWithin(
   sourceHeight: number,
   maximumWidth: number,
   maximumHeight: number,
-): { width: number; height: number } {
+): { x: number; y: number; width: number; height: number } {
   if (sourceWidth <= 0 || sourceHeight <= 0 || maximumWidth <= 0 || maximumHeight <= 0) {
     throw new Error("Image and frame dimensions must be positive.");
   }
   const scale = Math.min(maximumWidth / sourceWidth, maximumHeight / sourceHeight);
-  return { width: sourceWidth * scale, height: sourceHeight * scale };
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: (maximumWidth - width) / 2,
+    y: (maximumHeight - height) / 2,
+    width,
+    height,
+  };
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -592,10 +576,9 @@ async function drawMuseumTypeCertificate(
   const photo = await fileToImage(input.mainPhoto);
   const photoWidth = 560;
   const photoHeight = 455;
-  drawRecordedCrop(
+  drawContainedImage(
     context,
     photo,
-    input.mainPhotoCrop,
     photoFrame.x + (photoFrame.width - photoWidth) / 2,
     photoFrame.y + 25,
     photoWidth,
@@ -605,7 +588,7 @@ async function drawMuseumTypeCertificate(
   context.fillRect(photoFrame.x + 3, photoFrame.y + photoFrame.height - 55, photoFrame.width - 6, 52);
   context.fillStyle = accentLight;
   context.font = "800 18px ui-monospace, SFMono-Regular, Menlo, monospace";
-  context.fillText("DISPLAY CROP / SOURCE PHOTO 01", photoFrame.x + 26, photoFrame.y + photoFrame.height - 21);
+  context.fillText("CONTAINED SOURCE PHOTO 01", photoFrame.x + 26, photoFrame.y + photoFrame.height - 21);
 
   const panelX = photoFrame.x + photoFrame.width + 40;
   const panelY = 466;
@@ -1021,7 +1004,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   roundedRect(context, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height, Math.max(0, detailRadius - 8));
   context.clip();
   const photo = await fileToImage(input.mainPhoto);
-  drawRecordedCrop(context, photo, input.mainPhotoCrop, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height);
+  drawContainedImage(context, photo, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height);
   context.restore();
   if (certificateStyle === "museum-ledger") {
     context.fillStyle = NAVY;
@@ -1032,7 +1015,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   }
   context.fillStyle = NAVY;
   context.font = "600 18px Arial, sans-serif";
-  context.fillText("CENTERED DISPLAY CROP FROM SOURCE PHOTO", photoFrame.x, photoFrame.y + photoFrame.height + 42);
+  context.fillText("COMPLETE SOURCE PHOTO / CENTERED CONTAIN FIT", photoFrame.x, photoFrame.y + photoFrame.height + 42);
 
   const rows = [
     ["METEORITE", input.values.meteoriteName],
