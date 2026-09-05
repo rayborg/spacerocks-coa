@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.update_metbull_snapshot import EXPECTED_HEADER, SnapshotUpdateError, build_snapshot
+from scripts.update_metbull_snapshot import EXPECTED_HEADER, SnapshotUpdateError, _country_or_none, build_snapshot
 
 
 def csv_bytes(*rows: list[str]) -> bytes:
@@ -78,11 +78,40 @@ def test_builder_validates_and_atomically_replaces_snapshot(tmp_path: Path) -> N
     with sqlite3.connect(uri, uri=True) as connection:
         assert connection.execute("SELECT code FROM records ORDER BY code").fetchall() == [(1,), (87447,)]
         row = connection.execute(
-            "SELECT fall_or_find, year_found, latitude, longitude FROM records WHERE code = 1"
+            "SELECT fall_or_find, year_found, country, latitude, longitude FROM records WHERE code = 1"
         ).fetchone()
-        assert row == ("Fall", 1880, "50.77500", "6.08333")
+        assert row == ("Fall", 1880, "Germany", "50.77500", "6.08333")
+        assert connection.execute("SELECT country FROM records WHERE code = 87447").fetchone() == (
+            "Western Sahara",
+        )
         indexes = connection.execute("PRAGMA index_list(records)").fetchall()
-        assert indexes == []
+        assert len(indexes) == 1
+        assert indexes[0][1] == "records_country_idx"
+
+
+@pytest.mark.parametrize(
+    ("place", "expected"),
+    [
+        ("Germany", "Germany"),
+        ("Texas, United States", "United States"),
+        ("Arizona, USA", "United States"),
+        ("Western Sahara", "Western Sahara"),
+        ("Saguia el Hamra, Western Sahara", "Western Sahara"),
+        ("Burma", "Myanmar"),
+        ("Antarctica", None),
+        ("Queen Alexandra Range, Antarctica", None),
+        ("(Northwest Africa)", None),
+        ("Morocco, (Northwest Africa)", None),
+        ("Sahara", None),
+        ("Atlantic Ocean", None),
+        ("United States?", None),
+        ("France or Belgium", None),
+        ("Site,Germany", None),
+        ("Unknown country", None),
+    ],
+)
+def test_country_mapping_is_conservative(place: str, expected: str | None) -> None:
+    assert _country_or_none(place) == expected
 
 
 @pytest.mark.parametrize(

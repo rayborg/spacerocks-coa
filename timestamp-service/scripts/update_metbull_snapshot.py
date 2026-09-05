@@ -39,7 +39,7 @@ EXPECTED_HEADER = (
 MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024
 MINIMUM_ROW_COUNT = 80_000
 APPLICATION_ID = 0x4D42554C
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ALLOWED_STATUSES = frozenset(
     {"Official", "Relict", "Provisional", "Pseudo", "Crater", "Doubtful", "Discredited", "Undocumented", "Artifact"}
 )
@@ -49,6 +49,141 @@ CANONICAL_CODE = re.compile(r"^[1-9][0-9]{0,8}$")
 DECIMAL_COORDINATE = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 STRICT_YEAR = re.compile(r"^[0-9]{1,4}$")
 UTC_TIMESTAMP = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
+# Reviewed against the complete bundled CSV. New Place spellings stay unmapped until
+# explicitly added, so regions such as Antarctica and Northwest Africa cannot leak through.
+COUNTRY_NAMES = frozenset(
+    {
+        "Afghanistan",
+        "Algeria",
+        "Angola",
+        "Argentina",
+        "Armenia",
+        "Australia",
+        "Austria",
+        "Azerbaijan",
+        "Bangladesh",
+        "Belarus",
+        "Belgium",
+        "Bolivia",
+        "Bosnia and Herzegovina",
+        "Botswana",
+        "Brazil",
+        "Bulgaria",
+        "Burkina Faso",
+        "Cambodia",
+        "Cameroon",
+        "Canada",
+        "Central African Republic",
+        "Chad",
+        "Chile",
+        "China",
+        "Colombia",
+        "Costa Rica",
+        "Croatia",
+        "Cuba",
+        "Czech Republic",
+        "Denmark",
+        "Ecuador",
+        "Egypt",
+        "Estonia",
+        "Ethiopia",
+        "Finland",
+        "France",
+        "Germany",
+        "Ghana",
+        "Greece",
+        "Greenland",
+        "Guatemala",
+        "Honduras",
+        "Hungary",
+        "India",
+        "Indonesia",
+        "Iran",
+        "Iraq",
+        "Ireland",
+        "Isle of Man",
+        "Israel",
+        "Italy",
+        "Jamaica",
+        "Japan",
+        "Jordan",
+        "Kazakhstan",
+        "Kenya",
+        "Laos",
+        "Latvia",
+        "Lebanon",
+        "Lesotho",
+        "Libya",
+        "Lithuania",
+        "Madagascar",
+        "Malawi",
+        "Mali",
+        "Mauritania",
+        "Mauritius",
+        "Mexico",
+        "Mongolia",
+        "Morocco",
+        "Namibia",
+        "Netherlands",
+        "New Zealand",
+        "Nicaragua",
+        "Niger",
+        "Nigeria",
+        "North Korea",
+        "Norway",
+        "Oman",
+        "Pakistan",
+        "Papua New Guinea",
+        "Paraguay",
+        "Peru",
+        "Philippines",
+        "Poland",
+        "Portugal",
+        "Qatar",
+        "Romania",
+        "Russia",
+        "Rwanda",
+        "Saudi Arabia",
+        "Slovakia",
+        "Slovenia",
+        "Somalia",
+        "South Africa",
+        "South Korea",
+        "South Sudan",
+        "Spain",
+        "Sri Lanka",
+        "Sudan",
+        "Sweden",
+        "Switzerland",
+        "Syria",
+        "Tajikistan",
+        "Tanzania",
+        "Thailand",
+        "Tunisia",
+        "Turkey",
+        "Turkmenistan",
+        "Uganda",
+        "Ukraine",
+        "United Arab Emirates",
+        "United Kingdom",
+        "United States",
+        "Uruguay",
+        "Uzbekistan",
+        "Venezuela",
+        "Vietnam",
+        "Western Sahara",
+        "Yemen",
+        "Zambia",
+        "Zimbabwe",
+    }
+)
+COUNTRY_ALIASES = {
+    "Burma": "Myanmar",
+    "Congo - Dem. Rep.": "Democratic Republic of the Congo",
+    "Ivory Coast": "Cote d'Ivoire",
+    "Swaziland": "Eswatini",
+    "USA": "United States",
+}
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 DATABASE_PATH = SERVICE_ROOT / "app" / "metbull" / "data" / "metbull.sqlite3"
 METADATA_PATH = SERVICE_ROOT / "app" / "metbull" / "data" / "metbull.json"
@@ -215,6 +350,7 @@ def _validated_rows(csv_bytes: bytes, *, minimum_row_count: int) -> list[tuple[o
         "Relict iron",
         "Find",
         2018,
+        "Western Sahara",
         None,
         None,
     )
@@ -225,7 +361,7 @@ def _validated_rows(csv_bytes: bytes, *, minimum_row_count: int) -> list[tuple[o
 
 
 def _validated_row(row: Sequence[str], row_number: int) -> tuple[object, ...]:
-    raw_code, name, _abbrev, status, fall, year, _place, classification, *_remainder = row
+    raw_code, name, _abbrev, status, fall, year, place, classification, *_remainder = row
     latitude, longitude = row[11], row[12]
     if CANONICAL_CODE.fullmatch(raw_code) is None:
         raise SnapshotUpdateError(f"CSV row {row_number} has a noncanonical code")
@@ -245,6 +381,7 @@ def _validated_row(row: Sequence[str], row_number: int) -> tuple[object, ...]:
         classification,
         "Fall" if fall in FALL_VALUES else "Find",
         year_found,
+        _country_or_none(place),
         coordinates[0],
         coordinates[1],
     )
@@ -260,6 +397,14 @@ def _year_or_none(value: str) -> int | None:
         return None
     year = int(value)
     return year if 1 <= year <= 9999 else None
+
+
+def _country_or_none(place: str) -> str | None:
+    _, separator, suffix = place.rpartition(", ")
+    candidate = suffix if separator else place
+    if candidate in COUNTRY_NAMES:
+        return candidate
+    return COUNTRY_ALIASES.get(candidate)
 
 
 def _coordinates_or_none(latitude: str, longitude: str, row_number: int) -> tuple[str | None, str | None]:
@@ -309,10 +454,12 @@ def _write_database(
                     CHECK(length(recommended_classification) BETWEEN 1 AND 128),
                 fall_or_find TEXT NOT NULL CHECK(fall_or_find IN ('Fall', 'Find')),
                 year_found INTEGER CHECK(year_found BETWEEN 1 AND 9999),
+                country TEXT CHECK(length(country) BETWEEN 1 AND 64),
                 latitude TEXT,
                 longitude TEXT,
                 CHECK((latitude IS NULL) = (longitude IS NULL))
             ) STRICT;
+            CREATE INDEX records_country_idx ON records(country) WHERE country IS NOT NULL;
             CREATE TABLE snapshot_metadata (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -324,8 +471,8 @@ def _write_database(
                 """
                 INSERT INTO records (
                     code, canonical_name, record_status, recommended_classification,
-                    fall_or_find, year_found, latitude, longitude
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    fall_or_find, year_found, country, latitude, longitude
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -349,11 +496,20 @@ def _validate_built_database(path: Path, row_count: int) -> None:
         sentinel = connection.execute(
             """
             SELECT canonical_name, record_status, recommended_classification,
-                   fall_or_find, year_found, latitude, longitude
+                   fall_or_find, year_found, country, latitude, longitude
             FROM records WHERE code = 87447
             """
         ).fetchone()
-        if sentinel != ("Northwest Africa 18652", "Relict", "Relict iron", "Find", 2018, None, None):
+        if sentinel != (
+            "Northwest Africa 18652",
+            "Relict",
+            "Relict iron",
+            "Find",
+            2018,
+            "Western Sahara",
+            None,
+            None,
+        ):
             raise SnapshotUpdateError("generated snapshot sentinel is invalid")
 
 

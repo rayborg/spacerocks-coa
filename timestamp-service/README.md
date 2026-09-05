@@ -53,7 +53,7 @@ Use only local disposable credentials in those URLs. CI performs this flow again
 
 ## Meteoritical Bulletin snapshot
 
-The exact-code lookup is derived from the official Meteoritical Bulletin Database CSV published by the Lunar and Planetary Institute (LPI): <https://www.lpi.usra.edu/meteor/>. LPI remains the source and authority. The bundled metadata records the fixed export URL, retrieval time, source SHA-256, database SHA-256, and row count. The CSV `Place` field is not exposed as a country.
+The exact-code lookup is derived from the official Meteoritical Bulletin Database CSV published by the Lunar and Planetary Institute (LPI): <https://www.lpi.usra.edu/meteor/>. LPI remains the source and authority. The bundled metadata records the fixed export URL, retrieval time, source SHA-256, database SHA-256, and row count. Country is derived only from a reviewed static allowlist of exact `Place` values and well-formed `..., Country` suffixes. Unambiguous aliases such as `USA` are normalized; generic regions (including Antarctica and Northwest Africa), oceans, uncertain values, and unknown spellings remain null. The raw `Place` field is not bundled or exposed.
 
 Updating is a deliberate maintainer operation, not a runtime or scheduled service:
 

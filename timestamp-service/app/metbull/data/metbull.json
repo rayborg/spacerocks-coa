@@ -1,9 +1,9 @@
 {
-  "database_sha256": "7fb44fba7961890c996bace12f9366c2d12bf20e4b5d9eab1316d73bd918cb1a",
+  "database_sha256": "ec0e689685166fbcdc16d4d64ec403eeb598a5b06c2b1cbd25aaf3870191c048",
   "official_database_updated_utc": null,
-  "retrieved_at_utc": "2026-09-05T17:45:41Z",
+  "retrieved_at_utc": "2026-09-05T19:48:41Z",
   "row_count": 87183,
-  "schema_version": 1,
+  "schema_version": 2,
   "source": {
     "name": "Meteoritical Bulletin Database",
     "publisher": "Lunar and Planetary Institute",

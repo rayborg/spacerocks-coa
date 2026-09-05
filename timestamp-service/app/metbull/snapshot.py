@@ -23,7 +23,7 @@ SOURCE_URL = "https://www.lpi.usra.edu/meteor/metbull.cfm?sea=%25&sfor=names&sty
 BUNDLED_DATABASE_PATH = Path(__file__).with_name("data") / "metbull.sqlite3"
 BUNDLED_METADATA_PATH = Path(__file__).with_name("data") / "metbull.json"
 _APPLICATION_ID = 0x4D42554C
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _MINIMUM_ROWS = 80_000
 _DECIMAL = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -72,7 +72,7 @@ class MeteoriticalBulletinSnapshot:
                 row = connection.execute(
                     """
                     SELECT canonical_name, record_status, recommended_classification,
-                           fall_or_find, year_found, latitude, longitude
+                           fall_or_find, year_found, country, latitude, longitude
                     FROM records WHERE code = ?
                     """,
                     (canonical_code,),
@@ -82,8 +82,8 @@ class MeteoriticalBulletinSnapshot:
         if row is None:
             raise MetbullNotFound("metbull_record_not_found")
 
-        name, status, classification, fall_or_find, year, latitude, longitude = cast(
-            tuple[object, object, object, object, object, object, object], row
+        name, status, classification, fall_or_find, year, country, latitude, longitude = cast(
+            tuple[object, object, object, object, object, object, object, object], row
         )
         if not isinstance(status, str):
             raise MetbullUnavailable("metbull_snapshot_record_invalid")
@@ -104,7 +104,7 @@ class MeteoriticalBulletinSnapshot:
             recommended_classification=recommended_classification,
             fall_or_find=fall_or_find,
             year_found=year_found,
-            country=None,
+            country=_validated_country(country),
             latitude=coordinates[0],
             longitude=coordinates[1],
         )
@@ -162,7 +162,11 @@ class MeteoriticalBulletinSnapshot:
             objects = connection.execute(
                 "SELECT name, type FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY name"
             ).fetchall()
-            if objects != [("records", "table"), ("snapshot_metadata", "table")]:
+            if objects != [
+                ("records", "table"),
+                ("records_country_idx", "index"),
+                ("snapshot_metadata", "table"),
+            ]:
                 raise MetbullUnavailable("metbull_snapshot_schema_invalid")
             columns = connection.execute("PRAGMA table_info(records)").fetchall()
             expected_columns = [
@@ -172,6 +176,7 @@ class MeteoriticalBulletinSnapshot:
                 ("recommended_classification", "TEXT", 1, 0),
                 ("fall_or_find", "TEXT", 1, 0),
                 ("year_found", "INTEGER", 0, 0),
+                ("country", "TEXT", 0, 0),
                 ("latitude", "TEXT", 0, 0),
                 ("longitude", "TEXT", 0, 0),
             ]
@@ -197,11 +202,20 @@ class MeteoriticalBulletinSnapshot:
             sentinel = connection.execute(
                 """
                 SELECT canonical_name, record_status, recommended_classification,
-                       fall_or_find, year_found, latitude, longitude
+                       fall_or_find, year_found, country, latitude, longitude
                 FROM records WHERE code = 87447
                 """
             ).fetchone()
-            if sentinel != ("Northwest Africa 18652", "Relict", "Relict iron", "Find", 2018, None, None):
+            if sentinel != (
+                "Northwest Africa 18652",
+                "Relict",
+                "Relict iron",
+                "Find",
+                2018,
+                "Western Sahara",
+                None,
+                None,
+            ):
                 raise MetbullUnavailable("metbull_snapshot_sentinel_invalid")
 
 
@@ -221,6 +235,12 @@ def _validated_year(value: object) -> int | None:
     if type(value) is not int or not 1 <= value <= 9999:
         raise MetbullUnavailable("metbull_snapshot_record_invalid")
     return value
+
+
+def _validated_country(value: object) -> str | None:
+    if value is None:
+        return None
+    return _bounded_text(value, 64)
 
 
 def _validated_coordinates(latitude: object, longitude: object) -> tuple[str | None, str | None]:

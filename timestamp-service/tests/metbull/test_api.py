@@ -88,7 +88,7 @@ def test_enabled_app_wires_the_bundled_snapshot() -> None:
         response = client.get("/v1/meteorites/metbull?code=87447")
     assert response.status_code == 200
     assert response.json()["canonical_name"] == "Northwest Africa 18652"
-    assert response.json()["country"] is None
+    assert response.json()["country"] == "Western Sahara"
 
 
 @pytest.mark.parametrize(

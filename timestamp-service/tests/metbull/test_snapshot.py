@@ -27,7 +27,7 @@ async def test_bundled_snapshot_returns_expected_relict_without_network(monkeypa
     assert record.recommended_classification == "Relict iron"
     assert record.fall_or_find == "Find"
     assert record.year_found == 2018
-    assert record.country is None
+    assert record.country == "Western Sahara"
     assert record.latitude is None
     assert record.longitude is None
     assert not hasattr(record, "mass")
@@ -46,6 +46,15 @@ async def test_snapshot_distinguishes_unknown_and_nonofficial_codes() -> None:
         await lookup.lookup(3)
 
 
+@pytest.mark.parametrize(
+    ("code", "expected_country"),
+    [(1, "Germany"), (7, "United States"), (378, None), (86355, None)],
+)
+@pytest.mark.asyncio
+async def test_bundled_snapshot_maps_only_recognized_country_places(code: int, expected_country: str | None) -> None:
+    assert (await MeteoriticalBulletinSnapshot().lookup(code)).country == expected_country
+
+
 @pytest.mark.parametrize("code", [True, "87447", 0, -1, 1_000_000_000])
 @pytest.mark.asyncio
 async def test_snapshot_rejects_noncanonical_numeric_codes(code: object) -> None:
@@ -58,6 +67,10 @@ def test_snapshot_is_immutable_read_only_and_code_indexed() -> None:
     with sqlite3.connect(uri, uri=True) as connection:
         plan = connection.execute("EXPLAIN QUERY PLAN SELECT * FROM records WHERE code = ?", (87447,)).fetchone()
         assert plan is not None and "INTEGER PRIMARY KEY" in plan[3]
+        country_plan = connection.execute(
+            "EXPLAIN QUERY PLAN SELECT code FROM records WHERE country = ?", ("Western Sahara",)
+        ).fetchone()
+        assert country_plan is not None and "records_country_idx" in country_plan[3]
         with pytest.raises(sqlite3.OperationalError):
             connection.execute("UPDATE records SET canonical_name = 'changed' WHERE code = 87447")
 
