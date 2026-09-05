@@ -75,9 +75,9 @@ def test_api_returns_strict_public_contract_without_sensitive_specimen_fields(ap
     assert lookup.calls == [87447]
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'"
-    assert response.headers["cross-origin-resource-policy"] == "same-origin"
-    assert not any(name.lower().startswith("access-control-") for name in response.headers)
-    assert response.headers.get("vary") != "Origin"
+    assert response.headers["cross-origin-resource-policy"] == "cross-origin"
+    assert response.headers["access-control-allow-origin"] == "https://coa.example.test"
+    assert response.headers.get("vary") == "Origin"
     assert not {"mass", "specimen", "ownership", "finder", "provenance"} & response.json().keys()
 
 
