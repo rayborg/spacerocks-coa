@@ -86,6 +86,7 @@ export const formSchema: z.ZodType<FormValues, FormValues> = z
     meteoriteSubclass: z.string(),
     suspectedType: z.string(),
     officialNameVerified: z.boolean(),
+    officialClassificationExceptionAttested: z.boolean().optional(),
     weightGrams: positiveNumber,
     weightPrecision: nonNegativeNumber,
     specimenForm: requiredText("Specimen form"),
@@ -157,17 +158,33 @@ export const formSchema: z.ZodType<FormValues, FormValues> = z
 
     if (values.meteoriteIdentity !== "official") return;
 
-    for (const [field, label] of [
-      ["meteoriteType", "Meteorite type"],
-      ["classification", "Meteorite class"],
-      ["meteoriteSubclass", "Meteorite subclass"],
-    ] as const) {
+    for (const [field, label] of [["classification", "Meteorite class"]] as const) {
       const value = values[field].trim();
       if (!value) {
         context.addIssue({ code: "custom", path: [field], message: `${label} is required for an official meteorite.` });
       } else if (value.toLowerCase() === "unclassified") {
         context.addIssue({ code: "custom", path: [field], message: `${label} cannot be Unclassified in official mode.` });
       }
+    }
+    const missingClassificationDetails = (["meteoriteType", "meteoriteSubclass"] as const).filter((field) => {
+      const value = values[field].trim();
+      return !value || value.toLowerCase() === "unclassified";
+    });
+    if (missingClassificationDetails.length && !values.officialClassificationExceptionAttested) {
+      for (const field of missingClassificationDetails) {
+        context.addIssue({
+          code: "custom",
+          path: [field],
+          message: "Enter the official value or attest below that the linked MetBull entry does not provide it.",
+        });
+      }
+    }
+    if (!missingClassificationDetails.length && values.officialClassificationExceptionAttested) {
+      context.addIssue({
+        code: "custom",
+        path: ["officialClassificationExceptionAttested"],
+        message: "Use this exception only when the official entry omits the type or subclass.",
+      });
     }
 
     const metbullCode = values.metbullCode.trim();

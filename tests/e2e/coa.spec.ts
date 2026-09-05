@@ -1632,9 +1632,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('input[name="certificateNotes"]').fill("Complete package compatibility test.");
   await page.getByRole("radio", { name: /Official/ }).evaluate((element: HTMLInputElement) => element.click());
   await page.locator('input[name="meteoriteName"]').fill("Test Meteorite");
-  await page.locator('input[name="meteoriteType"]').fill("Chondrite");
   await page.locator('input[name="classification"]').fill("Ordinary chondrite");
-  await page.locator('input[name="meteoriteSubclass"]').fill("L5");
   await page.locator('input[name="weightGrams"]').fill("12.3");
   await page.locator('input[name="weightPrecision"]').fill("0.1");
   await page.locator('select[name="specimenForm"]').selectOption({ label: "Fragment" });
@@ -1652,6 +1650,9 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('input[name="longitude"]').fill("75.6972 W");
   await page.locator('input[name="metbullCode"]').fill("12345");
   await page.locator('input[name="officialReferenceUrl"]').fill("https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
+  await page.getByLabel("Missing MetBull classification details").check();
+  await expect(page.locator('input[name="meteoriteType"]')).toHaveValue("");
+  await expect(page.locator('input[name="meteoriteSubclass"]')).toHaveValue("");
   await page.locator('input[name="officialNameVerified"]').check();
   await page.locator('input[name="finderName"]').fill("Documented Finder");
   await page.locator('textarea[name="recoveryInformation"]').fill("Recovered by the documented finder.");
@@ -1797,9 +1798,9 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(manifest.specimen.recordedOwner).toBe("Test Issuer");
   expect(manifest.specimen).toEqual(expect.objectContaining({
     meteoriteIdentity: "official",
-    meteoriteType: "Chondrite",
+    meteoriteType: "Not provided by Meteoritical Bulletin",
     classification: "Ordinary chondrite",
-    meteoriteSubclass: "L5",
+    meteoriteSubclass: "Not provided by Meteoritical Bulletin",
     officialNameVerified: true,
   }));
   expect(manifest.specimen.fall).toEqual(expect.objectContaining({
@@ -1881,6 +1882,8 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(certificateText).toContain("Certificate layout style: Museum Type");
   expect(certificateText).toContain("Certificate color scheme: Royal Amethyst");
   expect(certificateText).toContain("Official name verified: Yes - issuer attestation");
+  expect(certificateText).toContain("missing type/subclass attested from linked MetBull entry");
+  expect(certificateText).toContain("Meteorite type: Not provided by Meteoritical Bulletin");
   expect(certificateText).toContain("Official reference: https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
   expect(certificateText).toContain("Certificate presentation uses signed center-cover-v1 crop x=0, y=0, width=560, height=455, target=112:91.");
   const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v2.schema.json`)!.async("text")) as {

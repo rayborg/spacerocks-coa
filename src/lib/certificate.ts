@@ -23,7 +23,7 @@ function classificationSummary(values: FormValues): string {
     return values.suspectedType.trim() ? `Unclassified - suspected ${values.suspectedType.trim()}` : "Unclassified";
   }
   return [values.meteoriteType, values.classification, values.meteoriteSubclass]
-    .map((value) => value.trim())
+    .map((value, index) => value.trim() || (values.officialClassificationExceptionAttested && index !== 1 ? "Not separately provided in MetBull" : ""))
     .filter(Boolean)
     .join(" / ");
 }

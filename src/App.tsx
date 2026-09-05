@@ -51,6 +51,7 @@ const defaultValues: FormValues = {
   meteoriteSubclass: "Unclassified",
   suspectedType: "",
   officialNameVerified: false,
+  officialClassificationExceptionAttested: false,
   weightGrams: "",
   weightPrecision: "",
   specimenForm: "",
@@ -84,7 +85,7 @@ function classificationSummary(values: FormValues): string {
     return values.suspectedType.trim() ? `Unclassified - suspected ${values.suspectedType.trim()}` : "Unclassified";
   }
   return [values.meteoriteType, values.classification, values.meteoriteSubclass]
-    .map((value) => value.trim())
+    .map((value, index) => value.trim() || (values.officialClassificationExceptionAttested && index !== 1 ? "Not separately provided in MetBull" : ""))
     .filter(Boolean)
     .join(" / ") || "Official classification";
 }
@@ -406,6 +407,7 @@ export default function App() {
   });
   const watchedValues = useWatch({ control });
   const meteoriteIdentity = watchedValues.meteoriteIdentity ?? defaultValues.meteoriteIdentity;
+  const officialClassificationExceptionAttested = Boolean(watchedValues.officialClassificationExceptionAttested);
   const previewValues = useDeferredValue({ ...defaultValues, ...watchedValues } as FormValues);
   const resetOfficialAttestation = () => {
     if (getValues("officialNameVerified")) {
@@ -425,6 +427,17 @@ export default function App() {
     cancelMetbullLookup();
     setMetbullStatus("");
     setMetbullError(false);
+    setValue("officialClassificationExceptionAttested", false, { shouldDirty: true, shouldValidate: true });
+    resetOfficialAttestation();
+  };
+  const classificationExceptionChanged = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      for (const field of ["meteoriteType", "meteoriteSubclass"] as const) {
+        if (getValues(field).trim().toLowerCase() === "unclassified") {
+          setValue(field, "", { shouldDirty: true, shouldValidate: true });
+        }
+      }
+    }
     resetOfficialAttestation();
   };
   useEffect(() => {
@@ -436,6 +449,7 @@ export default function App() {
         "metbullCode",
         "officialReferenceUrl",
         "officialNameVerified",
+        "officialClassificationExceptionAttested",
       ]);
     }
   }, [meteoriteIdentity, trigger]);
@@ -450,6 +464,7 @@ export default function App() {
       cancelMetbullLookup();
       setMetbullStatus("");
       setMetbullError(false);
+      setValue("officialClassificationExceptionAttested", false, { shouldDirty: true, shouldValidate: true });
     }
   }, [meteoriteIdentity]);
   useEffect(() => () => metbullRequest.current?.controller.abort(), []);
@@ -573,6 +588,11 @@ export default function App() {
       if (metbullRequest.current?.id !== id || getValues("metbullCode").trim() !== code || getValues("meteoriteIdentity") !== "official") return;
       setValue("meteoriteName", record.canonicalName, { shouldDirty: true, shouldValidate: true });
       setValue("classification", record.recommendedClassification, { shouldDirty: true, shouldValidate: true });
+      for (const field of ["meteoriteType", "meteoriteSubclass"] as const) {
+        if (getValues(field).trim().toLowerCase() === "unclassified") {
+          setValue(field, "", { shouldDirty: true, shouldValidate: true });
+        }
+      }
       setValue("fallStatus", record.fallOrFind, { shouldDirty: true, shouldValidate: true });
       if (record.country !== undefined) setValue("country", record.country, { shouldDirty: true, shouldValidate: true });
       if (record.latitude !== undefined) setValue("latitude", record.latitude, { shouldDirty: true, shouldValidate: true });
@@ -580,7 +600,8 @@ export default function App() {
       setValue("metbullCode", String(record.code), { shouldDirty: true, shouldValidate: true });
       setValue("officialReferenceUrl", record.officialUrl, { shouldDirty: true, shouldValidate: true });
       setValue("officialNameVerified", false, { shouldDirty: true, shouldValidate: true });
-      await trigger(["meteoriteName", "classification", "fallStatus", "country", "latitude", "longitude", "metbullCode", "officialReferenceUrl", "officialNameVerified"]);
+      setValue("officialClassificationExceptionAttested", false, { shouldDirty: true, shouldValidate: true });
+      await trigger(["meteoriteName", "meteoriteType", "classification", "meteoriteSubclass", "fallStatus", "country", "latitude", "longitude", "metbullCode", "officialReferenceUrl", "officialNameVerified", "officialClassificationExceptionAttested"]);
       const year = record.yearFound ? `; ${record.fallOrFind.toLowerCase()} year ${record.yearFound}` : "";
       setMetbullStatus(`Loaded ${record.canonicalName} (${record.recordStatus}; ${record.recommendedClassification}${year}). Review the official entry, complete type and subclass, then attest it below.`);
     } catch (error) {
@@ -946,14 +967,20 @@ export default function App() {
                   </Field>
                   {meteoriteIdentity === "official" ? (
                     <>
-                      <Field label="Meteorite type" error={errors.meteoriteType?.message}>
-                        <input required aria-required="true" placeholder="e.g., Chondrite" {...register("meteoriteType", { onChange: resetOfficialAttestation })} />
+                      <Field label="Meteorite type" hint="Required unless the official entry does not provide a separate type." error={errors.meteoriteType?.message}>
+                        <input required={!officialClassificationExceptionAttested} aria-required={!officialClassificationExceptionAttested} placeholder="e.g., Chondrite" {...register("meteoriteType", { onChange: resetOfficialAttestation })} />
                       </Field>
                       <Field label="Meteorite class" error={errors.classification?.message}>
                         <input required aria-required="true" placeholder="e.g., Carbonaceous chondrite" {...register("classification", { onChange: resetOfficialAttestation })} />
                       </Field>
-                      <Field label="Meteorite subclass" error={errors.meteoriteSubclass?.message}>
-                        <input required aria-required="true" placeholder="e.g., CM2" {...register("meteoriteSubclass", { onChange: resetOfficialAttestation })} />
+                      <Field label="Meteorite subclass" hint="Required unless the official entry does not provide a separate subclass." error={errors.meteoriteSubclass?.message}>
+                        <input required={!officialClassificationExceptionAttested} aria-required={!officialClassificationExceptionAttested} placeholder="e.g., CM2" {...register("meteoriteSubclass", { onChange: resetOfficialAttestation })} />
+                      </Field>
+                      <Field label="Missing MetBull classification details" wide error={errors.officialClassificationExceptionAttested?.message}>
+                        <span className="attestation">
+                          <input type="checkbox" {...register("officialClassificationExceptionAttested", { onChange: classificationExceptionChanged })} />
+                          <span>The linked Meteoritical Bulletin entry does not provide a separate type and/or subclass. I attest that any blank field above is intentionally unavailable in the official record.</span>
+                        </span>
                       </Field>
                     </>
                   ) : (
@@ -1029,7 +1056,9 @@ export default function App() {
                       >
                         <span className="attestation">
                           <input required aria-required="true" type="checkbox" {...register("officialNameVerified")} />
-                          <span>I attest that the canonical name, type, class, and subclass match the linked Meteoritical Bulletin entry.</span>
+                          <span>{officialClassificationExceptionAttested
+                            ? "I attest that the canonical name and class match the linked Meteoritical Bulletin entry, and that the missing type or subclass is documented above."
+                            : "I attest that the canonical name, type, class, and subclass match the linked Meteoritical Bulletin entry."}</span>
                         </span>
                         {/^[0-9]+$/.test((watchedValues.metbullCode ?? "").trim()) ? (
                           <a

@@ -65,14 +65,21 @@ function recordedCoordinates(latitude: string, longitude: string): string {
   return [optional(latitude), optional(longitude)].filter(Boolean).join(", ") || "Not recorded";
 }
 
+const METBULL_NOT_PROVIDED = "Not provided by Meteoritical Bulletin";
+
+function officialClassificationDetail(value: string, exceptionAttested: boolean): string {
+  const trimmed = value.trim();
+  return trimmed && trimmed.toLowerCase() !== "unclassified" ? trimmed : exceptionAttested ? METBULL_NOT_PROVIDED : trimmed;
+}
+
 function buildSpecimen(values: FormValues) {
   const official = values.meteoriteIdentity === "official";
   return {
     meteorite: values.meteoriteName.trim(),
     meteoriteIdentity: values.meteoriteIdentity,
-    meteoriteType: official ? values.meteoriteType.trim() : "Unclassified",
+    meteoriteType: official ? officialClassificationDetail(values.meteoriteType, Boolean(values.officialClassificationExceptionAttested)) : "Unclassified",
     classification: official ? values.classification.trim() : "Unclassified",
-    meteoriteSubclass: official ? values.meteoriteSubclass.trim() : "Unclassified",
+    meteoriteSubclass: official ? officialClassificationDetail(values.meteoriteSubclass, Boolean(values.officialClassificationExceptionAttested)) : "Unclassified",
     suspectedType: official ? undefined : optional(values.suspectedType),
     officialNameVerified: official ? true : undefined,
     weightGrams: Number(values.weightGrams),
@@ -131,9 +138,9 @@ function buildCertificateText(
   photos: Array<Omit<PreparedPhoto, "content">>,
 ) {
   const official = values.meteoriteIdentity === "official";
-  const meteoriteType = official ? values.meteoriteType.trim() : "Unclassified";
+  const meteoriteType = official ? officialClassificationDetail(values.meteoriteType, Boolean(values.officialClassificationExceptionAttested)) : "Unclassified";
   const classification = official ? values.classification.trim() : "Unclassified";
-  const meteoriteSubclass = official ? values.meteoriteSubclass.trim() : "Unclassified";
+  const meteoriteSubclass = official ? officialClassificationDetail(values.meteoriteSubclass, Boolean(values.officialClassificationExceptionAttested)) : "Unclassified";
   return `${values.collectionName.toUpperCase()}
 CERTIFICATE OF AUTHENTICITY - PLAIN-TEXT ARCHIVAL DUPLICATE
 
@@ -150,7 +157,7 @@ Identity mode: ${official ? "Official" : "Unclassified"}
 Meteorite type: ${meteoriteType}
 Meteorite class: ${classification}
 Meteorite subclass: ${meteoriteSubclass}
-${official ? "Official name verified: Yes - issuer attestation" : `Suspected type: ${recorded(values.suspectedType)}`}
+${official ? `Official name verified: Yes - issuer attestation${values.officialClassificationExceptionAttested ? "; missing type/subclass attested from linked MetBull entry" : ""}` : `Suspected type: ${recorded(values.suspectedType)}`}
 Recorded weight: ${values.weightGrams} g
 Weight precision: ${values.weightPrecision} g
 Specimen form: ${values.specimenForm}

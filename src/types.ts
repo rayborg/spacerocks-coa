@@ -25,6 +25,7 @@ export interface FormValues {
   meteoriteSubclass: string;
   suspectedType: string;
   officialNameVerified: boolean;
+  officialClassificationExceptionAttested?: boolean;
   weightGrams: string;
   weightPrecision: string;
   specimenForm: string;

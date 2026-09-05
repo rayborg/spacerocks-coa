@@ -96,6 +96,32 @@ describe("formSchema", () => {
     }
   });
 
+  it("allows missing official type or subclass only with the explicit MetBull exception attestation", () => {
+    expect(formSchema.safeParse(officialValues({
+      meteoriteType: "",
+      meteoriteSubclass: "",
+      officialClassificationExceptionAttested: true,
+    })).success).toBe(true);
+    expect(formSchema.safeParse(officialValues({
+      meteoriteType: "",
+      officialClassificationExceptionAttested: true,
+    })).success).toBe(true);
+    expect(formSchema.safeParse(officialValues({
+      meteoriteType: "",
+      meteoriteSubclass: "",
+      officialClassificationExceptionAttested: false,
+    })).success).toBe(false);
+    expect(formSchema.safeParse(officialValues({
+      classification: "Unclassified",
+      meteoriteType: "",
+      meteoriteSubclass: "",
+      officialClassificationExceptionAttested: true,
+    })).success).toBe(false);
+    expect(formSchema.safeParse(officialValues({
+      officialClassificationExceptionAttested: true,
+    })).success).toBe(false);
+  });
+
   it("accepts each complete location method and rejects no location or a half coordinate", () => {
     const locations: Array<Partial<FormValues>> = [
       { locality: "Ottawa", region: "", latitude: "", longitude: "" },
