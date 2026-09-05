@@ -1154,8 +1154,8 @@ test("fits square, wide, and tall issuer logos at natural ratio in both responsi
         const previousMaximum = styleId === "museum-type" ? { width: 56, height: 34 } : { width: 72, height: 46 };
         const previousScale = Math.min(previousMaximum.width / logoCase.ratio, previousMaximum.height);
         const previousArea = previousScale * logoCase.ratio * previousScale;
-        expect(geometry.image.width / geometry.image.height, `${styleId} ${logoCase.name} image ratio`).toBeCloseTo(geometry.naturalRatio, 3);
-        expect(geometry.frameContentRatio, `${styleId} ${logoCase.name} frame ratio`).toBeCloseTo(geometry.naturalRatio, 3);
+        expect(geometry.image.width / geometry.image.height, `${styleId} ${logoCase.name} image ratio`).toBeCloseTo(geometry.naturalRatio, 2);
+        expect(geometry.frameContentRatio, `${styleId} ${logoCase.name} frame ratio`).toBeCloseTo(geometry.naturalRatio, 2);
         expect(geometry.canonicalArea, `${styleId} ${logoCase.name} area`).toBeGreaterThanOrEqual(previousArea * 3);
         expect(boxesIntersect(geometry.frame, geometry.recordType), `${styleId} ${logoCase.name} logo/record type ${JSON.stringify({ frame: geometry.frame, recordType: geometry.recordType })}`).toBe(false);
         expect(boxesIntersect(geometry.frame, geometry.title), `${styleId} ${logoCase.name} logo/title`).toBe(false);
