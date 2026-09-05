@@ -152,6 +152,22 @@ async def test_client_pins_public_ip_and_preserves_fixed_host_path_and_sni() -> 
 
 
 @pytest.mark.asyncio
+async def test_client_prefers_vetted_ipv4_when_ipv6_is_returned_first() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return response(200, headers={"content-type": "text/html"}, content=fixture_html())
+
+    async def resolver(_hostname: str, _port: int) -> tuple[str, ...]:
+        return ("2606:4700:4700::1111", "8.8.8.8")
+
+    client = MeteoriticalBulletinClient(resolver=resolver, transport=httpx.MockTransport(handler))
+    await client.lookup(87447)
+    assert str(requests[0].url) == "https://8.8.8.8/meteor/metbull.cfm?code=87447"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("addresses", [(), ("127.0.0.1",), ("10.0.0.1", "8.8.8.8"), ("224.0.0.1",), ("fe80::1",)])
 async def test_client_rejects_empty_or_any_nonpublic_dns_snapshot(addresses: tuple[str, ...]) -> None:
     calls = 0

@@ -102,7 +102,8 @@ class MeteoriticalBulletinClient:
 
     async def _fetch(self, code: str) -> bytes:
         addresses = await self._resolver(METBULL_HOST, 443)
-        pinned = _vetted_public_addresses(addresses)[0]
+        vetted = _vetted_public_addresses(addresses)
+        pinned = next((value for value in vetted if ipaddress.ip_address(value).version == 4), vetted[0])
         address = ipaddress.ip_address(pinned)
         authority = f"[{address.compressed}]" if address.version == 6 else address.compressed
         request = httpx.Request(
