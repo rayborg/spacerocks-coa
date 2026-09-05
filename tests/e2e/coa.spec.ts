@@ -950,7 +950,7 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
 
   const logoInput = page.getByLabel("Logo");
   await logoInput.setInputFiles({ name: "tiny-collection-logo.png", mimeType: "image/png", buffer: onePixelPng });
-  const liveLogo = certificatePreview.locator(".certificate-preview__collection > img.certificate-preview__logo");
+  const liveLogo = certificatePreview.locator(".certificate-preview__collection img.certificate-preview__logo");
   await expect(liveLogo).toBeVisible();
   await expect(liveLogo).toHaveAttribute("src", /^blob:/);
   await expect(liveLogo).toHaveAttribute("alt", "Collection logo");
@@ -959,12 +959,16 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
     const image = element as HTMLImageElement;
     const style = getComputedStyle(image);
     const box = image.getBoundingClientRect();
-    const collectionBox = image.parentElement!.getBoundingClientRect();
+    const frameBox = image.parentElement!.getBoundingClientRect();
+    const collectionBox = image.parentElement!.parentElement!.getBoundingClientRect();
     return {
       objectFit: style.objectFit,
       objectPosition: style.objectPosition,
       width: box.width,
       height: box.height,
+      naturalRatio: image.naturalWidth / image.naturalHeight,
+      renderedRatio: box.width / box.height,
+      frameRatio: frameBox.width / frameBox.height,
       contained: box.left >= collectionBox.left && box.right <= collectionBox.right
         && box.top >= collectionBox.top && box.bottom <= collectionBox.bottom,
     };
@@ -973,6 +977,8 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   expect(logoGeometry.objectPosition).toBe("50% 50%");
   expect(logoGeometry.width).toBeGreaterThan(0);
   expect(logoGeometry.height).toBeGreaterThan(0);
+  expect(logoGeometry.renderedRatio).toBeCloseTo(logoGeometry.naturalRatio, 3);
+  expect(logoGeometry.frameRatio).toBeCloseTo(logoGeometry.naturalRatio, 1);
   expect(logoGeometry.contained).toBe(true);
 
   await logoInput.setInputFiles({ name: "wide-transparent-logo.svg", mimeType: "image/svg+xml", buffer: wideTransparentLogoSvg });
@@ -1091,6 +1097,215 @@ test("loads the workbench on desktop and mobile without horizontal overflow", as
   await expect(liveLogo).toHaveCount(0);
   await expect(fallbackMark).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("fits square, wide, and tall issuer logos at natural ratio in both responsive previews", async ({ page }) => {
+  await page.goto("/#builder");
+  const artifactDirectory = process.env.COA_ARTIFACT_DIR;
+  if (artifactDirectory) await mkdir(artifactDirectory, { recursive: true });
+  const preview = page.locator(".certificate-preview");
+  const logoInput = page.getByLabel("Logo");
+  const logo = preview.locator(".certificate-preview__logo");
+  const stylePicker = page.getByRole("group", { name: "Certificate template" });
+  const logos = [
+    { name: "square-logo.png", mimeType: "image/png", buffer: solidPng(160, 160), ratio: 1 },
+    { name: "wide-logo.svg", mimeType: "image/svg+xml", buffer: wideTransparentLogoSvg, ratio: 240 / 36 },
+    { name: "tall-logo.svg", mimeType: "image/svg+xml", buffer: tallTransparentLogoSvg, ratio: 30 / 180 },
+  ];
+
+  for (const viewportWidth of [1280, 390]) {
+    await page.setViewportSize({ width: viewportWidth, height: viewportWidth === 390 ? 844 : 1000 });
+    for (const [styleName, styleId] of certificateStyleCases) {
+      await selectCertificateStyle(stylePicker, preview, styleName, styleId);
+      for (const logoCase of logos) {
+        await logoInput.setInputFiles(logoCase);
+        await expect.poll(() => logo.evaluate((element: HTMLImageElement) => (
+          element.complete ? element.naturalWidth / element.naturalHeight : 0
+        ))).toBeCloseTo(logoCase.ratio, 4);
+        const geometry = await preview.evaluate((element) => {
+          const image = element.querySelector<HTMLImageElement>(".certificate-preview__logo")!;
+          const logoFrame = element.querySelector<HTMLElement>(".certificate-preview__logo-frame")!;
+          const recordType = element.querySelector<HTMLElement>(".certificate-preview__record-type")!;
+          const title = element.querySelector<HTMLElement>(".certificate-preview__header > strong")!;
+          const id = element.querySelector<HTMLElement>(".certificate-preview__id")!;
+          const canvas = element.querySelector<HTMLElement>(".certificate-preview__canvas")!;
+          const imageBox = image.getBoundingClientRect();
+          const frameBox = logoFrame.getBoundingClientRect();
+          const frameStyle = getComputedStyle(logoFrame);
+          const scale = Number.parseFloat(getComputedStyle(canvas).getPropertyValue("--certificate-preview-scale"));
+          const horizontalInset = (Number.parseFloat(frameStyle.paddingLeft) + Number.parseFloat(frameStyle.paddingRight)
+            + Number.parseFloat(frameStyle.borderLeftWidth) + Number.parseFloat(frameStyle.borderRightWidth)) * scale;
+          const verticalInset = (Number.parseFloat(frameStyle.paddingTop) + Number.parseFloat(frameStyle.paddingBottom)
+            + Number.parseFloat(frameStyle.borderTopWidth) + Number.parseFloat(frameStyle.borderBottomWidth)) * scale;
+          const toBox = (node: HTMLElement) => node.getBoundingClientRect().toJSON();
+          return {
+            image: imageBox.toJSON(),
+            frame: frameBox.toJSON(),
+            frameContentRatio: (frameBox.width - horizontalInset) / (frameBox.height - verticalInset),
+            naturalRatio: image.naturalWidth / image.naturalHeight,
+            canonicalArea: imageBox.width * imageBox.height / (scale * scale),
+            recordType: toBox(recordType),
+            title: toBox(title),
+            id: toBox(id),
+            pageWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+          };
+        });
+        const previousMaximum = styleId === "museum-type" ? { width: 56, height: 34 } : { width: 72, height: 46 };
+        const previousScale = Math.min(previousMaximum.width / logoCase.ratio, previousMaximum.height);
+        const previousArea = previousScale * logoCase.ratio * previousScale;
+        expect(geometry.image.width / geometry.image.height, `${styleId} ${logoCase.name} image ratio`).toBeCloseTo(geometry.naturalRatio, 3);
+        expect(geometry.frameContentRatio, `${styleId} ${logoCase.name} frame ratio`).toBeCloseTo(geometry.naturalRatio, 3);
+        expect(geometry.canonicalArea, `${styleId} ${logoCase.name} area`).toBeGreaterThanOrEqual(previousArea * 3);
+        expect(boxesIntersect(geometry.frame, geometry.recordType), `${styleId} ${logoCase.name} logo/record type ${JSON.stringify({ frame: geometry.frame, recordType: geometry.recordType })}`).toBe(false);
+        expect(boxesIntersect(geometry.frame, geometry.title), `${styleId} ${logoCase.name} logo/title`).toBe(false);
+        expect(boxesIntersect(geometry.frame, geometry.id), `${styleId} ${logoCase.name} logo/id`).toBe(false);
+        expect(geometry.pageWidth, `${styleId} ${logoCase.name} page overflow at ${viewportWidth}px`).toBeLessThanOrEqual(geometry.viewportWidth);
+        if (artifactDirectory) {
+          await preview.screenshot({
+            path: join(artifactDirectory, `logo-${styleId}-${logoCase.name.replace(/\.[^.]+$/, "")}-${viewportWidth}.png`),
+          });
+        }
+      }
+    }
+  }
+});
+
+test("exports adaptive logos without crop or distortion in both certificate styles", async ({ page }) => {
+  await page.goto("/");
+  const values = {
+    issuerName: "Test Issuer",
+    collectionName: "Natural History Research Collection",
+    issuerEmail: "",
+    issuerPhone: "",
+    issuerAddress: "",
+    issuerWebsite: "",
+    certificateId: "LOGO-TEST-0001",
+    issueDate: "2026-09-05",
+    certificateVersion: "1.0",
+    certificateStatus: "active",
+    certificateStyle: "celestial-formal",
+    certificateTheme: "observatory-navy",
+    supersededCertificateId: "",
+    certificateNotes: "",
+    meteoriteIdentity: "unclassified",
+    meteoriteName: "Logo Geometry Specimen",
+    meteoriteType: "Unclassified",
+    classification: "Unclassified",
+    meteoriteSubclass: "Unclassified",
+    suspectedType: "",
+    officialNameVerified: false,
+    weightGrams: "12.3",
+    weightPrecision: "0.1",
+    specimenForm: "Fragment",
+    dimensions: "",
+    numberOfPieces: "1",
+    preparationState: "",
+    identifyingMarks: "",
+    recordedOwner: "",
+    fallStatus: "Find",
+    fallDate: "",
+    country: "Canada",
+    region: "",
+    locality: "",
+    latitude: "",
+    longitude: "",
+    metbullCode: "",
+    officialReferenceUrl: "",
+    finderName: "",
+    recoveryInformation: "",
+    provenance: "",
+    previousOwner: "",
+    intermediaryPurchaserName: "",
+    buyer: "",
+    transferDate: "",
+    invoiceReference: "",
+    transferNotes: "",
+  } satisfies FormValues;
+
+  const results = await page.evaluate(async (baseValues) => {
+    const modulePath = "/src/lib/certificate.ts";
+    const { renderCertificate } = await import(/* @vite-ignore */ modulePath) as typeof import("../../src/lib/certificate");
+    const variants = [[160, 160], [640, 96], [96, 640]] as const;
+    const styles = ["celestial-formal", "museum-type"] as const;
+    const output: Array<{
+      style: string;
+      sourceWidth: number;
+      sourceHeight: number;
+      logoDraw: { x: number; y: number; width: number; height: number };
+      titleDraw: { x: number; y: number };
+      pngBytes: number;
+      pdfBytes: number;
+    }> = [];
+    const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
+    const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+    let expectedLogo = { width: 0, height: 0 };
+    let logoDraw: { x: number; y: number; width: number; height: number } | undefined;
+    let titleDraw: { x: number; y: number } | undefined;
+
+    CanvasRenderingContext2D.prototype.drawImage = function (...args: any[]) {
+      const image = args[0];
+      if (image instanceof HTMLImageElement
+        && image.naturalWidth === expectedLogo.width
+        && image.naturalHeight === expectedLogo.height
+        && args.length === 5) {
+        logoDraw = { x: args[1], y: args[2], width: args[3], height: args[4] };
+      }
+      return originalDrawImage.apply(this, args as any);
+    };
+    CanvasRenderingContext2D.prototype.fillText = function (...args) {
+      if (String(args[0]).startsWith("CERTIFICATE OF AUTHENTICITY")) titleDraw = { x: args[1], y: args[2] };
+      return originalFillText.apply(this, args);
+    };
+
+    try {
+      const photo = new File([
+        '<svg xmlns="http://www.w3.org/2000/svg" width="560" height="455"><rect width="560" height="455" fill="#333"/></svg>',
+      ], "specimen.svg", { type: "image/svg+xml" });
+      for (const style of styles) {
+        for (const [sourceWidth, sourceHeight] of variants) {
+          expectedLogo = { width: sourceWidth, height: sourceHeight };
+          logoDraw = undefined;
+          titleDraw = undefined;
+          const logo = new File([
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${sourceWidth}" height="${sourceHeight}" viewBox="0 0 ${sourceWidth} ${sourceHeight}"><rect width="100%" height="100%" fill="none"/><path d="M0 0L${sourceWidth} ${sourceHeight}M${sourceWidth} 0L0 ${sourceHeight}" stroke="#b87518" stroke-width="8"/></svg>`,
+          ], `${style}-${sourceWidth}x${sourceHeight}.svg`, { type: "image/svg+xml" });
+          const rendered = await renderCertificate({
+            values: { ...baseValues, certificateStyle: style },
+            fingerprint: "AA:".repeat(31) + "AA",
+            recordHash: "a".repeat(64),
+            qrPayload: `https://example.invalid/${style}/${sourceWidth}x${sourceHeight}`,
+            mainPhoto: photo,
+            mainPhotoCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
+            logo,
+          });
+          if (!logoDraw || !titleDraw) throw new Error(`Missing export geometry for ${style} ${sourceWidth}x${sourceHeight}`);
+          output.push({ style, sourceWidth, sourceHeight, logoDraw, titleDraw, pngBytes: rendered.png.byteLength, pdfBytes: rendered.pdf.byteLength });
+        }
+      }
+      return output;
+    } finally {
+      CanvasRenderingContext2D.prototype.drawImage = originalDrawImage;
+      CanvasRenderingContext2D.prototype.fillText = originalFillText;
+    }
+  }, values);
+
+  expect(results).toHaveLength(6);
+  for (const result of results) {
+    const sourceRatio = result.sourceWidth / result.sourceHeight;
+    const previousMaximum = result.style === "museum-type" ? { width: 106, height: 64 } : { width: 120, height: 105 };
+    const previousScale = Math.min(previousMaximum.width / result.sourceWidth, previousMaximum.height / result.sourceHeight);
+    const previousArea = result.sourceWidth * previousScale * result.sourceHeight * previousScale;
+    expect(result.logoDraw.width / result.logoDraw.height, `${result.style} ${result.sourceWidth}x${result.sourceHeight} ratio`).toBeCloseTo(sourceRatio, 8);
+    expect(result.logoDraw.width * result.logoDraw.height, `${result.style} ${result.sourceWidth}x${result.sourceHeight} area`).toBeGreaterThanOrEqual(previousArea * 3);
+    if (result.style === "celestial-formal") {
+      expect(result.logoDraw.x + result.logoDraw.width).toBeLessThan(result.titleDraw.x);
+    } else {
+      expect(result.logoDraw.y + result.logoDraw.height).toBeLessThan(result.titleDraw.y);
+    }
+    expect(result.pngBytes).toBeGreaterThan(10_000);
+    expect(result.pdfBytes).toBeGreaterThan(10_000);
+  }
 });
 
 test("scopes local processing and disabled email accurately in service policies", async ({ page }) => {
@@ -1515,7 +1730,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
           Number.parseFloat(fontSize),
         );
       }
-      if (x === 255 && y === 134) {
+      if (x >= 255 && x < 600 && y === 134) {
         captureWindow.__coaHeaderDraws!.push({ text: String(text), width: this.measureText(String(text)).width });
       }
       return originalFillText.apply(this, args);
@@ -1606,6 +1821,10 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(manifest.photographs[0].sha256).toBe(createHash("sha256").update(certificatePhotoPng).digest("hex"));
   expect(manifest.files.find((entry) => entry.path === manifest.photographs[0].path)?.role)
     .toBe("exact original specimen photograph");
+  const originalLogo = await archive.file(`${root}${manifest.issuer.logoFile}`)!.async("nodebuffer");
+  expect(originalLogo).toEqual(onePixelPng);
+  expect(manifest.files.find((entry) => entry.path === manifest.issuer.logoFile)?.sha256)
+    .toBe(createHash("sha256").update(onePixelPng).digest("hex"));
   const signedPaths = manifest.files.map((entry) => entry.path);
   expect(signedPaths).toEqual(expect.arrayContaining([
     "README-FIRST.txt",

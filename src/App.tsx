@@ -110,6 +110,20 @@ function displayCropStyle(photo: PhotoInput): React.CSSProperties | undefined {
   };
 }
 
+interface ImageDimensions {
+  pixelWidth: number;
+  pixelHeight: number;
+}
+
+function fitLogoPreview(dimensions?: ImageDimensions): React.CSSProperties {
+  if (!dimensions) return { width: 0, height: 0, visibility: "hidden" };
+  const scale = Math.min(180 / dimensions.pixelWidth, 92 / dimensions.pixelHeight);
+  return {
+    width: dimensions.pixelWidth * scale + 10,
+    height: dimensions.pixelHeight * scale + 10,
+  };
+}
+
 async function decodePhotoDimensions(file: File): Promise<{ pixelWidth: number; pixelHeight: number }> {
   const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
   if (!matchesPhotoMimeSignature(file.type, signature)) {
@@ -157,11 +171,15 @@ function CertificatePreview({
   photo,
   identity,
   logoPreviewUrl,
+  logoDimensions,
+  onLogoDimensions,
 }: {
   values: FormValues;
   photo?: PhotoInput;
   identity?: SigningIdentity;
   logoPreviewUrl?: string;
+  logoDimensions?: ImageDimensions;
+  onLogoDimensions: (dimensions: ImageDimensions) => void;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const statusClass = values.certificateStatus === "active" ? "" : " certificate-preview--flagged";
@@ -176,6 +194,7 @@ function CertificatePreview({
     || values.preparationState.trim()
     || values.provenance.trim()
     || "Not recorded";
+  const logoFrameStyle = fitLogoPreview(logoDimensions);
   const themeStyle = {
     "--certificate-dark": theme.dark,
     "--certificate-dark-soft": theme.darkSoft,
@@ -217,7 +236,19 @@ function CertificatePreview({
         <div className="certificate-preview__frame">
           <header className="certificate-preview__header">
             <div className="certificate-preview__collection">
-              {logoPreviewUrl ? <img className="certificate-preview__logo" src={logoPreviewUrl} alt={`${values.collectionName || "Collection"} logo`} /> : <span className="orbit-mark" aria-hidden="true"><i /></span>}
+              {logoPreviewUrl ? (
+                <span className="certificate-preview__logo-frame" style={logoFrameStyle}>
+                  <img
+                    className="certificate-preview__logo"
+                    src={logoPreviewUrl}
+                    alt={`${values.collectionName || "Collection"} logo`}
+                    onLoad={(event) => {
+                      const { naturalWidth, naturalHeight } = event.currentTarget;
+                      if (naturalWidth && naturalHeight) onLogoDimensions({ pixelWidth: naturalWidth, pixelHeight: naturalHeight });
+                    }}
+                  />
+                </span>
+              ) : <span className="orbit-mark" aria-hidden="true"><i /></span>}
               <span>{values.collectionName || "Collection name"}</span>
             </div>
             <span className="certificate-preview__record-type">{isMuseumLedger ? "Signed specimen catalog" : isMuseumType ? "Scientific specimen identification" : "Archival specimen record"}</span>
@@ -426,6 +457,7 @@ export default function App() {
   const [photos, setPhotos] = useState<PhotoInput[]>([]);
   const [logo, setLogo] = useState<File>();
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string>();
+  const [logoDimensions, setLogoDimensions] = useState<ImageDimensions>();
   const [identity, setIdentity] = useState<SigningIdentity>();
   const [encryptedBundle, setEncryptedBundle] = useState("");
   const [backupDownloaded, setBackupDownloaded] = useState(false);
@@ -794,7 +826,14 @@ export default function App() {
                     <input type="url" placeholder="Optional - e.g., https://example.com" {...register("issuerWebsite")} />
                   </Field>
                   <Field label="Logo (optional)" hint="Optional - included and hashed in the package.">
-                    <input type="file" accept="image/*" onChange={(event) => setLogo(event.target.files?.[0])} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => {
+                        setLogoDimensions(undefined);
+                        setLogo(event.target.files?.[0]);
+                      }}
+                    />
                   </Field>
                 </div>
               </details>
@@ -1173,7 +1212,17 @@ export default function App() {
                   event.currentTarget.scrollLeft += event.key === "ArrowRight" ? 80 : -80;
                 }}
               >
-                <CertificatePreview values={previewValues} photo={photos[0]} identity={identity} logoPreviewUrl={logoPreviewUrl} />
+                <CertificatePreview
+                  values={previewValues}
+                  photo={photos[0]}
+                  identity={identity}
+                  logoPreviewUrl={logoPreviewUrl}
+                  logoDimensions={logoDimensions}
+                  onLogoDimensions={(dimensions) => {
+                    setLogoDimensions((current) => current?.pixelWidth === dimensions.pixelWidth
+                      && current.pixelHeight === dimensions.pixelHeight ? current : dimensions);
+                  }}
+                />
               </div>
               <div className="preview-checks">
                 <span className={identity ? "complete" : ""}><i />Signing identity</span>

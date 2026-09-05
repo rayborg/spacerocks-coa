@@ -2262,11 +2262,11 @@ a {
 
 .certificate-preview--museum-type .certificate-preview__collection {
   position: absolute;
-  top: 10%;
+  top: 6%;
   left: 4.5%;
-  width: 48%;
-  max-width: 48%;
-  height: 30%;
+  width: 56%;
+  max-width: 56%;
+  height: 61%;
   padding: 0 2%;
   overflow: hidden;
   color: var(--certificate-paper);
@@ -2296,15 +2296,11 @@ a {
 }
 
 .certificate-preview--museum-type .certificate-preview__logo {
-  width: 56px;
-  height: 34px;
-  padding: 2px;
-  background: color-mix(in srgb, var(--certificate-paper) 90%, white);
-  border-radius: 4px;
+  background: transparent;
 }
 
 .certificate-preview--museum-type .certificate-preview__record-type {
-  bottom: 37%;
+  bottom: 21%;
   left: 4.5%;
   color: var(--certificate-accent-text);
   font-size: 16px;
@@ -2313,7 +2309,7 @@ a {
 }
 
 .certificate-preview--museum-type .certificate-preview__header > strong {
-  bottom: 9%;
+  bottom: 1%;
   left: 4.5%;
   max-width: 62%;
   color: var(--certificate-dark);
@@ -2642,6 +2638,7 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
+  max-width: 63%;
   color: var(--certificate-accent-light);
   font-family: var(--serif);
   font-size: 16px;
@@ -2656,31 +2653,42 @@ a {
   white-space: nowrap;
 }
 
+.certificate-preview__logo-frame {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 190px;
+  max-height: 102px;
+  padding: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--certificate-paper) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--certificate-accent-light) 60%, transparent);
+  border-radius: 6px;
+}
+
 .certificate-preview__logo {
   display: block;
-  width: 72px;
-  height: 46px;
-  flex: 0 0 auto;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   object-position: center;
 }
 
-.certificate-preview--regal-archive .certificate-preview__logo {
+.certificate-preview--regal-archive .certificate-preview__logo-frame {
   padding: 2px;
   border-block: 1px solid color-mix(in srgb, var(--certificate-accent-light) 65%, transparent);
 }
 
-.certificate-preview--museum-ledger .certificate-preview__logo {
+.certificate-preview--museum-ledger .certificate-preview__logo-frame {
   padding: 2px;
   background: color-mix(in srgb, var(--certificate-paper) 85%, white);
   border: 1px solid color-mix(in srgb, var(--certificate-dark) 65%, transparent);
 }
 
-.certificate-preview--celestial-formal .certificate-preview__logo {
-  padding: 3px;
+.certificate-preview--celestial-formal .certificate-preview__logo-frame {
+  padding: 4px;
   background: color-mix(in srgb, var(--certificate-dark) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--certificate-accent-light) 60%, transparent);
-  border-radius: 50%;
+  border-radius: 6px;
 }
 
 .orbit-mark {
@@ -2706,7 +2714,7 @@ a {
 
 .certificate-preview__header > strong {
   position: absolute;
-  bottom: 10%;
+  bottom: 0;
   left: 4.5%;
   max-width: 67%;
   font-family: var(--serif);
@@ -2719,7 +2727,7 @@ a {
 
 .certificate-preview__record-type {
   position: absolute;
-  bottom: 36%;
+  bottom: 18%;
   left: 4.5%;
   color: var(--certificate-accent-light);
   font-family: sans-serif;

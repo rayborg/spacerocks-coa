@@ -191,10 +191,26 @@ function drawContainedImage(
   width: number,
   height: number,
 ) {
-  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
-  const drawWidth = image.naturalWidth * scale;
-  const drawHeight = image.naturalHeight * scale;
+  const { width: drawWidth, height: drawHeight } = fitImageWithin(
+    image.naturalWidth,
+    image.naturalHeight,
+    width,
+    height,
+  );
   context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+
+export function fitImageWithin(
+  sourceWidth: number,
+  sourceHeight: number,
+  maximumWidth: number,
+  maximumHeight: number,
+): { width: number; height: number } {
+  if (sourceWidth <= 0 || sourceHeight <= 0 || maximumWidth <= 0 || maximumHeight <= 0) {
+    throw new Error("Image and frame dimensions must be positive.");
+  }
+  const scale = Math.min(maximumWidth / sourceWidth, maximumHeight / sourceHeight);
+  return { width: sourceWidth * scale, height: sourceHeight * scale };
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -465,10 +481,10 @@ async function drawMuseumTypeCertificate(
   context.stroke();
 
   context.fillStyle = dark;
-  roundedRect(context, 88, 68, 1340, 132, 18);
+  roundedRect(context, 88, 54, 1340, 166, 18);
   context.fill();
   context.fillStyle = accent;
-  context.fillRect(88, 174, 1340, 26);
+  context.fillRect(88, 194, 1340, 26);
 
   let logo: HTMLImageElement | undefined;
   if (input.logo) {
@@ -478,11 +494,23 @@ async function drawMuseumTypeCertificate(
       logo = undefined;
     }
   }
+  let logoTextX = 255;
   if (logo) {
+    const fittedLogo = fitImageWithin(logo.naturalWidth, logo.naturalHeight, 300, 112);
+    const logoFrame = {
+      x: 108,
+      y: 66 + (128 - fittedLogo.height - 16) / 2,
+      width: fittedLogo.width + 16,
+      height: fittedLogo.height + 16,
+    };
     context.fillStyle = `${paper}f2`;
-    roundedRect(context, 108, 84, 122, 76, 8);
+    roundedRect(context, logoFrame.x, logoFrame.y, logoFrame.width, logoFrame.height, 8);
     context.fill();
-    drawContainedImage(context, logo, 116, 90, 106, 64);
+    context.strokeStyle = accentLight;
+    context.lineWidth = 2;
+    context.stroke();
+    context.drawImage(logo, logoFrame.x + 8, logoFrame.y + 8, fittedLogo.width, fittedLogo.height);
+    logoTextX = Math.max(255, logoFrame.x + logoFrame.width + 24);
   } else {
     context.strokeStyle = accentLight;
     context.lineWidth = 5;
@@ -496,19 +524,20 @@ async function drawMuseumTypeCertificate(
   }
 
   context.fillStyle = accentLight;
+  const collectionMaximumWidth = Math.min(1050, 1404 - logoTextX);
   const collectionSize = fitFontSize(
     context,
     input.values.collectionName.toUpperCase(),
-    1050,
+    collectionMaximumWidth,
     28,
     "Arial, sans-serif",
     "800",
   );
   context.font = `800 ${collectionSize}px Arial, sans-serif`;
-  context.fillText(fitTextWithEllipsis(context, input.values.collectionName.toUpperCase(), 1050), 255, 134);
+  context.fillText(fitTextWithEllipsis(context, input.values.collectionName.toUpperCase(), collectionMaximumWidth), logoTextX, 134);
   context.fillStyle = paper;
   context.font = "800 18px Arial, sans-serif";
-  context.fillText("SCIENTIFIC SPECIMEN IDENTIFICATION CARD", 255, 169);
+  context.fillText("SCIENTIFIC SPECIMEN IDENTIFICATION CARD", logoTextX, 169);
 
   context.fillStyle = `${accent}1c`;
   roundedRect(context, 1470, 68, 642, 132, 18);
@@ -860,6 +889,8 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     }
   }
 
+  let headerContentX = 255;
+  let headerTitleX = 105;
   if (logo) {
     if (certificateStyle === "museum-ledger") {
       context.fillStyle = "#ffffff99";
@@ -867,14 +898,28 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
       context.strokeStyle = GOLD;
       context.lineWidth = 3;
       context.strokeRect(100, 61, 132, 122);
+      drawContainedImage(context, logo, 105, 70, 120, 105);
     } else if (certificateStyle === "celestial-formal") {
+      const fittedLogo = fitImageWithin(logo.naturalWidth, logo.naturalHeight, 320, 184);
+      const logoFrame = {
+        x: 95,
+        y: 44 + (204 - fittedLogo.height - 20) / 2,
+        width: fittedLogo.width + 20,
+        height: fittedLogo.height + 20,
+      };
+      context.fillStyle = `${NAVY}66`;
+      roundedRect(context, logoFrame.x, logoFrame.y, logoFrame.width, logoFrame.height, 12);
+      context.fill();
       context.strokeStyle = `${GOLD_LIGHT}99`;
       context.lineWidth = 2;
-      context.beginPath();
-      context.ellipse(165, 122, 72, 61, -0.18, 0, Math.PI * 2);
+      roundedRect(context, logoFrame.x, logoFrame.y, logoFrame.width, logoFrame.height, 12);
       context.stroke();
+      context.drawImage(logo, logoFrame.x + 10, logoFrame.y + 10, fittedLogo.width, fittedLogo.height);
+      headerContentX = logoFrame.x + logoFrame.width + 24;
+      headerTitleX = headerContentX;
+    } else {
+      drawContainedImage(context, logo, 105, 70, 120, 105);
     }
-    drawContainedImage(context, logo, 105, 70, 120, 105);
   } else if (certificateStyle === "museum-ledger") drawLedgerMark(context, 162, 122, NAVY);
   else drawOrbitMark(context, 162, 122, certificateStyle === "regal-archive" ? NAVY : GOLD_LIGHT);
 
@@ -884,24 +929,25 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   const collectionFontSize = fitFontSize(
     context,
     input.values.collectionName.toUpperCase(),
-    certificateStyle === "museum-ledger" ? 1050 : 1500,
+    certificateStyle === "museum-ledger" ? 1050 : certificateStyle === "celestial-formal" && logo ? 1420 - headerContentX : 1500,
     28,
     "Arial, sans-serif",
     "600",
   );
   context.font = `600 ${collectionFontSize}px Arial, sans-serif`;
-  context.fillText(fitTextWithEllipsis(context, input.values.collectionName.toUpperCase(), certificateStyle === "museum-ledger" ? 1050 : 1500), 255, 134);
+  const collectionMaximumWidth = certificateStyle === "museum-ledger" ? 1050 : certificateStyle === "celestial-formal" && logo ? 1420 - headerContentX : 1500;
+  context.fillText(fitTextWithEllipsis(context, input.values.collectionName.toUpperCase(), collectionMaximumWidth), headerContentX, 134);
 
   context.fillStyle = headerAccent;
   context.font = "700 18px Arial, sans-serif";
-  context.fillText(certificateStyle === "museum-ledger" ? "SIGNED SPECIMEN CATALOG" : "ARCHIVAL SPECIMEN RECORD", 105, 211);
+  context.fillText(certificateStyle === "museum-ledger" ? "SIGNED SPECIMEN CATALOG" : "ARCHIVAL SPECIMEN RECORD", headerTitleX, 211);
 
   context.fillStyle = headerInk;
   const certificateTitle = "CERTIFICATE OF AUTHENTICITY";
   const certificateTitleSize = fitFontSize(
     context,
     certificateTitle,
-    certificateStyle === "museum-ledger" ? 1200 : 1450,
+    certificateStyle === "museum-ledger" ? 1200 : certificateStyle === "celestial-formal" && logo ? 1420 - headerTitleX : 1450,
     72,
     "Georgia, serif",
   );
@@ -910,7 +956,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     context.textAlign = "center";
     context.fillText(certificateTitle, 820, 286);
     context.textAlign = "left";
-  } else context.fillText(certificateTitle, 105, 286);
+  } else context.fillText(certificateTitle, headerTitleX, 286);
 
   context.textAlign = "right";
   context.fillStyle = certificateStyle === "museum-ledger" ? GOLD_LIGHT : headerAccent;
