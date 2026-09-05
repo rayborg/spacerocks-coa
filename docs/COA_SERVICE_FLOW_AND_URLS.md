@@ -7,13 +7,13 @@
 ## Local COA flow
 
 1. Create/import the issuer-controlled Ed25519 identity in the browser; keep its private key and passphrase local.
-2. For an official meteorite, personally verify canonical values against the Meteoritical Bulletin. For unknown/unlisted material, use **Unclassified** and do not present a suspected type as official.
+2. For an official meteorite, validate its exact code against the bundled LPI Meteoritical Bulletin snapshot and follow the official record link when personal confirmation is needed. For unknown/unlisted material, use **Unclassified** and do not present a suspected type as official.
 3. Complete the required specimen/provenance fields and add exact photographs. At least one unmodified original is required; photographs must not be AI-generated or altered.
 4. Generate the deterministic manifest and certificate files, hash evidence, sign the exact final manifest bytes, and build the self-contained ZIP locally.
 5. Keep the encrypted private-key backup separate. The package contains the public key/signature, never the private key/passphrase.
 6. Verify in the browser or packaged offline verifier without any backend.
 
-There is no runtime catalog API. User attestation to manually checked Meteoritical Bulletin values does not make the application an independent authority.
+The optional lookup API reads a bundled, attributed LPI snapshot and makes no request to LPI at runtime. It does not make the application an independent authority.
 
 ## Optional paid timestamp flow
 
@@ -52,6 +52,7 @@ The COA form, photographs, complete ZIP, manifest contents, signing key, passphr
 | <https://rayborg.github.io/spacerocks-coa/> | Confirmed GitHub Pages URL; not evidence of a timestamp backend or paid production service |
 | <https://www.lpi.usra.edu/meteor/> | Confirmed external Meteoritical Bulletin root owned by LPI/USRA |
 | `https://www.lpi.usra.edu/meteor/metbull.cfm?code=<METBULL_CODE>` | User-verified canonical URL template, not a runtime API |
+| `GET /v1/meteorites/metbull?code=<METBULL_CODE>` | Optional exact-code lookup from the bundled read-only LPI snapshot; no runtime upstream request |
 | `VITE_TIMESTAMP_API_URL` | Public frontend API base; absent removes paid UI/requests; no production value is confirmed |
 | `VITE_TIMESTAMP_SERVICE_MODE` | Public `sandbox` or `production` frontend mode |
 | `VITE_TIMESTAMP_POLICY_VERSION` | Public policy version; production rejects Phase-0 values |

@@ -14,6 +14,7 @@ The free browser-generated, locally signed COA remains complete and independentl
 - `CALENDAR_MODE=public` composes `MultiCalendarTimestamper` with `HardenedCalendarTransport`. It requires staging/production and at least two allowlisted HTTPS calendar hosts; the transport rejects unsafe DNS snapshots, pins one vetted public IP per request, preserves hostname TLS/SNI, rejects redirects, and bounds fan-out and responses. Calendar pilot use still requires explicit owner authorization and independent security review.
 - `BITCOIN_VERIFIER=bitcoin_core` composes `BitcoinCoreRpcTransport` and `BitcoinCoreRpcVerifier` in staging/production. RPC must be private and authenticated; never expose it publicly.
 - `RESEND_SENDER_MODE=resend` enables the separate durable notification worker. `RESEND_WEBHOOK_MODE=resend` enables signed `POST /v1/webhooks/resend` handling.
+- `METBULL_LOOKUP_ENABLED=true` enables exact-code lookup from the bundled, read-only Meteoritical Bulletin snapshot. Requests never fetch LPI or any other external service. Only `Official` and `Relict` records are accepted; other catalog statuses return a conflict response.
 - A browser return does not authorize fulfillment. Only a verified, canonical payment webhook can do so in Stripe test mode.
 - `calendar_pending` and proof availability do not mean Bitcoin-confirmed.
 - Ordinary pending confirmation schedules a durable successor check six hours later; it does not exhaust a short retry budget or dead-letter solely because Bitcoin confirmation is still pending.
@@ -49,6 +50,19 @@ pytest
 ```
 
 Use only local disposable credentials in those URLs. CI performs this flow against an ephemeral Postgres service without provider secrets.
+
+## Meteoritical Bulletin snapshot
+
+The exact-code lookup is derived from the official Meteoritical Bulletin Database CSV published by the Lunar and Planetary Institute (LPI): <https://www.lpi.usra.edu/meteor/>. LPI remains the source and authority. The bundled metadata records the fixed export URL, retrieval time, source SHA-256, database SHA-256, and row count. The CSV `Place` field is not exposed as a country.
+
+Updating is a deliberate maintainer operation, not a runtime or scheduled service:
+
+```bash
+python scripts/update_metbull_snapshot.py
+pytest tests/metbull
+```
+
+The updater contacts only the fixed official HTTPS CSV URL, rejects redirects and proxy settings, limits the response to 32 MiB, validates the schema and records, and atomically replaces the validated read-only SQLite snapshot and attribution metadata. Review both generated files and their hashes before release.
 
 ## Local disabled startup
 

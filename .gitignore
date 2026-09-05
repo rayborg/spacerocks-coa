@@ -24,6 +24,7 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+!timestamp-service/app/metbull/data/metbull.sqlite3
 timestamp-service/.local/
 timestamp-service/local-data/
 timestamp-service/proofs/

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -9,10 +8,13 @@ from fastapi.testclient import TestClient
 
 from app.config.settings import Settings
 from app.main import create_app
-from app.metbull import MetbullNotFound, MetbullNotOfficial, MetbullRecord, MetbullUnavailable
-from app.metbull.client import parse_metbull_record
-
-UNKNOWN_FIXTURE = Path(__file__).parent / "fixtures/999999999-unknown.html"
+from app.metbull import (
+    MetbullNotFound,
+    MetbullNotOfficial,
+    MetbullRecord,
+    MetbullUnavailable,
+    MeteoriticalBulletinSnapshot,
+)
 
 
 class FakeLookup:
@@ -31,11 +33,6 @@ class FakeLookup:
         )
 
 
-class UnknownFixtureLookup:
-    async def lookup(self, code: int) -> MetbullRecord:
-        return parse_metbull_record(UNKNOWN_FIXTURE.read_bytes(), code)
-
-
 def official_record() -> MetbullRecord:
     return MetbullRecord(
         code=87447,
@@ -46,7 +43,7 @@ def official_record() -> MetbullRecord:
         recommended_classification="Relict iron",
         fall_or_find="Find",
         year_found=2018,
-        country="Western Sahara",
+        country=None,
         latitude=None,
         longitude=None,
     )
@@ -71,7 +68,7 @@ def test_api_returns_strict_public_contract_without_sensitive_specimen_fields(ap
         "recommended_classification": "Relict iron",
         "fall_or_find": "Find",
         "year_found": 2018,
-        "country": "Western Sahara",
+        "country": None,
         "latitude": None,
         "longitude": None,
     }
@@ -82,6 +79,16 @@ def test_api_returns_strict_public_contract_without_sensitive_specimen_fields(ap
     assert not any(name.lower().startswith("access-control-") for name in response.headers)
     assert response.headers.get("vary") != "Origin"
     assert not {"mass", "specimen", "ownership", "finder", "provenance"} & response.json().keys()
+
+
+def test_enabled_app_wires_the_bundled_snapshot() -> None:
+    app = create_app(Settings(_env_file=None, app_env="test", metbull_lookup_enabled=True))
+    assert isinstance(app.state.services.metbull_lookup, MeteoriticalBulletinSnapshot)
+    with TestClient(app) as client:
+        response = client.get("/v1/meteorites/metbull?code=87447")
+    assert response.status_code == 200
+    assert response.json()["canonical_name"] == "Northwest Africa 18652"
+    assert response.json()["country"] is None
 
 
 @pytest.mark.parametrize(
@@ -129,17 +136,6 @@ def test_api_maps_lookup_failures_to_generic_public_errors(error: Exception, sta
     assert response.status_code == status
     assert response.json() == {"detail": detail}
     assert "sensitive" not in response.text
-
-
-def test_api_maps_official_unknown_entry_shape_to_generic_404() -> None:
-    app = create_app(
-        Settings(_env_file=None, app_env="test", metbull_lookup_enabled=True),
-        metbull_lookup=UnknownFixtureLookup(),
-    )
-    with TestClient(app) as client:
-        response = client.get("/v1/meteorites/metbull?code=999999999")
-    assert response.status_code == 404
-    assert response.json() == {"detail": "meteorite record not found"}
 
 
 def test_disabled_mode_never_calls_injected_lookup() -> None:

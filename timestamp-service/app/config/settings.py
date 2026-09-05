@@ -112,7 +112,6 @@ class Settings(BaseSettings):
     resend_api_timeout_seconds: float = 10.0
     resend_webhook_secret: SecretStr | None = Field(default=None, repr=False)
     resend_webhook_tolerance_seconds: int = 300
-    metbull_timeout_seconds: float = 8.0
     trusted_proxy_ips: list[str] = Field(default_factory=list)
     checkout_rate_limit: int = 10
     checkout_price_rate_limit: int = 60
@@ -390,8 +389,6 @@ class Settings(BaseSettings):
             raise ValueError("Esplora timeout must be between 0.1 and 30 seconds")
         if not 0.1 <= self.resend_api_timeout_seconds <= 30.0:
             raise ValueError("Resend API timeout must be between 0.1 and 30 seconds")
-        if not 0.1 <= self.metbull_timeout_seconds <= 30.0:
-            raise ValueError("Meteoritical Bulletin timeout must be between 0.1 and 30 seconds")
         if not 1 <= self.resend_webhook_tolerance_seconds <= 900:
             raise ValueError("Resend webhook tolerance must be between 1 and 900 seconds")
         return self

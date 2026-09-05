@@ -1,0 +1,13 @@
+{
+  "database_sha256": "7fb44fba7961890c996bace12f9366c2d12bf20e4b5d9eab1316d73bd918cb1a",
+  "official_database_updated_utc": null,
+  "retrieved_at_utc": "2026-09-05T17:45:41Z",
+  "row_count": 87183,
+  "schema_version": 1,
+  "source": {
+    "name": "Meteoritical Bulletin Database",
+    "publisher": "Lunar and Planetary Institute",
+    "url": "https://www.lpi.usra.edu/meteor/metbull.cfm?sea=%25&sfor=names&stype=contains&csv=1"
+  },
+  "source_sha256": "e9b584abd6dc66376aec807f8d302d2d61240d3be1e2084bd316c5c6888acf02"
+}

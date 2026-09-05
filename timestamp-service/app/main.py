@@ -16,7 +16,7 @@ from app.db.fulfillment_adapters import SqlBundleRepository, SqlProofStore
 from app.db.notification_adapters import SqlResendWebhookStore
 from app.db.repositories import OrderStore, RateLimitStore
 from app.db.session import create_database_engine, create_session_factory
-from app.metbull import MetbullLookup, MeteoriticalBulletinClient
+from app.metbull import MetbullLookup, MeteoriticalBulletinSnapshot
 from app.notifications.routes import router as notification_router
 from app.notifications.webhooks import ResendWebhookService
 from app.observability.logging import configure_safe_logging
@@ -74,7 +74,7 @@ def create_app(
     resend_webhooks: ResendWebhookService | None = None
     task_dispatch = create_task_dispatch(configured, session_factory) if session_factory is not None else None
     if configured.metbull_lookup_enabled and metbull_lookup is None:
-        metbull_lookup = MeteoriticalBulletinClient(configured.metbull_timeout_seconds)
+        metbull_lookup = MeteoriticalBulletinSnapshot()
     if not configured.metbull_lookup_enabled:
         metbull_lookup = None
     if session_factory is not None and configured.active_token_pepper_version is not None:

@@ -5,12 +5,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_dockerfile_is_nonroot_bounded_and_health_checked() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text()
+    dockerignore = (ROOT / ".dockerignore").read_text()
     assert "python:3.12.11-slim-bookworm" in dockerfile
     assert "USER 10001:10001" in dockerfile
     assert "HEALTHCHECK" in dockerfile
     assert "--limit-concurrency" in dockerfile
     assert "--no-access-log" in dockerfile
     assert "COPY ." not in dockerfile
+    assert "COPY --chown=timestamp:timestamp app ./app" in dockerfile
+    assert "!app/metbull/data/metbull.sqlite3" in dockerignore
+    assert (ROOT / "app/metbull/data/metbull.sqlite3").stat().st_size > 0
 
 
 def test_compose_separates_api_worker_and_requires_local_credentials() -> None:

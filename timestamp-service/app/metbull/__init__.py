@@ -4,8 +4,8 @@ from app.metbull.client import (
     MetbullNotOfficial,
     MetbullRecord,
     MetbullUnavailable,
-    MeteoriticalBulletinClient,
 )
+from app.metbull.snapshot import MeteoriticalBulletinSnapshot
 
 __all__ = [
     "MetbullLookup",
@@ -13,5 +13,5 @@ __all__ = [
     "MetbullNotOfficial",
     "MetbullRecord",
     "MetbullUnavailable",
-    "MeteoriticalBulletinClient",
+    "MeteoriticalBulletinSnapshot",
 ]
