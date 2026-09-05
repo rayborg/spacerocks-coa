@@ -232,6 +232,9 @@ test("starts with blank content, provisional preview labels, and readable respon
     buffer: certificatePhotoPng,
     lastModified: Date.UTC(2024, 0, 15),
   });
+  const photoAttestationBox = await page.locator(".photo-item .attestation input[type=checkbox]").boundingBox();
+  expect(photoAttestationBox?.width).toBeGreaterThanOrEqual(24);
+  expect(photoAttestationBox?.height).toBeGreaterThanOrEqual(24);
   const photoCaption = page.getByLabel("Caption (optional)", { exact: true });
   const photoCaptureDate = page.getByLabel("Capture date (optional)", { exact: true });
   await expect(page.locator(".photo-item__meta strong")).toHaveText("filename-must-not-become-caption.png");
@@ -330,6 +333,23 @@ test("starts with blank content, provisional preview labels, and readable respon
       await expect(photoCaptureDate).toBeVisible();
     }
   }
+});
+
+test("omits literal None optional values from the live certificate preview", async ({ page }) => {
+  await page.goto("/#builder");
+  await page.getByRole("radio", { name: /Museum Type/ }).check();
+  await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
+  await page.locator('input[name="country"]').fill("Canada");
+  await page.locator('input[name="region"]').fill("None");
+  await page.locator('input[name="locality"]').fill("not applicable");
+  await page.locator('input[name="dimensions"]').fill("N/A");
+  await page.locator('textarea[name="recoveryInformation"]').fill("None");
+  await page.locator('textarea[name="provenance"]').fill("not recorded");
+  const preview = page.locator(".certificate-preview");
+  await expect(preview.locator(".certificate-preview__facts dd").nth(1)).toHaveText("Canada");
+  await expect(preview.locator(".certificate-preview__catalog-note")).toHaveCount(0);
+  await expect(preview.locator(".certificate-preview__measurements")).toHaveCount(0);
+  await expect(preview).not.toContainText(/None|not applicable|N\/A/i);
 });
 
 test("loads private query-prefill values without affecting the normal blank form", async ({ page }) => {
@@ -925,7 +945,7 @@ test("renders coherent specimen states and complete responsive certificate headi
     const photoCaption = element.querySelector<HTMLElement>(".certificate-preview__photo-caption")!;
     const weight = getComputedStyle(element.querySelector(".certificate-preview__weight")!);
     const seal = getComputedStyle(element.querySelector(".certificate-preview__seal")!);
-    const catalogNote = element.querySelector<HTMLElement>(".certificate-preview__catalog-note")!;
+    const catalogNote = element.querySelector<HTMLElement>(".certificate-preview__catalog-note");
     return {
       frameRadius: frame.borderRadius,
       frameBorder: frame.borderTopWidth,
@@ -938,7 +958,7 @@ test("renders coherent specimen states and complete responsive certificate headi
       measurementRail: weight.borderLeftWidth,
       sealRadius: seal.borderRadius,
       sealBorder: seal.borderTopWidth,
-      catalogNote: catalogNote.textContent,
+      catalogNote: catalogNote?.textContent ?? null,
     };
   });
   expect(Number.parseFloat(museumSignature.frameRadius)).toBeGreaterThanOrEqual(20);
@@ -952,7 +972,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);
   expect(Number.parseFloat(museumSignature.sealRadius)).toBeGreaterThanOrEqual(10);
   expect(Number.parseFloat(museumSignature.sealBorder)).toBeGreaterThanOrEqual(4);
-  expect(museumSignature.catalogNote).toContain("Not recorded");
+  expect(museumSignature.catalogNote).toBeNull();
 
   if (artifactDirectory) {
     await page.setViewportSize({ width: 1280, height: 1000 });
@@ -1673,10 +1693,12 @@ test("issues and verifies a minimal package without optional PII", async ({ page
 
   const certificateText = await archive.file(`${root}certificate.txt`)!.async("text");
   expect(certificateText).toContain("Current owner: Minimal Test Issuer");
-  expect(certificateText).toContain("Date: Not recorded");
-  expect(certificateText).toContain("Region: Not recorded");
-  expect(certificateText).toContain("Coordinates: Not recorded");
-  expect(certificateText).toContain("PROVENANCE\nNot recorded");
+  expect(certificateText).not.toContain("Date:");
+  expect(certificateText).not.toContain("Region:");
+  expect(certificateText).not.toContain("Coordinates:");
+  expect(certificateText).not.toContain("PROVENANCE\n");
+  expect(certificateText).not.toContain("Preparation state:");
+  expect(certificateText).not.toContain("Not recorded");
   expect(certificateText).not.toContain("99999");
   expect(certificateText).not.toContain("Official reference:");
   expect(certificateText).not.toContain("Official name verified:");
@@ -1871,6 +1893,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     classification: "Ordinary chondrite",
     meteoriteSubclass: "Not provided by Meteoritical Bulletin",
     officialNameVerified: true,
+    preparationState: "Natural crust with one cut face",
   }));
   expect(manifest.specimen.fall).toEqual(expect.objectContaining({
     date: "2024-01-15",
@@ -1954,6 +1977,8 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(certificateText).toContain("missing type/subclass attested from linked MetBull entry");
   expect(certificateText).toContain("Meteorite type: Not provided by Meteoritical Bulletin");
   expect(certificateText).toContain("Official reference: https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
+  expect(certificateText).not.toContain("Preparation state:");
+  expect(certificateText).not.toContain("PREPARATION");
   expect(certificateText).toContain("centers and contains the complete image without cropping, stretching, or distortion");
   const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v2.schema.json`)!.async("text")) as {
     properties: {

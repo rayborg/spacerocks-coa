@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitImageWithin } from "./certificate";
+import { fitImageWithin, formatCertificateLocation } from "./certificate";
 
 describe("fitImageWithin", () => {
   it.each([
@@ -39,5 +39,12 @@ describe("fitImageWithin", () => {
   it("rejects invalid source or frame dimensions", () => {
     expect(() => fitImageWithin(0, 10, 100, 100)).toThrow(/positive/);
     expect(() => fitImageWithin(10, 10, -1, 100)).toThrow(/positive/);
+  });
+});
+
+describe("formatCertificateLocation", () => {
+  it("omits blank, duplicate, and literal None location parts", () => {
+    expect(formatCertificateLocation({ locality: "None", region: "not applicable", country: "Canada" })).toBe("Canada");
+    expect(formatCertificateLocation({ locality: "Ottawa", region: "ottawa", country: "Canada" })).toBe("Ottawa, Canada");
   });
 });

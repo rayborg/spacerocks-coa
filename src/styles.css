@@ -1444,7 +1444,11 @@ a {
   display: flex;
   align-items: flex-start;
   color: var(--ink);
-  font-size: 11px;
+  padding: 10px 12px;
+  border: 1px solid rgba(7, 26, 47, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 0;
   line-height: 1.4;
@@ -1452,9 +1456,12 @@ a {
 }
 
 .attestation input {
-  width: 16px;
-  min-height: 16px;
-  margin: 0 6px 0 0;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  margin: 0 10px 0 0;
 }
 
 .remove-button {

@@ -56,8 +56,26 @@ function optional(value: string): string | undefined {
   return trimmed || undefined;
 }
 
-function recorded(value: string): string {
-  return optional(value) ?? "Not recorded";
+function hasOptionalValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized) && !["none", "n/a", "na", "not applicable", "not recorded"].includes(normalized);
+}
+
+function optionalLine(label: string, value: string): string {
+  return hasOptionalValue(value) ? `${label}: ${value.trim()}` : "";
+}
+
+function provenanceBlock(values: FormValues): string {
+  const lines = [
+    optionalLine("Provenance and chain of custody", values.provenance),
+    optionalLine("Previous owner", values.previousOwner),
+    optionalLine("Intermediary purchaser", values.intermediaryPurchaserName),
+    optionalLine("Buyer / transferee", values.buyer),
+    optionalLine("Transfer date", values.transferDate ? displayDate(values.transferDate) : ""),
+    optionalLine("Invoice / reference", values.invoiceReference),
+    optionalLine("Transfer notes", values.transferNotes),
+  ].filter(Boolean);
+  return lines.length ? `PROVENANCE\n${lines.join("\n")}\n` : "";
 }
 
 function recordedCoordinates(latitude: string, longitude: string): string {
@@ -157,32 +175,27 @@ Identity mode: ${official ? "Official" : "Unclassified"}
 Meteorite type: ${meteoriteType}
 Meteorite class: ${classification}
 Meteorite subclass: ${meteoriteSubclass}
-${official ? `Official name verified: Yes - issuer attestation${values.officialClassificationExceptionAttested ? "; missing type/subclass attested from linked MetBull entry" : ""}` : `Suspected type: ${recorded(values.suspectedType)}`}
+${official ? `Official name verified: Yes - issuer attestation${values.officialClassificationExceptionAttested ? "; missing type/subclass attested from linked MetBull entry" : ""}` : optionalLine("Suspected type", values.suspectedType)}
 Recorded weight: ${values.weightGrams} g
 Weight precision: ${values.weightPrecision} g
 Specimen form: ${values.specimenForm}
-Dimensions: ${recorded(values.dimensions)}
+${optionalLine("Dimensions", values.dimensions)}
 Number of pieces: ${values.numberOfPieces}
-Preparation state: ${recorded(values.preparationState)}
-Identifying marks: ${recorded(values.identifyingMarks)}
-Current owner: ${recorded(values.issuerName)}
+${optionalLine("Identifying marks", values.identifyingMarks)}
+Current owner: ${values.issuerName.trim()}
 
 FALL OR FIND
 Status: ${values.fallStatus}
-Date: ${displayDate(values.fallDate)}
+${optionalLine("Date", values.fallDate ? displayDate(values.fallDate) : "")}
 Country: ${values.country}
-Region: ${recorded(values.region)}
-Locality / city: ${recorded(values.locality)}
-Coordinates: ${recordedCoordinates(values.latitude, values.longitude)}
+${optionalLine("Region", values.region)}
+${optionalLine("Locality / city", values.locality)}
+${hasOptionalValue(values.latitude) && hasOptionalValue(values.longitude) ? `Coordinates: ${recordedCoordinates(values.latitude, values.longitude)}` : ""}
 ${official ? `Meteoritical Bulletin code: ${values.metbullCode.trim()}\nOfficial reference: ${values.officialReferenceUrl.trim()}` : ""}
-Finder name: ${recorded(values.finderName)}
-Recovery information: ${recorded(values.recoveryInformation)}
+${optionalLine("Finder name", values.finderName)}
+${optionalLine("Recovery information", values.recoveryInformation)}
 
-PROVENANCE
-${recorded(values.provenance)}
-Previous owner: ${recorded(values.previousOwner)}
-Intermediary purchaser: ${recorded(values.intermediaryPurchaserName)}
-Buyer / transferee: ${recorded(values.buyer)}
+${provenanceBlock(values)}
 
 DIGITAL ATTESTATION
 Issuer: ${values.issuerName}

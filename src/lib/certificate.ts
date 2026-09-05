@@ -10,12 +10,13 @@ const HEIGHT = 1700;
 const CELESTIAL_PHOTO_ASPECT_RATIO = 560 / 455;
 export const CERTIFICATE_EXPORT_FONT_FLOOR = 16;
 
-function recorded(value: string): string {
-  return value.trim() || "Not recorded";
+function recordedCoordinates(latitude: string, longitude: string): string {
+  return [latitude.trim(), longitude.trim()].filter(hasOptionalValue).join(", ") || "Not recorded";
 }
 
-function recordedCoordinates(latitude: string, longitude: string): string {
-  return [latitude.trim(), longitude.trim()].filter(Boolean).join(", ") || "Not recorded";
+function hasOptionalValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized) && !["none", "n/a", "na", "not applicable", "not recorded"].includes(normalized);
 }
 
 function classificationSummary(values: FormValues): string {
@@ -35,7 +36,7 @@ function classificationSummary(values: FormValues): string {
 export function formatCertificateLocation(values: Pick<FormValues, "locality" | "region" | "country">): string {
   const parts = [values.locality, values.region, values.country]
     .map((value) => value.trim())
-    .filter((value, index, all) => value && all.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
+    .filter((value, index, all) => hasOptionalValue(value) && all.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
   return parts.join(", ") || "Not recorded";
 }
 
@@ -613,13 +614,15 @@ async function drawMuseumTypeCertificate(
   context.font = "800 22px Arial, sans-serif";
   context.fillText("CATALOG FACTS", panelX + 28, panelY + 43);
 
-  const catalogRows = [
+  const catalogRows: Array<[string, string]> = [
     ["FALL / FIND", input.values.fallStatus],
-    ["DATE", displayDate(input.values.fallDate)],
+    ...(hasOptionalValue(input.values.fallDate) ? [["DATE", displayDate(input.values.fallDate)] as [string, string]] : []),
     ["LOCATION", formatCertificateLocation(input.values)],
-    ["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)],
+    ...(hasOptionalValue(input.values.latitude) && hasOptionalValue(input.values.longitude)
+      ? [["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)] as [string, string]]
+      : []),
     ["SPECIMEN FORM", input.values.specimenForm],
-    ["CURRENT OWNER", recorded(input.values.issuerName)],
+    ["CURRENT OWNER", input.values.issuerName.trim()],
     ["ISSUED", displayDate(input.values.issueDate)],
   ];
   const rowHeight = (panelHeight - 66) / catalogRows.length;
@@ -651,14 +654,14 @@ async function drawMuseumTypeCertificate(
   context.strokeStyle = dark;
   context.lineWidth = 5;
   context.strokeRect(110, measurementY, 1980, 120);
-  const measurements = [
+  const measurements: Array<[string, string]> = [
     ["WEIGHT", `${input.values.weightGrams} g`],
-    ["DIMENSIONS", recorded(input.values.dimensions)],
+    ...(hasOptionalValue(input.values.dimensions) ? [["DIMENSIONS", input.values.dimensions.trim()] as [string, string]] : []),
     ["PIECES", input.values.numberOfPieces],
-    ["PREPARATION", recorded(input.values.preparationState)],
   ];
   measurements.forEach(([label, value], index) => {
-    const x = 110 + index * 495;
+    const columnWidth = 1980 / measurements.length;
+    const x = 110 + index * columnWidth;
     if (index > 0) {
       context.strokeStyle = `${dark}80`;
       context.lineWidth = 2;
@@ -671,36 +674,44 @@ async function drawMuseumTypeCertificate(
     context.font = "800 18px Arial, sans-serif";
     context.fillText(label, x + 28, measurementY + 37);
     context.fillStyle = dark;
-    const valueSize = fitFontSize(context, value, 430, 36, 'Impact, "Arial Narrow", Arial, sans-serif', "800");
+    const valueWidth = columnWidth - 56;
+    const valueSize = fitFontSize(context, value, valueWidth, 36, 'Impact, "Arial Narrow", Arial, sans-serif', "800");
     context.font = `800 ${valueSize}px Impact, "Arial Narrow", Arial, sans-serif`;
-    context.fillText(fitTextWithEllipsis(context, value, 430), x + 28, measurementY + 85);
+    context.fillText(fitTextWithEllipsis(context, value, valueWidth), x + 28, measurementY + 85);
   });
 
   const notesX = 110;
   const notesY = 1240;
   const notesWidth = 970;
   const notesHeight = 280;
-  context.fillStyle = `${paper}f2`;
-  context.fillRect(notesX, notesY, notesWidth, notesHeight);
-  context.strokeStyle = dark;
-  context.lineWidth = 4;
-  context.strokeRect(notesX, notesY, notesWidth, notesHeight);
-  context.fillStyle = dark;
-  context.fillRect(notesX, notesY, notesWidth, 54);
-  context.fillStyle = paper;
-  context.font = "800 20px Arial, sans-serif";
-  context.fillText("PROVENANCE / CATALOG NOTES", notesX + 24, notesY + 36);
-  context.fillStyle = ink;
-  context.font = "400 21px Arial, sans-serif";
-  wrapText(context, recorded(input.values.provenance), notesX + 24, notesY + 92, notesWidth - 48, 29, 4);
-  const supplemental = input.values.recoveryInformation.trim()
+  const provenance = hasOptionalValue(input.values.provenance) ? input.values.provenance.trim() : "";
+  const supplemental = hasOptionalValue(input.values.recoveryInformation)
     ? `Recovery: ${input.values.recoveryInformation.trim()}`
-    : input.values.identifyingMarks.trim()
+    : hasOptionalValue(input.values.identifyingMarks)
       ? `Identifying marks: ${input.values.identifyingMarks.trim()}`
-      : "Not recorded";
-  context.fillStyle = muted;
-  context.font = "400 18px Arial, sans-serif";
-  wrapText(context, supplemental, notesX + 24, notesY + 232, notesWidth - 48, 24, 2);
+      : "";
+  if (provenance || supplemental) {
+    context.fillStyle = `${paper}f2`;
+    context.fillRect(notesX, notesY, notesWidth, notesHeight);
+    context.strokeStyle = dark;
+    context.lineWidth = 4;
+    context.strokeRect(notesX, notesY, notesWidth, notesHeight);
+    context.fillStyle = dark;
+    context.fillRect(notesX, notesY, notesWidth, 54);
+    context.fillStyle = paper;
+    context.font = "800 20px Arial, sans-serif";
+    context.fillText("PROVENANCE / CATALOG NOTES", notesX + 24, notesY + 36);
+    if (provenance) {
+      context.fillStyle = ink;
+      context.font = "400 21px Arial, sans-serif";
+      wrapText(context, provenance, notesX + 24, notesY + 92, notesWidth - 48, 29, 4);
+    }
+    if (supplemental) {
+      context.fillStyle = muted;
+      context.font = "400 18px Arial, sans-serif";
+      wrapText(context, supplemental, notesX + 24, notesY + 232, notesWidth - 48, 24, 2);
+    }
+  }
 
   const authX = 1120;
   const authY = 1240;
@@ -1021,14 +1032,16 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.font = "600 18px Arial, sans-serif";
   context.fillText("SPECIMEN PHOTO 01", photoFrame.x, photoFrame.y + photoFrame.height + 42);
 
-  const rows = [
+  const rows: Array<[string, string]> = [
     ["METEORITE", input.values.meteoriteName],
     ["FALL / FIND", input.values.fallStatus],
-    ["DATE", displayDate(input.values.fallDate)],
+    ...(hasOptionalValue(input.values.fallDate) ? [["DATE", displayDate(input.values.fallDate)] as [string, string]] : []),
     ["LOCATION", formatCertificateLocation(input.values)],
-    ["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)],
+    ...(hasOptionalValue(input.values.latitude) && hasOptionalValue(input.values.longitude)
+      ? [["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)] as [string, string]]
+      : []),
     ["SPECIMEN FORM", input.values.specimenForm],
-    ["CURRENT OWNER", recorded(input.values.issuerName)],
+    ["CURRENT OWNER", input.values.issuerName.trim()],
   ];
   const tableX = 112;
   const tableY = 680;
@@ -1260,12 +1273,14 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.font = "400 19px Arial, sans-serif";
   context.fillText(`Version ${input.values.certificateVersion}`, 730, 1428);
 
-  context.fillStyle = NAVY;
-  context.font = "600 18px Arial, sans-serif";
-  context.fillText("PROVENANCE", 112, 1495);
-  context.fillStyle = INK;
-  context.font = "400 19px Arial, sans-serif";
-  wrapText(context, recorded(input.values.provenance), 112, 1534, 1490, 27, 2);
+  if (hasOptionalValue(input.values.provenance)) {
+    context.fillStyle = NAVY;
+    context.font = "600 18px Arial, sans-serif";
+    context.fillText("PROVENANCE", 112, 1495);
+    context.fillStyle = INK;
+    context.font = "400 19px Arial, sans-serif";
+    wrapText(context, input.values.provenance.trim(), 112, 1534, 1490, 27, 2);
+  }
 
   context.fillStyle = MUTED;
   context.font = `400 ${certificateFooterLayout.fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;

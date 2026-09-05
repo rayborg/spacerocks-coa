@@ -160,8 +160,13 @@ function classificationSummary(values: FormValues): string {
 function locationSummary(values: FormValues): string {
   const parts = [values.locality, values.region, values.country]
     .map((value) => value.trim())
-    .filter((value, index, all) => value && all.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
+    .filter((value, index, all) => hasOptionalValue(value) && all.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
   return parts.join(", ") || "Not entered";
+}
+
+function hasOptionalValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized) && !["none", "n/a", "na", "not applicable", "not recorded"].includes(normalized);
 }
 
 interface ImageDimensions {
@@ -244,10 +249,8 @@ function CertificatePreview({
   const specimenState = hasWeight && hasSpecimenForm ? "complete" : hasWeight || hasSpecimenForm ? "partial" : "empty";
   const isMuseumLedger = certificateStyle.id === "museum-ledger";
   const isMuseumType = certificateStyle.id === "museum-type";
-  const museumCatalogNote = values.recoveryInformation.trim()
-    || values.preparationState.trim()
-    || values.provenance.trim()
-    || "Not recorded";
+  const museumCatalogNote = [values.recoveryInformation, values.provenance, values.identifyingMarks]
+    .find(hasOptionalValue)?.trim() ?? "";
   const logoFrameStyle = fitLogoPreview(logoDimensions);
   const themeStyle = {
     "--certificate-dark": theme.dark,
@@ -335,7 +338,7 @@ function CertificatePreview({
               <div><dt>Specimen form</dt><dd>{values.specimenForm || "Not recorded"}</dd></div>
               <div><dt>Current owner</dt><dd>{values.issuerName.trim() || "Pending"}</dd></div>
             </dl>
-            {isMuseumType ? (
+            {isMuseumType && museumCatalogNote ? (
               <div className="certificate-preview__catalog-note">
                 <span>Catalog notes</span>
                 <p>{museumCatalogNote}</p>
@@ -349,7 +352,7 @@ function CertificatePreview({
                   <span>{specimenState === "complete" ? "Specimen details" : hasWeight ? "Recorded weight" : "Specimen form"}</span>
                   <strong>{hasWeight ? <>{values.weightGrams}<small> g</small></> : values.specimenForm}</strong>
                   {specimenState === "complete" ? <em>{values.specimenForm}</em> : null}
-                  {isMuseumType && values.dimensions.trim() ? <small className="certificate-preview__measurements">{values.dimensions}</small> : null}
+                  {isMuseumType && hasOptionalValue(values.dimensions) ? <small className="certificate-preview__measurements">{values.dimensions}</small> : null}
                 </>
               )}
             </div>
