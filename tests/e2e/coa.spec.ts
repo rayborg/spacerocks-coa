@@ -500,7 +500,7 @@ test("enforces fresh official evidence across value and mode changes and validat
   await expect(page.locator('input[name="officialReferenceUrl"]'))
     .toHaveValue("https://www.lpi.usra.edu/meteor/metbull.cfm?code=68064");
   await expect(attestation).not.toBeChecked();
-  await expect(page.getByText(/Attest that the official name and classification/)).toBeVisible();
+  await expect(page.getByText(/Attest that the official name and classification/).first()).toBeVisible();
 
   await page.locator('input[name="country"]').fill("Canada");
   await page.locator('input[name="locality"]').fill("Ottawa");
@@ -511,7 +511,7 @@ test("enforces fresh official evidence across value and mode changes and validat
   await expect(page.locator(".certificate-preview__facts dd").nth(1)).toHaveText("Ontario, Canada");
   await page.locator('input[name="region"]').fill("");
   await page.locator('input[name="latitude"]').fill("45.4215 N");
-  await expect(page.getByText("Enter both latitude and longitude, or leave both blank.")).toBeVisible();
+  await expect(page.getByText("Enter both latitude and longitude, or leave both blank.").first()).toBeVisible();
   await page.locator('input[name="longitude"]').fill("75.6972 W");
   await expect(page.getByText("Enter both latitude and longitude, or leave both blank.")).toHaveCount(0);
   await expect(page.locator(".certificate-preview__facts dd").nth(1)).toHaveText("Canada");
