@@ -216,6 +216,12 @@ test("starts with blank content, provisional preview labels, and readable respon
 
   await expect(page.getByRole("button", { name: "Issue cryptographically signed COA package" })).toBeDisabled();
   await expect(page.getByText("Complete these requirements before issuance:")).toBeVisible();
+  const readiness = page.locator("#issuance-readiness");
+  await expect(readiness).toContainText("Issuer name:");
+  await expect(readiness).toContainText("Certificate ID:");
+  await expect(readiness).toContainText("Meteorite name:");
+  await expect(readiness).toContainText("Weight:");
+  await expect(readiness).not.toContainText("Complete the required form fields.");
   await page.getByRole("button", { name: "Review missing form fields" }).click();
   await expect(page.locator(".generation-status")).toHaveText("Review the highlighted required fields.");
   await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("");
@@ -885,7 +891,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
   expect(museumSignature.factLabelColor).not.toBe("rgb(0, 0, 0)");
-  expect(museumSignature.photoCaption).toContain("Contain fit 01");
+  expect(museumSignature.photoCaption).toContain("Specimen photo 01");
   expect(museumSignature.photoCaptionFits).toBe(true);
   expect(museumSignature.photoCaptionWhiteSpace).toBe("nowrap");
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);

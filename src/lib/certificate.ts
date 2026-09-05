@@ -1015,7 +1015,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   }
   context.fillStyle = NAVY;
   context.font = "600 18px Arial, sans-serif";
-  context.fillText("COMPLETE SOURCE PHOTO / CENTERED CONTAIN FIT", photoFrame.x, photoFrame.y + photoFrame.height + 42);
+  context.fillText("SPECIMEN PHOTO 01", photoFrame.x, photoFrame.y + photoFrame.height + 42);
 
   const rows = [
     ["METEORITE", input.values.meteoriteName],

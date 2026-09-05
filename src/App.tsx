@@ -27,6 +27,32 @@ const METBULL_URL_PATTERN = /^https:\/\/www\.lpi\.usra\.edu\/meteor\/metbull\.cf
 function metbullCodeFromUrl(value: string): string {
   return value.trim().match(METBULL_URL_PATTERN)?.[1] ?? "";
 }
+
+const formFieldLabels: Partial<Record<keyof FormValues, string>> = {
+  issuerName: "Issuer name",
+  collectionName: "Collection or business",
+  certificateId: "Certificate ID",
+  issueDate: "Issue date",
+  certificateVersion: "Certificate version",
+  supersededCertificateId: "Superseded certificate ID",
+  meteoriteName: "Meteorite name",
+  meteoriteType: "Meteorite type",
+  classification: "Meteorite class",
+  meteoriteSubclass: "Meteorite subclass",
+  officialClassificationExceptionAttested: "Missing MetBull classification details",
+  officialNameVerified: "Official name verification",
+  weightGrams: "Weight",
+  weightPrecision: "Weight precision",
+  specimenForm: "Specimen form",
+  numberOfPieces: "Number of pieces",
+  fallStatus: "Fall or find status",
+  country: "Country",
+  locality: "Location",
+  latitude: "Latitude",
+  longitude: "Longitude",
+  metbullCode: "Meteoritical Bulletin code",
+  officialReferenceUrl: "Official Meteoritical Bulletin URL",
+};
 import {
   analyzePhotoDimensions,
   describePhotoAnalysis,
@@ -263,7 +289,7 @@ function CertificatePreview({
               ) : <span>Source photo required</span>}
               {isMuseumLedger || isMuseumType ? (
                 <small className="certificate-preview__photo-caption">
-                  Contain fit 01
+                  Specimen photo 01
                 </small>
               ) : null}
             </div>
@@ -399,7 +425,13 @@ export default function App() {
   const watchedValues = useWatch({ control });
   const meteoriteIdentity = watchedValues.meteoriteIdentity ?? defaultValues.meteoriteIdentity;
   const officialClassificationExceptionAttested = Boolean(watchedValues.officialClassificationExceptionAttested);
-  const previewValues = useDeferredValue({ ...defaultValues, ...watchedValues } as FormValues);
+  const currentValues = { ...defaultValues, ...watchedValues } as FormValues;
+  const previewValues = useDeferredValue(currentValues);
+  const formValidation = formSchema.safeParse(currentValues);
+  const formRequirements = formValidation.success ? [] : Array.from(new Map(formValidation.error.issues.map((issue) => {
+    const field = issue.path[0] as keyof FormValues;
+    return [field, { label: formFieldLabels[field] ?? String(field), message: issue.message }];
+  })).values());
   const resetOfficialAttestation = () => {
     if (getValues("officialNameVerified")) {
       setValue("officialNameVerified", false, { shouldDirty: true, shouldValidate: true });
@@ -1196,7 +1228,9 @@ export default function App() {
                   <strong>{issueReady ? "Ready to issue." : "Complete these requirements before issuance:"}</strong>
                   {!issueReady ? (
                     <ul>
-                      {!isValid ? <li>Complete the required form fields.</li> : null}
+                      {!isValid ? formRequirements.map((requirement) => (
+                        <li key={requirement.label}><strong>{requirement.label}:</strong> {requirement.message}</li>
+                      )) : null}
                       {!identity ? <li>Generate or import a signing identity.</li> : null}
                       {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
                       {photos.length === 0 ? <li>Add at least one source-original specimen photograph.</li> : null}
