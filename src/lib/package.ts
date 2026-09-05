@@ -68,7 +68,8 @@ const METBULL_NOT_PROVIDED = "Not provided by Meteoritical Bulletin";
 
 function officialClassificationDetail(value: string, exceptionAttested: boolean): string {
   const trimmed = value.trim();
-  return trimmed && trimmed.toLowerCase() !== "unclassified" ? trimmed : exceptionAttested ? METBULL_NOT_PROVIDED : trimmed;
+  const unavailable = !trimmed || ["unclassified", "n/a", "na", "not applicable"].includes(trimmed.toLowerCase());
+  return unavailable && exceptionAttested ? METBULL_NOT_PROVIDED : trimmed;
 }
 
 function buildSpecimen(values: FormValues) {

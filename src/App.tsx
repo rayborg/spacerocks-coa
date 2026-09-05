@@ -111,12 +111,48 @@ const defaultValues: FormValues = {
   transferNotes: "",
 };
 
+interface FormPrefill {
+  values: Partial<FormValues>;
+  photoCaption: string;
+  photoCaptureDate: string;
+}
+
+function readFormPrefill(): FormPrefill {
+  const empty = { values: {}, photoCaption: "", photoCaptureDate: "" };
+  if (typeof window === "undefined") return empty;
+  const encoded = new URLSearchParams(window.location.search).get("prefill");
+  if (!encoded || encoded.length > 8192 || !/^[A-Za-z0-9_-]+$/.test(encoded)) return empty;
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(encoded.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return empty;
+    const source = parsed as Record<string, unknown>;
+    const values: Partial<FormValues> = {};
+    for (const [key, fallback] of Object.entries(defaultValues)) {
+      const value = source[key];
+      if (typeof value === typeof fallback) (values as Record<string, unknown>)[key] = value;
+    }
+    return {
+      values,
+      photoCaption: typeof source.photoCaption === "string" ? source.photoCaption.slice(0, 300) : "",
+      photoCaptureDate: typeof source.photoCaptureDate === "string" ? source.photoCaptureDate : "",
+    };
+  } catch {
+    return empty;
+  }
+}
+
 function classificationSummary(values: FormValues): string {
   if (values.meteoriteIdentity === "unclassified") {
     return values.suspectedType.trim() ? `Unclassified - suspected ${values.suspectedType.trim()}` : "Unclassified";
   }
   return [values.meteoriteType, values.classification, values.meteoriteSubclass]
-    .map((value, index) => value.trim() || (values.officialClassificationExceptionAttested && index !== 1 ? "Not separately provided in MetBull" : ""))
+    .map((value, index) => {
+      const trimmed = value.trim();
+      const unavailable = !trimmed || ["unclassified", "n/a", "na", "not applicable"].includes(trimmed.toLowerCase());
+      return unavailable && values.officialClassificationExceptionAttested && index !== 1 ? "Not separately provided in MetBull" : trimmed;
+    })
     .filter(Boolean)
     .join(" / ") || "Official classification";
 }
@@ -409,6 +445,8 @@ function PackageVerifier() {
 }
 
 export default function App() {
+  const prefill = useRef<FormPrefill>(readFormPrefill()).current;
+  const initialValues = useRef<FormValues>({ ...defaultValues, ...prefill.values }).current;
   const {
     register,
     control,
@@ -419,13 +457,13 @@ export default function App() {
     formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues,
+    defaultValues: initialValues,
     mode: "onChange",
   });
   const watchedValues = useWatch({ control });
   const meteoriteIdentity = watchedValues.meteoriteIdentity ?? defaultValues.meteoriteIdentity;
   const officialClassificationExceptionAttested = Boolean(watchedValues.officialClassificationExceptionAttested);
-  const currentValues = { ...defaultValues, ...watchedValues } as FormValues;
+  const currentValues = { ...initialValues, ...watchedValues } as FormValues;
   const previewValues = useDeferredValue(currentValues);
   const formValidation = formSchema.safeParse(currentValues);
   const formRequirements = formValidation.success ? [] : Array.from(new Map(formValidation.error.issues.map((issue) => {
@@ -693,8 +731,8 @@ export default function App() {
           id: crypto.randomUUID(),
           file,
           previewUrl,
-          caption: "",
-          captureDate: "",
+          caption: prefill.photoCaption,
+          captureDate: prefill.photoCaptureDate,
           isUnmodifiedOriginal: false,
           pixelWidth,
           pixelHeight,

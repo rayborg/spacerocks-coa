@@ -168,7 +168,7 @@ export const formSchema: z.ZodType<FormValues, FormValues> = z
     }
     const missingClassificationDetails = (["meteoriteType", "meteoriteSubclass"] as const).filter((field) => {
       const value = values[field].trim();
-      return !value || value.toLowerCase() === "unclassified";
+      return !value || ["unclassified", "n/a", "na", "not applicable"].includes(value.toLowerCase());
     });
     if (missingClassificationDetails.length && !values.officialClassificationExceptionAttested) {
       for (const field of missingClassificationDetails) {

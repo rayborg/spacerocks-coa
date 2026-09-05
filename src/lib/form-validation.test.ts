@@ -107,6 +107,10 @@ describe("formSchema", () => {
       officialClassificationExceptionAttested: true,
     })).success).toBe(true);
     expect(formSchema.safeParse(officialValues({
+      meteoriteSubclass: "N/A",
+      officialClassificationExceptionAttested: true,
+    })).success).toBe(true);
+    expect(formSchema.safeParse(officialValues({
       meteoriteType: "",
       meteoriteSubclass: "",
       officialClassificationExceptionAttested: false,
