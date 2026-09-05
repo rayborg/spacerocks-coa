@@ -448,7 +448,7 @@ test("enforces fresh official evidence across value and mode changes and validat
   await expect(page.locator('input[name="meteoriteType"]')).toHaveValue("Unclassified");
   await expect(page.locator('input[name="classification"]')).toHaveValue("Unclassified");
   await expect(page.locator('input[name="meteoriteSubclass"]')).toHaveValue("Unclassified");
-  await expect(page.getByText("Meteorite type cannot be Unclassified in official mode.")).toBeVisible();
+  await expect(page.getByText("Enter the official value or attest below that the linked MetBull entry does not provide it.").first()).toBeVisible();
 
   await page.locator('input[name="meteoriteType"]').fill("Chondrite");
   await page.locator('input[name="classification"]').fill("Carbonaceous chondrite");
