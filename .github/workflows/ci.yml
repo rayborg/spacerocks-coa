@@ -38,6 +38,7 @@ jobs:
       - name: Build with synthetic HTTPS timestamp service configuration
         env:
           VITE_TIMESTAMP_API_URL: https://timestamp-api.example.test/api
+          VITE_METBULL_LOOKUP_ENABLED: "true"
         run: npm run build
 
   browser:
@@ -81,6 +82,7 @@ jobs:
       - name: Run mocked timestamp browser suite with synthetic HTTPS API
         env:
           VITE_TIMESTAMP_API_URL: https://timestamp-api.example.test/api
+          VITE_METBULL_LOOKUP_ENABLED: "true"
         run: npm run test:e2e -- --project=${{ matrix.project }} tests/e2e/timestamp-service.spec.ts
 
   backend:

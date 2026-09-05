@@ -20,6 +20,8 @@ import {
 import PaidTimestampPanel from "./components/PaidTimestampPanel";
 import { createTimestampService, MetbullLookupError, timestampServiceConfig } from "./lib/timestamp-service";
 import { formSchema } from "./lib/form-validation";
+
+const metbullLookupEnabled = Boolean(timestampServiceConfig) && import.meta.env.VITE_METBULL_LOOKUP_ENABLED === "true";
 import {
   analyzePhotoDimensions,
   describePhotoAnalysis,
@@ -525,7 +527,7 @@ export default function App() {
   };
 
   const lookupMetbull = async () => {
-    if (!timestampServiceConfig) return;
+    if (!timestampServiceConfig || !metbullLookupEnabled) return;
     const code = getValues("metbullCode").trim();
     cancelMetbullLookup();
     const controller = new AbortController();
@@ -968,7 +970,7 @@ export default function App() {
                       <Field label="Official Meteoritical Bulletin URL" wide error={errors.officialReferenceUrl?.message}>
                         <input required aria-required="true" type="url" placeholder="https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345" {...register("officialReferenceUrl", { onChange: metbullSourceChanged })} />
                       </Field>
-                      {timestampServiceConfig ? (
+                      {metbullLookupEnabled ? (
                         <div className="metbull-lookup field--wide">
                           <button type="button" className="button button--outline button--small" disabled={metbullBusy} onClick={() => void lookupMetbull()}>
                             {metbullBusy ? "Looking up official record..." : "Fill from Meteoritical Bulletin"}
