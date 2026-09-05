@@ -9,6 +9,7 @@ __pycache__
 *.pem
 *.key
 *.sqlite*
+!app/metbull/data/metbull.sqlite3
 tests
 contracts
 compose.yaml
