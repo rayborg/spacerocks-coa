@@ -17,9 +17,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.config.settings import PaymentMode
-from app.db.models import DurableJob, Order, ProofVersion, StateEvent, StripeEvent
+from app.db.models import DurableJob, Order, ProofVersion, StateEvent, StripeEvent, TaskDispatch
 from app.payments.gateway import PaymentProviderError, PaymentSignatureError, StripePaymentProvider
 from app.payments.models import CanonicalCheckout, HostedCheckoutRequest
+from app.tasks.dispatch import TaskDispatchCoordinator
 
 FID_FRAGMENT = "fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8"
 
@@ -122,8 +123,44 @@ def test_verified_completed_event_queues_exactly_one_job_and_duplicates_are_safe
         assert order.payment_state == "paid"
         assert order.fulfillment_state == "queued"
         assert order.payment_intent_id == "pi_fixture_001"
-        assert session.scalar(select(func.count()).select_from(DurableJob)) == 1
+        job = session.scalar(select(DurableJob))
+        assert job is not None
         assert session.scalar(select(func.count()).select_from(StripeEvent)) == 1
+        dispatch = session.scalar(select(TaskDispatch))
+        assert dispatch is not None and dispatch.state == "pending"
+        assert dispatch.job_id == job.id
+        assert dispatch.task_name == f"timestamp-{job.id.hex}-g1"
+
+
+def test_paid_webhook_recovers_committed_dispatch_after_cloud_tasks_outage(app_factory: Any) -> None:
+    class RecoveringCreator:
+        def __init__(self) -> None:
+            self.available = False
+            self.calls: list[bytes] = []
+
+        async def create(self, _task_name: str, payload: bytes, _schedule_at: object) -> None:
+            self.calls.append(payload)
+            if not self.available:
+                raise OSError("task service unavailable")
+
+    context: ServiceContext = app_factory()
+    creator = RecoveringCreator()
+    context.app.state.services.task_dispatch = TaskDispatchCoordinator(context.session_factory, creator)
+    with TestClient(context.app) as client:
+        create_checkout(client)
+        _canonical(context)
+        body, signature = _event(context, "checkout.session.completed", "evt_dispatch_recovery")
+        first = _post_event(client, body, signature)
+        creator.available = True
+        duplicate = _post_event(client, body, signature)
+    assert first.status_code == 503
+    assert duplicate.status_code == 200 and duplicate.json()["duplicate"] is True
+    with context.session_factory() as session:
+        order = session.scalar(select(Order))
+        dispatch = session.scalar(select(TaskDispatch))
+        assert order is not None and order.payment_state == "paid"
+        assert dispatch is not None and dispatch.state == "dispatched"
+        assert all(b"@" not in payload and b"token" not in payload.lower() for payload in creator.calls)
 
 
 def test_exact_duplicate_avoids_provider_outage_but_tampered_event_id_is_rejected(app_factory: Any) -> None:

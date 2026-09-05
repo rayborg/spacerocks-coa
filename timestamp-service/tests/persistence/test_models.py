@@ -85,6 +85,7 @@ def test_model_metadata_contains_durable_history_tables() -> None:
         "notification_attempts",
         "resend_webhook_events",
         "bitcoin_confirmation_observations",
+        "task_dispatches",
     }
     assert expected == set(Base.metadata.tables)
     assert OrderToken.__table__.c.token_hash.type.length == 32

@@ -6,7 +6,7 @@ import secrets
 from datetime import UTC, datetime
 from typing import Annotated, Never, cast
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from app.api.schemas import (
     CheckoutPriceResponse,
     CheckoutRequest,
     CheckoutResponse,
+    MetbullRecordResponse,
     OrderStatusResponse,
     RotateTokenResponse,
 )
@@ -29,6 +30,7 @@ from app.db.models import (
 from app.db.repositories import OrderStore
 from app.domain.digest import ManifestDigest
 from app.domain.identifiers import CertificateReference, OrderReference
+from app.metbull import MetbullLookup, MetbullNotFound, MetbullNotOfficial, MetbullUnavailable
 from app.payments.gateway import PaymentProviderError, PaymentSignatureError
 from app.payments.service import (
     CheckoutInProgress,
@@ -40,8 +42,31 @@ from app.payments.service import (
 )
 from app.ports.proof import ProofBundleContext, ProofBundler, ProofState, StoredProof
 from app.security.idempotency import bind_idempotency_request
+from app.tasks.dispatch import TaskDispatchCoordinator, TaskDispatchUnavailable
 
 router = APIRouter()
+
+
+@router.get("/v1/meteorites/metbull", response_model=MetbullRecordResponse)
+async def metbull_record(
+    request: Request,
+    code: Annotated[str, Query(pattern=r"^[1-9][0-9]{0,8}$")],
+) -> MetbullRecordResponse:
+    if list(request.query_params.multi_items()) != [("code", code)]:
+        raise HTTPException(status_code=422, detail="invalid request")
+    services = request.app.state.services
+    lookup: MetbullLookup | None = services.metbull_lookup
+    if not services.settings.metbull_lookup_enabled or lookup is None:
+        raise HTTPException(status_code=503, detail="meteorite lookup unavailable")
+    try:
+        record = await lookup.lookup(int(code))
+        return MetbullRecordResponse.model_validate(record, from_attributes=True)
+    except MetbullNotFound as error:
+        raise HTTPException(status_code=404, detail="meteorite record not found") from error
+    except MetbullNotOfficial as error:
+        raise HTTPException(status_code=409, detail="meteorite name is not official") from error
+    except (MetbullUnavailable, ValueError) as error:
+        raise HTTPException(status_code=503, detail="meteorite lookup unavailable") from error
 
 
 @router.get("/v1/checkout/price", response_model=CheckoutPriceResponse)
@@ -120,6 +145,12 @@ async def stripe_webhook(
         raise HTTPException(status_code=400, detail="invalid webhook") from error
     if not result.accepted:
         raise HTTPException(status_code=400, detail="invalid webhook")
+    task_dispatch: TaskDispatchCoordinator | None = services.task_dispatch
+    if task_dispatch is not None:
+        try:
+            await task_dispatch.reconcile(limit=100)
+        except TaskDispatchUnavailable as error:
+            raise HTTPException(status_code=503, detail="webhook temporarily unavailable") from error
     return JSONResponse({"received": True, "duplicate": result.duplicate})
 
 

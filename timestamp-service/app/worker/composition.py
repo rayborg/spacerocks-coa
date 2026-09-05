@@ -9,6 +9,7 @@ from typing import Protocol
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.bitcoin.disabled import DisabledVerifier
+from app.bitcoin.esplora import EsploraBitcoinVerifier, EsploraConfiguration
 from app.bitcoin.rpc import BitcoinCoreRpcTransport, BitcoinCoreRpcVerifier
 from app.config.settings import AppEnvironment, BitcoinMode, CalendarMode, Settings
 from app.db.fulfillment_adapters import SqlFulfillmentAdapters, create_sql_fulfillment_adapters
@@ -23,6 +24,8 @@ from app.ports.bitcoin import BitcoinVerifier
 from app.ports.system import Clock, RandomSource
 from app.ports.timestamping import Timestamper
 from app.proofs.factory import create_proof_bundler
+from app.tasks.composition import create_task_dispatch
+from app.tasks.dispatch import TaskDispatchCoordinator
 from app.timestamping.calendars import CalendarConfiguration, HardenedCalendarTransport, MultiCalendarTimestamper
 from app.timestamping.fixture import DisabledTimestamper, FixtureTimestamper
 from app.worker.runner import JobHandler, Worker
@@ -146,10 +149,12 @@ def build_worker(
     random: RandomSource | None = None,
     timestamper: Timestamper | None = None,
     bitcoin: BitcoinVerifier | None = None,
+    task_dispatch: TaskDispatchCoordinator | None = None,
 ) -> Worker:
     if (timestamper is not None or bitcoin is not None) and settings.app_env != AppEnvironment.TEST:
         raise RuntimeError("worker_adapter_override_forbidden")
-    adapters = create_sql_fulfillment_adapters(session_factory)
+    configured_task_dispatch = task_dispatch or create_task_dispatch(settings, session_factory)
+    adapters = create_sql_fulfillment_adapters(session_factory, configured_task_dispatch)
     configured_clock = clock or SystemClock()
     configured_timestamper = timestamper or _timestamper(settings)
     configured_bitcoin = bitcoin or _bitcoin_verifier(settings)
@@ -245,4 +250,12 @@ def _bitcoin_verifier(settings: Settings) -> BitcoinVerifier:
             timeout_seconds=settings.bitcoin_rpc_timeout_seconds,
         )
         return BitcoinCoreRpcVerifier(transport, minimum_confirmations=1)
+    if settings.bitcoin_verifier == BitcoinMode.ESPLORA:
+        return EsploraBitcoinVerifier(
+            EsploraConfiguration(
+                tuple(settings.esplora_provider_urls),
+                timeout_seconds=settings.esplora_timeout_seconds,
+                minimum_confirmations=1,
+            )
+        )
     return DisabledVerifier()

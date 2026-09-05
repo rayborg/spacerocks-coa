@@ -10,12 +10,14 @@ def test_runtime_and_test_dependencies_import() -> None:
     import sqlalchemy
     import stripe
     import uvicorn
+    from google.cloud import tasks_v2
 
     assert all(
         module is not None
         for module in (
             alembic,
             fastapi,
+            tasks_v2,
             httpx,
             jsonschema,
             opentimestamps,

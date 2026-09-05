@@ -11,7 +11,18 @@ from app.config.settings import (
     ResendSenderMode,
     ResendWebhookMode,
     Settings,
+    TaskDispatchMode,
 )
+
+TASK_CONFIGURATION = {
+    "task_dispatch_mode": "cloud_tasks",
+    "cloud_tasks_project": "timestamp-project",
+    "cloud_tasks_location": "us-central1",
+    "cloud_tasks_queue": "timestamp-jobs",
+    "cloud_tasks_worker_url": "https://timestamp-worker.example.run.app/internal/tasks/run",
+    "cloud_tasks_service_account_email": "timestamp-tasks@timestamp-project.iam.gserviceaccount.com",
+    "cloud_tasks_audience": "https://timestamp-worker.example.run.app/",
+}
 
 
 def test_defaults_are_inert_and_secret_free() -> None:
@@ -101,6 +112,7 @@ def test_explicit_stripe_test_configuration_is_accepted_without_secret_repr() ->
         stripe_price_id="price_test",
         checkout_success_url="https://coa.example.test/timestamp/status",
         checkout_cancel_url="https://coa.example.test/timestamp/cancelled",
+        **TASK_CONFIGURATION,
     )
     rendered = repr(settings)
     assert "password" not in rendered
@@ -143,11 +155,53 @@ def test_explicit_stripe_live_public_calendar_and_bitcoin_core_configuration_is_
         product_version="managed-timestamp-v1",
         expected_terms_version="2026-08-v1",
         expected_privacy_version="2026-08-v1",
+        **TASK_CONFIGURATION,
     )
     assert settings.payment_mode == PaymentMode.STRIPE_LIVE
     assert settings.checkout_enabled is False
     assert settings.calendar_mode == CalendarMode.PUBLIC
     assert settings.bitcoin_verifier == BitcoinMode.BITCOIN_CORE
+    assert settings.task_dispatch_mode == TaskDispatchMode.CLOUD_TASKS
+
+
+def test_remote_paid_mode_without_complete_task_dispatch_fails_closed() -> None:
+    values: dict[str, object] = {
+        "app_env": "staging",
+        "payment_mode": "stripe_test",
+        "stripe_test_enabled": True,
+        "stripe_secret_key": "rk_test_do_not_use",
+        "stripe_webhook_secret": "whsec_do_not_use",
+        "stripe_price_id": "price_test",
+        "checkout_success_url": "https://coa.example.test/timestamp/status",
+        "checkout_cancel_url": "https://coa.example.test/timestamp/cancelled",
+        "database_url": "postgresql://user:password@db/test",
+        "allowed_origins": ["https://coa.example.test"],
+        "token_peppers": {1: SecretStr("p" * 32)},
+        "active_token_pepper_version": 1,
+    }
+    with pytest.raises(ValidationError, match="Cloud Tasks"):
+        Settings(_env_file=None, **values)
+    with pytest.raises(ValidationError, match="complete queue"):
+        Settings(_env_file=None, **values, task_dispatch_mode="cloud_tasks")
+
+
+def test_esplora_requires_two_providers_and_exactly_one_initial_confirmation() -> None:
+    base: dict[str, object] = {
+        "app_env": "staging",
+        "database_url": "postgresql://user:password@db/test",
+        "bitcoin_verifier": "esplora",
+        "esplora_provider_urls": [
+            "https://esplora-one.example/api/",
+            "https://esplora-two.example/api/",
+        ],
+    }
+    settings = Settings(_env_file=None, **base)
+    assert settings.bitcoin_verifier == BitcoinMode.ESPLORA
+    assert settings.esplora_minimum_confirmations == 1
+    with pytest.raises(ValidationError, match="exactly_two"):
+        Settings(_env_file=None, **{**base, "esplora_provider_urls": ["https://one.example/api/"]})
+    with pytest.raises(ValidationError, match="exactly one"):
+        Settings(_env_file=None, **{**base, "esplora_minimum_confirmations": 6})
 
 
 @pytest.mark.parametrize(

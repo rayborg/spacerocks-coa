@@ -31,6 +31,7 @@ from app.fulfillment.ports import FulfillmentOrder
 from app.ports.bitcoin import BitcoinVerification
 from app.ports.notifications import OutboxMessage
 from app.ports.proof import MAX_PROOF_BYTES, ProofState, StoredProof
+from app.tasks.dispatch import TaskDispatchCoordinator
 
 if TYPE_CHECKING:
     from app.fulfillment.ports import BundleRepository, FulfillmentRepository, VerificationRepository
@@ -489,7 +490,10 @@ class SqlFulfillmentAdapters:
     jobs: SqlJobClaimStore
 
 
-def create_sql_fulfillment_adapters(session_factory: sessionmaker[Session]) -> SqlFulfillmentAdapters:
+def create_sql_fulfillment_adapters(
+    session_factory: sessionmaker[Session],
+    task_dispatch: TaskDispatchCoordinator | None = None,
+) -> SqlFulfillmentAdapters:
     return SqlFulfillmentAdapters(
         orders=SqlFulfillmentRepository(session_factory),
         proofs=SqlProofStore(session_factory),
@@ -497,7 +501,7 @@ def create_sql_fulfillment_adapters(session_factory: sessionmaker[Session]) -> S
         bundles=SqlBundleRepository(session_factory),
         observations=SqlBitcoinConfirmationObservations(session_factory),
         outbox=SqlNotificationOutbox(session_factory),
-        jobs=SqlJobClaimStore(session_factory),
+        jobs=SqlJobClaimStore(session_factory, task_dispatch),
     )
 
 

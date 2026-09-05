@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import re
+from datetime import timedelta
 from typing import Protocol, cast
 
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
@@ -16,6 +17,10 @@ class OperatorCommands(Protocol):
     async def upgrade(self, order_id: str) -> None: ...
 
     async def purge_synthetic(self, order_id: str, *, preserve_proofs: bool) -> None: ...
+
+    async def reconcile_tasks(self, limit: int) -> tuple[int, int]: ...
+
+    async def recover_stale_tasks(self, limit: int, stale_grace: timedelta) -> tuple[int, int]: ...
 
 
 def opaque_id(value: str) -> str:

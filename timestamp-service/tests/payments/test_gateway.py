@@ -26,6 +26,12 @@ from app.payments.models import HostedCheckoutRequest, ProviderEvent
 from app.payments.service import _validate_checkout_url
 
 FID_FRAGMENT = "fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8"
+LIVE_FID_FRAGMENT = (
+    "fidnandh28WzKEwxDJq6OPSAJem0b~9MU3F7.~Go8geev7IvK4UbYMWGOcVNj%2Fv_o~5k-E9H.NPFThwi8IvU0X0KfQf8D23F1"
+    "Py~G4xwKrPozyr_EFogFUBqMHX3R8v4Tq12RhZ~ljShj8haHBP%3DKXtfEK53eEB4gjsIDULNsS5.hg_b6nItZgMlJtLJ8OjvG8qyiMZe"
+    "KrmFdHVRncBr4qEDn-fQme7N8Y~Gp1A8G%2BIowbfCQx1rFzfrk66tF925t8ZQQS3wzWzBhoGLjzHlrxhPjnqt1GDeByf.nAnYZJGuVc"
+    "EDAs86W53BNuHp0Yq%7E0LOTgUMGl0xMIKptpvSO72bKm7PhlUWczgMfFudH2nHT"
+)
 
 
 def _request() -> HostedCheckoutRequest:
@@ -364,6 +370,16 @@ def test_checkout_url_accepts_exact_session_path_without_optional_fragment() -> 
     )
 
 
+def test_checkout_url_accepts_live_style_percent_encoded_fid_fragment() -> None:
+    session_id = "cs_live_a1SafeSession9"
+    assert len(LIVE_FID_FRAGMENT) == 372
+    _validate_checkout_url(
+        f"https://checkout.stripe.com/c/pay/{session_id}#{LIVE_FID_FRAGMENT}",
+        session_id,
+        PaymentMode.STRIPE_LIVE,
+    )
+
+
 @pytest.mark.parametrize(
     ("checkout_url", "session_id", "payment_mode"),
     [
@@ -424,6 +440,26 @@ def test_checkout_url_accepts_exact_session_path_without_optional_fragment() -> 
         ),
         (
             "https://checkout.stripe.com/c/pay/cs_test_safe#fidshort",
+            "cs_test_safe",
+            PaymentMode.STRIPE_TEST,
+        ),
+        (
+            "https://checkout.stripe.com/c/pay/cs_test_safe#fidValidFragmentValue%",
+            "cs_test_safe",
+            PaymentMode.STRIPE_TEST,
+        ),
+        (
+            "https://checkout.stripe.com/c/pay/cs_test_safe#fidValidFragmentValue%2",
+            "cs_test_safe",
+            PaymentMode.STRIPE_TEST,
+        ),
+        (
+            "https://checkout.stripe.com/c/pay/cs_test_safe#fidValidFragmentValue%GG",
+            "cs_test_safe",
+            PaymentMode.STRIPE_TEST,
+        ),
+        (
+            "https://checkout.stripe.com/c/pay/cs_test_safe#fidValidFragmentValue%2G",
             "cs_test_safe",
             PaymentMode.STRIPE_TEST,
         ),

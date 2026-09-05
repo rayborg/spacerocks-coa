@@ -36,6 +36,12 @@ class BitcoinMode(StrEnum):
     DISABLED = "disabled"
     FIXTURE = "fixture"
     BITCOIN_CORE = "bitcoin_core"
+    ESPLORA = "esplora"
+
+
+class TaskDispatchMode(StrEnum):
+    DISABLED = "disabled"
+    CLOUD_TASKS = "cloud_tasks"
 
 
 class ResendSenderMode(StrEnum):
@@ -63,6 +69,8 @@ class Settings(BaseSettings):
     calendar_mode: CalendarMode = CalendarMode.DISABLED
     resend_sender_mode: ResendSenderMode = ResendSenderMode.DISABLED
     resend_webhook_mode: ResendWebhookMode = ResendWebhookMode.DISABLED
+    task_dispatch_mode: TaskDispatchMode = TaskDispatchMode.DISABLED
+    metbull_lookup_enabled: bool = False
     allowed_origins: list[str] = Field(default_factory=list)
     database_url: SecretStr | None = None
     token_peppers: dict[int, SecretStr] = Field(default_factory=dict, repr=False)
@@ -90,11 +98,21 @@ class Settings(BaseSettings):
     bitcoin_rpc_username: SecretStr | None = Field(default=None, repr=False)
     bitcoin_rpc_password: SecretStr | None = Field(default=None, repr=False)
     bitcoin_rpc_timeout_seconds: float = 5.0
+    esplora_provider_urls: list[str] = Field(default_factory=list)
+    esplora_timeout_seconds: float = 5.0
+    esplora_minimum_confirmations: int = 1
+    cloud_tasks_project: str | None = None
+    cloud_tasks_location: str | None = None
+    cloud_tasks_queue: str | None = None
+    cloud_tasks_worker_url: str | None = None
+    cloud_tasks_service_account_email: str | None = None
+    cloud_tasks_audience: str | None = None
     resend_api_key: SecretStr | None = Field(default=None, repr=False)
     resend_sender: str | None = None
     resend_api_timeout_seconds: float = 10.0
     resend_webhook_secret: SecretStr | None = Field(default=None, repr=False)
     resend_webhook_tolerance_seconds: int = 300
+    metbull_timeout_seconds: float = 8.0
     trusted_proxy_ips: list[str] = Field(default_factory=list)
     checkout_rate_limit: int = 10
     checkout_price_rate_limit: int = 60
@@ -103,6 +121,7 @@ class Settings(BaseSettings):
     status_rate_limit: int = 60
     proof_rate_limit: int = 20
     rotation_rate_limit: int = 5
+    metbull_rate_limit: int = 30
 
     @field_validator("allowed_origins")
     @classmethod
@@ -220,6 +239,8 @@ class Settings(BaseSettings):
                 raise ValueError("Stripe test and live gates cannot both be enabled")
             if not live and self.stripe_live_enabled:
                 raise ValueError("Stripe test and live gates cannot both be enabled")
+            if remote_environment and self.task_dispatch_mode != TaskDispatchMode.CLOUD_TASKS:
+                raise ValueError("remote paid modes require Cloud Tasks dispatch")
         elif any(
             (
                 self.stripe_secret_key,
@@ -260,8 +281,64 @@ class Settings(BaseSettings):
                 password,
                 timeout_seconds=self.bitcoin_rpc_timeout_seconds,
             )
+        elif self.bitcoin_verifier == BitcoinMode.ESPLORA:
+            if not remote_environment:
+                raise ValueError("Esplora requires staging or production")
+            from app.bitcoin.esplora import EsploraConfiguration
+
+            EsploraConfiguration(
+                tuple(self.esplora_provider_urls),
+                timeout_seconds=self.esplora_timeout_seconds,
+                minimum_confirmations=self.esplora_minimum_confirmations,
+            ).validated_urls()
+            if self.esplora_minimum_confirmations != 1:
+                raise ValueError("initial Esplora verification requires exactly one confirmation")
         elif any((self.bitcoin_rpc_url, self.bitcoin_rpc_username, self.bitcoin_rpc_password)):
             raise ValueError("Bitcoin RPC configuration is forbidden unless Bitcoin Core is enabled")
+        if self.bitcoin_verifier != BitcoinMode.ESPLORA and self.esplora_provider_urls:
+            raise ValueError("Esplora providers are forbidden unless Esplora is enabled")
+
+        task_values = (
+            self.cloud_tasks_project,
+            self.cloud_tasks_location,
+            self.cloud_tasks_queue,
+            self.cloud_tasks_worker_url,
+            self.cloud_tasks_service_account_email,
+            self.cloud_tasks_audience,
+        )
+        if self.task_dispatch_mode == TaskDispatchMode.CLOUD_TASKS:
+            if self.database_url is None or any(value is None for value in task_values):
+                raise ValueError("Cloud Tasks dispatch requires database and complete queue configuration")
+            safe_resource = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
+            if any(
+                safe_resource.fullmatch(value or "") is None
+                for value in (self.cloud_tasks_project, self.cloud_tasks_location, self.cloud_tasks_queue)
+            ):
+                raise ValueError("Cloud Tasks resource identifiers are invalid")
+            service_account_pattern = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.iam\.gserviceaccount\.com"
+            if re.fullmatch(service_account_pattern, self.cloud_tasks_service_account_email or "") is None:
+                raise ValueError("Cloud Tasks service account email is invalid")
+            worker = urlsplit(self.cloud_tasks_worker_url or "")
+            audience = urlsplit(self.cloud_tasks_audience or "")
+            if (
+                worker.scheme != "https"
+                or not worker.hostname
+                or worker.username is not None
+                or worker.password is not None
+                or worker.query
+                or worker.fragment
+                or worker.path != "/internal/tasks/run"
+                or audience.scheme != "https"
+                or not audience.hostname
+                or audience.username is not None
+                or audience.password is not None
+                or audience.path not in {"", "/"}
+                or audience.query
+                or audience.fragment
+            ):
+                raise ValueError("Cloud Tasks worker URL or audience is invalid")
+        elif any(task_values):
+            raise ValueError("Cloud Tasks configuration is forbidden unless dispatch is enabled")
 
         if self.resend_sender_mode == ResendSenderMode.RESEND:
             api_key = self.resend_api_key.get_secret_value() if self.resend_api_key else ""
@@ -295,6 +372,7 @@ class Settings(BaseSettings):
             self.status_rate_limit,
             self.proof_rate_limit,
             self.rotation_rate_limit,
+            self.metbull_rate_limit,
         )
         if any(limit < 1 for limit in limits):
             raise ValueError("rate limits must be positive")
@@ -308,8 +386,12 @@ class Settings(BaseSettings):
             raise ValueError("calendar timeout must be between 0.1 and 30 seconds")
         if not 0.1 <= self.bitcoin_rpc_timeout_seconds <= 30.0:
             raise ValueError("Bitcoin RPC timeout must be between 0.1 and 30 seconds")
+        if not 0.1 <= self.esplora_timeout_seconds <= 30.0:
+            raise ValueError("Esplora timeout must be between 0.1 and 30 seconds")
         if not 0.1 <= self.resend_api_timeout_seconds <= 30.0:
             raise ValueError("Resend API timeout must be between 0.1 and 30 seconds")
+        if not 0.1 <= self.metbull_timeout_seconds <= 30.0:
+            raise ValueError("Meteoritical Bulletin timeout must be between 0.1 and 30 seconds")
         if not 1 <= self.resend_webhook_tolerance_seconds <= 900:
             raise ValueError("Resend webhook tolerance must be between 1 and 900 seconds")
         return self

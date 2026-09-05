@@ -50,8 +50,8 @@ class Claims:
         self.claimed = True
         return self.job
 
-    async def heartbeat(self, job_id: str, worker_id: str, lease_until: datetime) -> bool:
-        del job_id, worker_id, lease_until
+    async def heartbeat(self, job_id: str, worker_id: str, attempt: int, lease_until: datetime) -> bool:
+        del job_id, worker_id, attempt, lease_until
         self.heartbeat_count += 1
         return self.heartbeat_result
 

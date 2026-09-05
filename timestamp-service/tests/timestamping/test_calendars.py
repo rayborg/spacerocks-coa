@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import ssl
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import httpx
@@ -25,6 +27,14 @@ from app.timestamping.detached import deserialize_exact_proof, new_detached_exac
 TLS_FIXTURES = Path(__file__).with_name("fixtures")
 TLS_CERTIFICATE = TLS_FIXTURES / "calendar-a-cert.pem"
 TLS_PRIVATE_KEY = TLS_FIXTURES / "calendar-a-key.pem"
+
+
+class AsyncBytesStream(httpx.AsyncByteStream):
+    def __init__(self, content: bytes) -> None:
+        self.content = content
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield self.content
 
 
 def _response(message: bytes, uri: str) -> bytes:
@@ -132,7 +142,10 @@ async def test_calendar_concurrency_and_upgrade_fanout_are_bounded_before_reques
     (
         "https://user:password@calendar-a.example/",
         "https://127.0.0.1/",
+        "https://224.0.0.251/",
         "https://[2001:db8::1]/",
+        "https://[ff02::1]/",
+        "https://[fec0::1]/",
         "https://calendar-a.example/?redirect=https://private.invalid/",
         "https://calendar-a.example/#fragment",
         "https://calendar-a.example\\@private.invalid/",
@@ -147,14 +160,24 @@ def test_calendar_url_validation_rejects_ambiguous_or_non_hostname_targets(inval
 @pytest.mark.asyncio
 async def test_hardened_transport_pins_public_ip_but_preserves_host_and_sni() -> None:
     observed: list[httpx.Request] = []
+    resolutions = 0
 
     async def resolve(hostname: str, port: int) -> tuple[str, ...]:
+        nonlocal resolutions
         assert (hostname, port) == ("calendar-a.example", 443)
+        resolutions += 1
+        if resolutions > 1:
+            return ("127.0.0.1",)
         return ("93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946")
 
     def respond(request: httpx.Request) -> httpx.Response:
         observed.append(request)
-        return httpx.Response(200, content=b"calendar-response")
+        return httpx.Response(
+            200,
+            headers={"content-encoding": "identity"},
+            stream=AsyncBytesStream(b"calendar-response"),
+            request=request,
+        )
 
     transport = HardenedCalendarTransport(
         1.0,
@@ -163,15 +186,30 @@ async def test_hardened_transport_pins_public_ip_but_preserves_host_and_sni() ->
     )
     result = await transport.submit("https://calendar-a.example/ots/", b"a" * 32)
     assert result == b"calendar-response"
+    assert resolutions == 1
     assert len(observed) == 1
     assert observed[0].url == httpx.URL("https://93.184.216.34/ots/digest")
     assert observed[0].headers["host"] == "calendar-a.example"
+    assert observed[0].headers["accept-encoding"] == "identity"
     assert observed[0].extensions["sni_hostname"] == "calendar-a.example"
     assert observed[0].content == b"a" * 32
 
 
 @pytest.mark.asyncio
-async def test_hardened_transport_rejects_mixed_or_private_dns_before_request() -> None:
+@pytest.mark.parametrize(
+    "addresses",
+    [
+        ("127.0.0.1",),
+        ("224.0.0.251",),
+        ("ff02::1",),
+        ("fec0::1",),
+        ("93.184.216.34", "10.0.0.2"),
+        ("93.184.216.34", "224.0.0.251"),
+    ],
+)
+async def test_hardened_transport_rejects_non_unicast_or_mixed_dns_before_request(
+    addresses: tuple[str, ...],
+) -> None:
     requests = 0
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -179,14 +217,13 @@ async def test_hardened_transport_rejects_mixed_or_private_dns_before_request() 
         requests += 1
         return httpx.Response(200, content=b"unexpected")
 
-    for addresses in (("93.184.216.34", "10.0.0.2"), ("127.0.0.1",)):
-        async def resolve(hostname: str, port: int, snapshot: tuple[str, ...] = addresses) -> tuple[str, ...]:
-            del hostname, port
-            return snapshot
+    async def resolve(hostname: str, port: int) -> tuple[str, ...]:
+        del hostname, port
+        return addresses
 
-        transport = HardenedCalendarTransport(1.0, resolver=resolve, transport=httpx.MockTransport(respond))
-        with pytest.raises(CalendarUnavailable, match="dns_address_not_public"):
-            await transport.submit("https://calendar-a.example/", b"b" * 32)
+    transport = HardenedCalendarTransport(1.0, resolver=resolve, transport=httpx.MockTransport(respond))
+    with pytest.raises(CalendarUnavailable, match="dns_address_not_public"):
+        await transport.submit("https://calendar-a.example/", b"b" * 32)
     assert requests == 0
 
 
@@ -207,7 +244,13 @@ async def test_hardened_transport_rejects_redirects_and_oversized_responses() ->
     oversized = HardenedCalendarTransport(
         1.0,
         resolver=resolve,
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"x" * 10_001)),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                stream=AsyncBytesStream(b"x" * 10_001),
+                request=request,
+            )
+        ),
     )
     with pytest.raises(CalendarUnavailable, match="response_invalid"):
         await oversized.upgrade("https://calendar-a.example/", b"d" * 32)
@@ -218,6 +261,66 @@ async def test_hardened_transport_rejects_redirects_and_oversized_responses() ->
         transport=httpx.MockTransport(lambda request: httpx.Response(404)),
     )
     assert await not_ready.upgrade("https://calendar-a.example/", b"d" * 32) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content_encoding", ["gzip", "br", "identity, gzip"])
+async def test_hardened_transport_rejects_non_identity_content_encoding(content_encoding: str) -> None:
+    async def resolve(hostname: str, port: int) -> tuple[str, ...]:
+        del hostname, port
+        return ("93.184.216.34",)
+
+    transport = HardenedCalendarTransport(
+        1.0,
+        resolver=resolve,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                headers={"content-encoding": content_encoding},
+                stream=AsyncBytesStream(b"calendar-response"),
+                request=request,
+            )
+        ),
+    )
+    with pytest.raises(CalendarUnavailable, match="response_encoding_invalid"):
+        await transport.submit("https://calendar-a.example/", b"e" * 32)
+
+
+@pytest.mark.asyncio
+async def test_hardened_transport_rejects_compressed_bomb_before_body_iteration() -> None:
+    compressed_bomb = gzip.compress(b"x" * (10_000 * 100))
+    assert len(compressed_bomb) < 10_000
+
+    class BombStream(httpx.AsyncByteStream):
+        def __init__(self) -> None:
+            self.iterated = False
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            self.iterated = True
+            yield compressed_bomb
+
+    stream = BombStream()
+
+    async def resolve(hostname: str, port: int) -> tuple[str, ...]:
+        del hostname, port
+        return ("93.184.216.34",)
+
+    transport = HardenedCalendarTransport(
+        1.0,
+        resolver=resolve,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                headers={"content-encoding": "gzip"},
+                stream=stream,
+                request=request,
+            )
+        ),
+    )
+    with pytest.raises(CalendarUnavailable, match="response_encoding_invalid"):
+        await transport.submit("https://calendar-a.example/", b"f" * 32)
+
+    assert not stream.iterated
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,7 @@ from app.db.models import (
     ProofBundle,
     ProofVerification,
     ProofVersion,
+    TaskDispatch,
 )
 from app.db.models import OutboxMessage as OutboxRecord
 from app.db.session import create_session_factory
@@ -226,6 +227,21 @@ async def test_sql_worker_chain_is_durable_exact_and_schema_valid(sql_runtime) -
             "monitor_bitcoin_confirmations",
         }
         assert all(job.state == JobState.COMPLETE.value for job in jobs)
+        dispatched_successors = session.execute(
+            select(DurableJob.kind, TaskDispatch.schedule_at, TaskDispatch.task_name)
+            .join(TaskDispatch, TaskDispatch.job_id == DurableJob.id)
+            .order_by(TaskDispatch.schedule_at, TaskDispatch.task_name)
+        ).all()
+        assert {kind for kind, _schedule, _name in dispatched_successors} == {
+            "upgrade_timestamp",
+            "deliver_timestamp",
+            "monitor_bitcoin_confirmations",
+        }
+        schedule_by_kind = {kind: schedule.replace(tzinfo=UTC) for kind, schedule, _name in dispatched_successors}
+        assert schedule_by_kind["upgrade_timestamp"] == NOW
+        assert schedule_by_kind["deliver_timestamp"] == NOW
+        assert schedule_by_kind["monitor_bitcoin_confirmations"] == NOW + timedelta(minutes=15)
+        assert len({name for _kind, _schedule, name in dispatched_successors}) == 3
 
     operator = SqlOperatorCommands(settings, factory, adapters)
     await operator.reverify(str(order_id), "request-a")

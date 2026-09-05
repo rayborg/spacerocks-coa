@@ -136,6 +136,7 @@ class HardenedCalendarTransport:
             headers={
                 "Host": hostname,
                 "Accept": "application/vnd.opentimestamps.v1",
+                "Accept-Encoding": "identity",
                 "Content-Type": "application/x-www-form-urlencoded",
             },
             content=content,
@@ -155,10 +156,13 @@ class HardenedCalendarTransport:
                         return None
                     if response.status_code != 200:
                         raise CalendarUnavailable("calendar_http_response_invalid")
-                    async for chunk in response.aiter_bytes():
-                        body.extend(chunk)
-                        if len(body) > CALENDAR_RESPONSE_LIMIT:
+                    content_encoding = response.headers.get("content-encoding")
+                    if content_encoding is not None and content_encoding.strip().lower() != "identity":
+                        raise CalendarUnavailable("calendar_response_encoding_invalid")
+                    async for chunk in response.aiter_raw():
+                        if len(chunk) > CALENDAR_RESPONSE_LIMIT - len(body):
                             raise CalendarUnavailable("calendar_response_invalid")
+                        body.extend(chunk)
                 finally:
                     await response.aclose()
         except CalendarUnavailable:
@@ -185,12 +189,25 @@ def _vetted_public_addresses(addresses: tuple[str, ...]) -> tuple[str, ...]:
             address = ipaddress.ip_address(raw_address)
         except ValueError as exc:
             raise CalendarUnavailable("calendar_dns_address_invalid") from exc
-        if not address.is_global:
+        if not _is_globally_routable_unicast(address):
             raise CalendarUnavailable("calendar_dns_address_not_public")
         value = address.compressed
         if value not in normalized:
             normalized.append(value)
     return tuple(normalized)
+
+
+def _is_globally_routable_unicast(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        address.is_global
+        and not address.is_multicast
+        and not address.is_private
+        and not address.is_loopback
+        and not address.is_link_local
+        and not address.is_reserved
+        and not address.is_unspecified
+        and not (isinstance(address, ipaddress.IPv6Address) and address.is_site_local)
+    )
 
 
 def _validated_calendar_url(raw_url: str) -> tuple[str, str]:

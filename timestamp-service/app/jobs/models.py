@@ -42,6 +42,10 @@ class ClaimedJob:
     lease_until: datetime
 
 
+class SpecificJobRetryable(RuntimeError):
+    """The exact task must be retried because its row is missing, early, or actively leased."""
+
+
 @dataclass(frozen=True, slots=True)
 class BackoffPolicy:
     base_seconds: float = 30.0

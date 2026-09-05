@@ -26,7 +26,9 @@ from app.security.idempotency import IdempotencyBinding
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _STRIPE_SESSION_ID_PATTERN = re.compile(r"cs_(test|live)_[A-Za-z0-9]{1,500}")
-_STRIPE_FRAGMENT_PATTERN = re.compile(r"fid[A-Za-z0-9._~-]{16,1536}")
+_STRIPE_FRAGMENT_PATTERN = re.compile(
+    r"fid(?=.{16,1536}\Z)(?:[A-Za-z0-9._~-]|%[A-Fa-f0-9]{2})+"
+)
 _UNSAFE_URL_PATTERN = re.compile(r"[\\\x00-\x20\x7f]")
 
 

@@ -67,13 +67,30 @@ class Worker:
         job = await self._claims.claim(self._worker_id, now, self._settings.lease_for)
         if job is None:
             return False
+        await self._run_claimed(job)
+        return True
+
+    async def run_specific(self, job_id: str, generation: int) -> bool:
+        job = await self._claims.claim_specific(
+            job_id,
+            generation,
+            self._worker_id,
+            self._clock.now(),
+            self._settings.lease_for,
+        )
+        if job is None:
+            return False
+        await self._run_claimed(job)
+        return True
+
+    async def _run_claimed(self, job: ClaimedJob) -> None:
         safe_job_id = _safe_log_value(job.id)
         self._log.info("event=job_claimed job_id=%s", safe_job_id)
         handler = self._handlers.get(job.spec.kind)
         if handler is None:
             await self._terminal_failure(job.spec.order_id, "job_kind_unknown")
             await self._finish(job, JobOutcome.MANUAL_REVIEW, "job_kind_unknown")
-            return True
+            return
 
         stop = asyncio.Event()
         lease_lost = asyncio.Event()
@@ -89,7 +106,7 @@ class Worker:
                 handler_task.cancel()
                 await asyncio.gather(handler_task, return_exceptions=True)
                 self._log.warning("event=lease_lost job_id=%s", safe_job_id)
-                return True
+                return
             lease_waiter.cancel()
             error: BaseException | None = None
             try:
@@ -102,10 +119,11 @@ class Worker:
             if lease_lost.is_set() or not await self._claims.heartbeat(
                 job.id,
                 self._worker_id,
+                job.attempt,
                 self._clock.now() + self._settings.lease_for,
             ):
                 self._log.warning("event=lease_lost job_id=%s", safe_job_id)
-                return True
+                return
             if error is None:
                 await self._finish(job, JobOutcome.COMPLETE, None)
             elif isinstance(error, ManualReviewError):
@@ -125,7 +143,6 @@ class Worker:
             await asyncio.gather(handler_task, lease_waiter, return_exceptions=True)
             heartbeat.cancel()
             await asyncio.gather(heartbeat, return_exceptions=True)
-        return True
 
     async def _heartbeat(self, job: ClaimedJob, stop: asyncio.Event, lease_lost: asyncio.Event) -> None:
         while not stop.is_set():
@@ -134,7 +151,7 @@ class Worker:
                 return
             except TimeoutError:
                 lease_until = self._clock.now() + self._settings.lease_for
-                if not await self._claims.heartbeat(job.id, self._worker_id, lease_until):
+                if not await self._claims.heartbeat(job.id, self._worker_id, job.attempt, lease_until):
                     lease_lost.set()
                     return
 

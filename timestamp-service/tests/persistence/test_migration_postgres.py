@@ -36,6 +36,9 @@ def test_offline_postgres_migration_contains_state_and_evidence_guards() -> None
     assert "proof_byte_length BETWEEN 1 AND 262144" in result.stdout
     assert "octet_length(proof_bytes)" in result.stdout
     assert "FOREIGN KEY(order_id, proof_version) REFERENCES proof_versions (order_id, version)" in result.stdout
+    assert "CREATE TABLE task_dispatches" in result.stdout
+    assert "timestamp-' || replace(jobs.id::text, '-', '') || '-g1'" in result.stdout
+    assert "ON CONFLICT (job_id, generation) DO NOTHING" in result.stdout
     assert "legacy_delivery_without_signed_resend_evidence" in result.stdout
     assert "migration-20260827-legacy-delivery-manual-review" in result.stdout
     assert "SET fulfillment_state = 'manual_review'" in result.stdout
@@ -98,6 +101,7 @@ def test_baseline_migration_upgrades_postgres() -> None:
         "proof_bundles",
         "state_events",
         "outbox",
+        "task_dispatches",
     }.issubset(inspector.get_table_names())
 
 

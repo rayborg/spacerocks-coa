@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from email_validator import EmailNotValidError, validate_email
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 LowerSha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 CertificateReference = Annotated[
@@ -56,6 +56,35 @@ class CheckoutPriceResponse(BaseModel):
 
     amount_minor: Annotated[int, Field(ge=1, le=100_000_000)]
     currency: Literal["usd"]
+
+
+class MetbullRecordResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    code: Annotated[int, Field(ge=1, le=999_999_999)]
+    official_url: Annotated[
+        str,
+        StringConstraints(pattern=r"^https://www\.lpi\.usra\.edu/meteor/metbull\.cfm\?code=[1-9][0-9]{0,8}$"),
+    ]
+    canonical_name: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    record_status: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    official_name: Literal[True]
+    recommended_classification: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    fall_or_find: Literal["Fall", "Find"]
+    year_found: Annotated[int, Field(ge=1, le=9999)] | None = None
+    country: Annotated[str, StringConstraints(min_length=1, max_length=128)] | None = None
+    latitude: Annotated[
+        str, StringConstraints(pattern=r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$", max_length=32)
+    ] | None = None
+    longitude: Annotated[
+        str, StringConstraints(pattern=r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$", max_length=32)
+    ] | None = None
+
+    @model_validator(mode="after")
+    def validate_official_url_code(self) -> MetbullRecordResponse:
+        if self.official_url != f"https://www.lpi.usra.edu/meteor/metbull.cfm?code={self.code}":
+            raise ValueError("official URL does not match code")
+        return self
 
 
 class OrderStatusResponse(BaseModel):

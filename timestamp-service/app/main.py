@@ -16,6 +16,7 @@ from app.db.fulfillment_adapters import SqlBundleRepository, SqlProofStore
 from app.db.notification_adapters import SqlResendWebhookStore
 from app.db.repositories import OrderStore, RateLimitStore
 from app.db.session import create_database_engine, create_session_factory
+from app.metbull import MetbullLookup, MeteoriticalBulletinClient
 from app.notifications.routes import router as notification_router
 from app.notifications.webhooks import ResendWebhookService
 from app.observability.logging import configure_safe_logging
@@ -25,6 +26,8 @@ from app.ports.proof import ProofBundler
 from app.proofs.factory import create_proof_bundler
 from app.security.http import HttpSecurityMiddleware, RateLimitMiddleware, SafeRequestLogMiddleware
 from app.security.tokens import TokenHasher
+from app.tasks.composition import create_task_dispatch
+from app.tasks.dispatch import TaskDispatchCoordinator
 
 
 @dataclass(slots=True)
@@ -38,6 +41,8 @@ class AppServices:
     proof_store: SqlProofStore | None
     bundle_repository: SqlBundleRepository | None
     resend_webhooks: ResendWebhookService | None
+    task_dispatch: TaskDispatchCoordinator | None
+    metbull_lookup: MetbullLookup | None
 
 
 def create_app(
@@ -46,6 +51,7 @@ def create_app(
     session_factory: sessionmaker[Session] | None = None,
     payment_provider: PaymentProvider | None = None,
     proof_bundler: ProofBundler | None = None,
+    metbull_lookup: MetbullLookup | None = None,
 ) -> FastAPI:
     configured = settings or Settings()
     if isinstance(payment_provider, FixturePaymentProvider) and configured.app_env != AppEnvironment.TEST:
@@ -66,6 +72,11 @@ def create_app(
     proof_store = SqlProofStore(session_factory) if session_factory is not None else None
     bundle_repository = SqlBundleRepository(session_factory) if session_factory is not None else None
     resend_webhooks: ResendWebhookService | None = None
+    task_dispatch = create_task_dispatch(configured, session_factory) if session_factory is not None else None
+    if configured.metbull_lookup_enabled and metbull_lookup is None:
+        metbull_lookup = MeteoriticalBulletinClient(configured.metbull_timeout_seconds)
+    if not configured.metbull_lookup_enabled:
+        metbull_lookup = None
     if session_factory is not None and configured.active_token_pepper_version is not None:
         peppers = {version: secret.get_secret_value().encode() for version, secret in configured.token_peppers.items()}
         token_hasher = TokenHasher(peppers)
@@ -108,6 +119,10 @@ def create_app(
         elif configured.resend_webhook_mode == ResendWebhookMode.RESEND:
             assert configured.resend_webhook_secret is not None
             rate_limit_secret = hashlib.sha256(configured.resend_webhook_secret.get_secret_value().encode()).digest()
+        elif configured.metbull_lookup_enabled and configured.database_url is not None:
+            rate_limit_secret = hashlib.sha256(
+                b"metbull-rate-limit\0" + configured.database_url.get_secret_value().encode()
+            ).digest()
         if rate_limit_secret is not None:
             app.add_middleware(
                 RateLimitMiddleware,
@@ -124,6 +139,8 @@ def create_app(
         proof_store=proof_store,
         bundle_repository=bundle_repository,
         resend_webhooks=resend_webhooks,
+        task_dispatch=task_dispatch,
+        metbull_lookup=metbull_lookup,
     )
     app.include_router(router)
     if resend_webhooks is not None:

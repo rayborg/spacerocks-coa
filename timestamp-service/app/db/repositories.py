@@ -25,10 +25,12 @@ from app.db.models import (
     RateCounter,
     StateEvent,
     StripeEvent,
+    TaskDispatch,
 )
 from app.domain.order import FulfillmentState, OrderSnapshot, OrderState, PaymentState
-from app.jobs.models import ClaimedJob, JobOutcome, JobSpec, JobState
+from app.jobs.models import ClaimedJob, JobOutcome, JobSpec, JobState, SpecificJobRetryable
 from app.security.tokens import HashedToken, TokenHasher, generate_bearer_token
+from app.tasks.dispatch import TaskDispatchCoordinator, add_task_dispatch
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,8 +275,13 @@ class RateLimitStore:
 class SqlJobClaimStore:
     """PostgreSQL-safe durable claims; SQLite is suitable only for model/unit tests."""
 
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        task_dispatch: TaskDispatchCoordinator | None = None,
+    ) -> None:
         self.session_factory = session_factory
+        self.task_dispatch = task_dispatch
 
     @staticmethod
     def claim_query(now: datetime) -> Select[tuple[DurableJob]]:
@@ -293,71 +300,138 @@ class SqlJobClaimStore:
 
     async def enqueue_once(self, spec: JobSpec, available_at: datetime) -> bool:
         now = datetime.now(UTC)
+        job_id: uuid.UUID | None = None
+        generation = 1
+        created = True
         with self.session_factory() as session:
             try:
                 with session.begin():
-                    session.add(
-                        DurableJob(
-                            job_key=spec.job_key,
-                            order_id=uuid.UUID(spec.order_id),
-                            kind=spec.kind,
-                            state=JobState.AVAILABLE.value,
-                            attempt_count=0,
-                            max_attempts=spec.max_attempts,
-                            available_at=available_at,
-                            lease_owner=None,
-                            lease_until=None,
-                            safe_error_code=None,
-                            created_at=now,
-                            updated_at=now,
-                        )
+                    job = DurableJob(
+                        job_key=spec.job_key,
+                        order_id=uuid.UUID(spec.order_id),
+                        kind=spec.kind,
+                        state=JobState.AVAILABLE.value,
+                        generation=generation,
+                        attempt_count=0,
+                        max_attempts=spec.max_attempts,
+                        available_at=available_at,
+                        lease_owner=None,
+                        lease_until=None,
+                        safe_error_code=None,
+                        created_at=now,
+                        updated_at=now,
                     )
+                    session.add(job)
                     session.flush()
+                    job_id = job.id
+                    add_task_dispatch(session, job, available_at, now)
             except IntegrityError:
-                return False
-        return True
+                created = False
+                with self.session_factory() as lookup:
+                    existing = lookup.scalar(select(DurableJob).where(DurableJob.job_key == spec.job_key))
+                    if existing is not None:
+                        job_id = existing.id
+                        generation = existing.generation
+        if job_id is not None and self.task_dispatch is not None:
+            await self.task_dispatch.dispatch(job_id, generation)
+        return created
 
     async def claim(self, worker_id: str, now: datetime, lease_for: timedelta) -> ClaimedJob | None:
         with self.session_factory() as session, session.begin():
-            job = session.scalar(
-                self.claim_query(now)
-            )
+            job = session.scalar(self.claim_query(now))
             if job is None:
                 return None
-            job.attempt_count += 1
-            job.state = JobState.LEASED.value
-            job.lease_owner = worker_id
-            job.lease_until = now + lease_for
-            job.updated_at = now
-            session.add(
-                JobAttempt(
-                    job_id=job.id,
-                    attempt_number=job.attempt_count,
-                    worker_id=worker_id,
-                    started_at=now,
-                    finished_at=None,
-                    outcome=None,
-                    safe_error_code=None,
-                    created_at=now,
+            return self._lease(session, job, worker_id, now, lease_for)
+
+    async def claim_specific(
+        self,
+        job_id: str,
+        generation: int,
+        worker_id: str,
+        now: datetime,
+        lease_for: timedelta,
+    ) -> ClaimedJob | None:
+        if generation < 1:
+            raise ValueError("task_generation_invalid")
+        try:
+            identifier = uuid.UUID(job_id)
+        except ValueError as error:
+            raise ValueError("job_id_must_be_uuid") from error
+        with self.session_factory() as session, session.begin():
+            job = session.scalar(select(DurableJob).where(DurableJob.id == identifier).with_for_update())
+            if job is None:
+                raise SpecificJobRetryable("specific_job_not_committed")
+            dispatch = session.scalar(
+                select(TaskDispatch).where(
+                    TaskDispatch.job_id == identifier,
+                    TaskDispatch.generation == generation,
                 )
             )
-            return ClaimedJob(
-                id=str(job.id),
-                spec=JobSpec(
-                    job_key=job.job_key,
-                    kind=job.kind,
-                    order_id=str(job.order_id),
-                    max_attempts=job.max_attempts,
-                ),
-                attempt=job.attempt_count,
-                lease_owner=worker_id,
-                lease_until=job.lease_until,
-            )
+            if dispatch is None:
+                raise SpecificJobRetryable("specific_dispatch_not_committed")
+            if job.generation != generation:
+                return None
+            if job.state not in {
+                JobState.AVAILABLE.value,
+                JobState.RETRY.value,
+                JobState.LEASED.value,
+            }:
+                return None
+            if _aware(job.available_at) > _aware(now):
+                raise SpecificJobRetryable("specific_job_not_due")
+            if job.lease_until is not None and _aware(job.lease_until) >= _aware(now):
+                raise SpecificJobRetryable("specific_job_lease_active")
+            if job.attempt_count >= job.max_attempts:
+                return None
+            return self._lease(session, job, worker_id, now, lease_for)
 
-    async def heartbeat(self, job_id: str, worker_id: str, lease_until: datetime) -> bool:
+    @staticmethod
+    def _lease(
+        session: Session,
+        job: DurableJob,
+        worker_id: str,
+        now: datetime,
+        lease_for: timedelta,
+    ) -> ClaimedJob:
+        job.attempt_count += 1
+        job.state = JobState.LEASED.value
+        job.lease_owner = worker_id
+        job.lease_until = now + lease_for
+        job.updated_at = now
+        session.add(
+            JobAttempt(
+                job_id=job.id,
+                attempt_number=job.attempt_count,
+                worker_id=worker_id,
+                started_at=now,
+                finished_at=None,
+                outcome=None,
+                safe_error_code=None,
+                created_at=now,
+            )
+        )
+        return ClaimedJob(
+            id=str(job.id),
+            spec=JobSpec(
+                job_key=job.job_key,
+                kind=job.kind,
+                order_id=str(job.order_id),
+                max_attempts=job.max_attempts,
+            ),
+            attempt=job.attempt_count,
+            lease_owner=worker_id,
+            lease_until=job.lease_until,
+        )
+
+    async def heartbeat(self, job_id: str, worker_id: str, attempt: int, lease_until: datetime) -> bool:
         with self.session_factory() as session, session.begin():
             job = session.scalar(select(DurableJob).where(DurableJob.id == uuid.UUID(job_id)).with_for_update())
-            if job is None or job.lease_owner != worker_id or job.state != JobState.LEASED.value:
+            if (
+                job is None
+                or job.lease_owner != worker_id
+                or job.attempt_count != attempt
+                or job.state != JobState.LEASED.value
+            ):
                 return False
             job.lease_until = lease_until
             job.updated_at = datetime.now(UTC)
@@ -371,6 +445,7 @@ class SqlJobClaimStore:
         retry_at: datetime | None = None,
         safe_error_code: str | None = None,
     ) -> None:
+        retry_dispatch: tuple[uuid.UUID, int] | None = None
         with self.session_factory() as session, session.begin():
             stored = session.scalar(select(DurableJob).where(DurableJob.id == uuid.UUID(job.id)).with_for_update())
             if stored is None or stored.lease_owner != job.lease_owner or stored.attempt_count != job.attempt:
@@ -396,25 +471,34 @@ class SqlJobClaimStore:
             attempt.finished_at = now
             attempt.outcome = final_outcome.value
             attempt.safe_error_code = safe_error_code
+            if final_outcome == JobOutcome.RETRY:
+                assert retry_at is not None
+                stored.generation += 1
+                add_task_dispatch(session, stored, retry_at, now)
+                retry_dispatch = (stored.id, stored.generation)
+        if retry_dispatch is not None and self.task_dispatch is not None:
+            await self.task_dispatch.dispatch(*retry_dispatch)
 
 
 def enqueue_fulfillment_once(session: Session, order: Order, now: datetime) -> None:
-    session.add(
-        DurableJob(
-            job_key=order.fulfillment_key,
-            order_id=order.id,
-            kind="stamp_manifest_digest",
-            state=JobState.AVAILABLE.value,
-            attempt_count=0,
-            max_attempts=10,
-            available_at=now,
-            lease_owner=None,
-            lease_until=None,
-            safe_error_code=None,
-            created_at=now,
-            updated_at=now,
-        )
+    job = DurableJob(
+        job_key=order.fulfillment_key,
+        order_id=order.id,
+        kind="stamp_manifest_digest",
+        state=JobState.AVAILABLE.value,
+        generation=1,
+        attempt_count=0,
+        max_attempts=10,
+        available_at=now,
+        lease_owner=None,
+        lease_until=None,
+        safe_error_code=None,
+        created_at=now,
+        updated_at=now,
     )
+    session.add(job)
+    session.flush()
+    add_task_dispatch(session, job, now, now)
 
 
 def record_stripe_event(

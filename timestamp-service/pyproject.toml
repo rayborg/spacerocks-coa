@@ -11,6 +11,7 @@ dependencies = [
   "alembic==1.16.4",
   "email-validator==2.2.0",
   "fastapi==0.116.1",
+  "google-cloud-tasks==2.20.0",
   "httpx==0.28.1",
   "opentimestamps-client==0.7.2",
   "psycopg[binary]==3.2.13",
@@ -51,5 +52,5 @@ packages = ["app"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["stripe.*", "opentimestamps.*"]
+module = ["stripe.*", "opentimestamps.*", "google.*"]
 ignore_missing_imports = true

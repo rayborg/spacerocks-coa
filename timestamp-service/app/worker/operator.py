@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,6 +14,8 @@ from app.db.models import OutboxMessage as OutboxRecord
 from app.db.session import create_database_engine, create_session_factory
 from app.domain.order import FulfillmentState
 from app.jobs.models import JobSpec, JobState
+from app.tasks.composition import create_task_dispatch
+from app.tasks.dispatch import TaskDispatchCoordinator, add_task_dispatch
 from app.timestamping.detached import validate_exact_proof
 from app.worker.composition import UPGRADE_JOB
 
@@ -26,14 +28,17 @@ class SqlOperatorCommands:
         settings: Settings,
         session_factory: sessionmaker[Session],
         adapters: SqlFulfillmentAdapters,
+        task_dispatch: TaskDispatchCoordinator | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
         self._adapters = adapters
+        self._task_dispatch = task_dispatch
 
     async def replay(self, job_id: str) -> None:
         now = datetime.now(UTC)
         terminal_order_id: str | None = None
+        dispatch: tuple[uuid.UUID, int] | None = None
         with self._session_factory() as session, session.begin():
             job = session.scalar(select(DurableJob).where(DurableJob.id == _uuid(job_id)).with_for_update())
             if job is None:
@@ -49,7 +54,12 @@ class SqlOperatorCommands:
                 job.lease_until = None
                 job.safe_error_code = None
                 job.max_attempts = max(job.max_attempts, job.attempt_count + 10)
+                job.generation += 1
                 job.updated_at = now
+                add_task_dispatch(session, job, now, now)
+                dispatch = (job.id, job.generation)
+        if dispatch is not None and self._task_dispatch is not None:
+            await self._task_dispatch.dispatch(*dispatch)
         if terminal_order_id is not None:
             await self._validate_terminal_recovery(terminal_order_id)
             raise RuntimeError("terminal_recovery_requires_ws1_state_transition")
@@ -90,6 +100,18 @@ class SqlOperatorCommands:
             session.execute(delete(JobAttempt).where(JobAttempt.job_id.in_(job_ids)))
             session.execute(delete(DurableJob).where(DurableJob.order_id == order_uuid))
             session.execute(delete(OutboxRecord).where(OutboxRecord.order_id == order_uuid))
+
+    async def reconcile_tasks(self, limit: int) -> tuple[int, int]:
+        if self._task_dispatch is None:
+            raise RuntimeError("task_dispatch_disabled")
+        result = await self._task_dispatch.reconcile(limit=limit)
+        return result.selected, result.dispatched
+
+    async def recover_stale_tasks(self, limit: int, stale_grace: timedelta) -> tuple[int, int]:
+        if self._task_dispatch is None:
+            raise RuntimeError("task_dispatch_disabled")
+        result = await self._task_dispatch.recover_stale_dispatched(limit=limit, stale_grace=stale_grace)
+        return result.selected, result.dispatched
 
     async def _enqueue_proof_job(
         self,
@@ -141,7 +163,13 @@ def create_operator_commands() -> SqlOperatorCommands:
         raise RuntimeError("operator_database_required")
     engine = create_database_engine(settings.database_url.get_secret_value())
     session_factory = create_session_factory(engine)
-    return SqlOperatorCommands(settings, session_factory, create_sql_fulfillment_adapters(session_factory))
+    task_dispatch = create_task_dispatch(settings, session_factory)
+    return SqlOperatorCommands(
+        settings,
+        session_factory,
+        create_sql_fulfillment_adapters(session_factory, task_dispatch),
+        task_dispatch,
+    )
 
 
 def _uuid(value: str) -> uuid.UUID:

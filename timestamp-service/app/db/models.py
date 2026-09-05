@@ -165,6 +165,7 @@ class DurableJob(Base, TimestampMixin):
     __tablename__ = "durable_jobs"
     __table_args__ = (
         CheckConstraint("attempt_count >= 0 AND max_attempts > 0", name="ck_jobs_attempts"),
+        CheckConstraint("generation > 0", name="ck_jobs_generation_positive"),
         CheckConstraint("lease_until IS NULL OR lease_owner IS NOT NULL", name="ck_jobs_lease_owner"),
     )
 
@@ -173,11 +174,40 @@ class DurableJob(Base, TimestampMixin):
     order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     lease_owner: Mapped[str | None] = mapped_column(String(128))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    safe_error_code: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TaskDispatch(Base, TimestampMixin):
+    __tablename__ = "task_dispatches"
+    __table_args__ = (
+        UniqueConstraint("job_id", "generation", name="uq_task_dispatch_job_generation"),
+        CheckConstraint("generation > 0", name="ck_task_dispatch_generation_positive"),
+        CheckConstraint("attempt_count >= 0", name="ck_task_dispatch_attempts_nonnegative"),
+        CheckConstraint("state IN ('pending', 'dispatched')", name="ck_task_dispatch_state"),
+        CheckConstraint(
+            "(state = 'pending' AND dispatched_at IS NULL) OR "
+            "(state = 'dispatched' AND dispatched_at IS NOT NULL)",
+            name="ck_task_dispatch_completion",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("durable_jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    task_name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    schedule_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     safe_error_code: Mapped[str | None] = mapped_column(String(64))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

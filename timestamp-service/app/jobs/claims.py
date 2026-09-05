@@ -13,7 +13,16 @@ class JobClaimStore(Protocol):
         """Atomically claim with PostgreSQL row locking/skip-locked or equivalent lease semantics."""
         ...
 
-    async def heartbeat(self, job_id: str, worker_id: str, lease_until: datetime) -> bool: ...
+    async def claim_specific(
+        self,
+        job_id: str,
+        generation: int,
+        worker_id: str,
+        now: datetime,
+        lease_for: timedelta,
+    ) -> ClaimedJob | None: ...
+
+    async def heartbeat(self, job_id: str, worker_id: str, attempt: int, lease_until: datetime) -> bool: ...
 
     async def finish(
         self,

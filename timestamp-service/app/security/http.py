@@ -82,6 +82,8 @@ class HttpSecurityMiddleware:
             if message["type"] == "http.response.start":
                 response_started = True
                 response_headers = list(message.get("headers", []))
+                if path == "/v1/meteorites/metbull":
+                    response_headers = _without_cors(response_headers)
                 existing = {key.lower() for key, _value in response_headers}
                 response_headers.extend((key, value) for key, value in SECURITY_HEADERS.items() if key not in existing)
                 message["headers"] = response_headers
@@ -107,6 +109,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             ("GET", "/v1/orders/status"): ("status", settings.status_rate_limit),
             ("GET", "/v1/orders/proof"): ("proof", settings.proof_rate_limit),
             ("POST", "/v1/orders/rotate-token"): ("rotation", settings.rotation_rate_limit),
+            ("GET", "/v1/meteorites/metbull"): ("metbull", settings.metbull_rate_limit),
         }
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
@@ -173,12 +176,28 @@ def _safe_path(path: str) -> str:
         "/v1/orders/status",
         "/v1/orders/proof",
         "/v1/orders/rotate-token",
+        "/v1/meteorites/metbull",
         "/health/live",
         "/health/ready",
         "/docs",
         "/openapi.json",
     }
     return path if path in allowed else "unmatched"
+
+
+def _without_cors(headers: list[tuple[bytes, bytes]]) -> list[tuple[bytes, bytes]]:
+    filtered: list[tuple[bytes, bytes]] = []
+    for key, value in headers:
+        lowered = key.lower()
+        if lowered.startswith(b"access-control-"):
+            continue
+        if lowered == b"vary":
+            vary = [item.strip() for item in value.decode("latin-1").split(",") if item.strip().lower() != "origin"]
+            if not vary:
+                continue
+            value = ", ".join(vary).encode("latin-1")
+        filtered.append((key, value))
+    return filtered
 
 
 async def _send_error(send: Send, status: int, detail: str) -> None:
