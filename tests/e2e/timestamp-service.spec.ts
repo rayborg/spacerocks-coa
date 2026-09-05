@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { solidPng } from "./image-fixtures";
 
 const apiConfigured = Boolean(process.env.VITE_TIMESTAMP_API_URL);
 const serviceMode = process.env.VITE_TIMESTAMP_SERVICE_MODE ?? "sandbox";
@@ -29,10 +30,7 @@ const replacementToken = "v1.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const orderReference = "ts_01K1E2Q3R4S5T6V7W8X9Y0Z1AB";
 const checkoutSessionId = "cs_test_a1SafeSession9";
 const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}#fidkdWxOYHwnPyd1blpxYHZxWjA0SDdUN1NGPEF8`;
-const onePixelPng = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-  "base64",
-);
+const certificatePhotoPng = solidPng(560, 455);
 
 const pendingStatus = {
   order_reference: orderReference,
@@ -76,7 +74,6 @@ async function issueLocalRelease(page: Page, issueButtonName = "Issue cryptograp
   await page.locator('input[name="weightPrecision"]').fill("0.1");
   await page.locator('select[name="specimenForm"]').selectOption({ label: "Fragment" });
   await page.locator('input[name="numberOfPieces"]').fill("1");
-  await page.locator('input[name="recordedOwner"]').fill("Test Owner");
   await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
   await page.locator('input[name="fallStatus"]').fill("Find");
   await page.locator('input[name="fallDate"]').fill("2024-01-15");
@@ -98,9 +95,9 @@ async function issueLocalRelease(page: Page, issueButtonName = "Issue cryptograp
   await page.locator(".photo-drop input[type=file]").setInputFiles({
     name: "exact-specimen.png",
     mimeType: "image/png",
-    buffer: onePixelPng,
+    buffer: certificatePhotoPng,
   });
-  await page.getByLabel(/I attest this is an exact/).check();
+  await page.getByLabel(/I attest that this source file is an exact/).check();
   const packageDownload = page.waitForEvent("download", { timeout: 90_000 });
   await page.getByRole("button", { name: issueButtonName }).click();
   await packageDownload;

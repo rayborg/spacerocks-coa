@@ -60,6 +60,18 @@ export interface PhotoInput {
   caption: string;
   captureDate: string;
   isUnmodifiedOriginal: boolean;
+  pixelWidth: number;
+  pixelHeight: number;
+  displayCrop?: DisplayCrop;
+}
+
+export interface DisplayCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  targetAspect: "112:91";
+  algorithm: "center-cover-v1";
 }
 
 export interface SigningIdentity {

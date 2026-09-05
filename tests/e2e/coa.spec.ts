@@ -6,11 +6,13 @@ import { dirname, join } from "node:path";
 import JSZip from "jszip";
 import { CERTIFICATE_EXPORT_FONT_FLOOR } from "../../src/lib/certificate";
 import type { FormValues } from "../../src/types";
+import { solidPng } from "./image-fixtures";
 
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+const certificatePhotoPng = solidPng(560, 455);
 
 const wideTransparentLogoSvg = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="36" viewBox="0 0 240 36"><path fill="#b87518" d="M0 16h240v4H0z"/><circle cx="120" cy="18" r="11" fill="#061a33"/></svg>',
@@ -79,7 +81,6 @@ const contentFieldNames = [
   "numberOfPieces",
   "preparationState",
   "identifyingMarks",
-  "recordedOwner",
   "fallStatus",
   "fallDate",
   "country",
@@ -107,7 +108,6 @@ const optionalContentFieldNames = [
   "dimensions",
   "preparationState",
   "identifyingMarks",
-  "recordedOwner",
   "fallDate",
   "region",
   "locality",
@@ -223,7 +223,7 @@ test("starts with blank content, provisional preview labels, and readable respon
   await page.locator(".photo-drop input[type=file]").setInputFiles({
     name: "filename-must-not-become-caption.png",
     mimeType: "image/png",
-    buffer: onePixelPng,
+    buffer: certificatePhotoPng,
     lastModified: Date.UTC(2024, 0, 15),
   });
   const photoCaption = page.getByLabel("Caption (optional)", { exact: true });
@@ -324,6 +324,84 @@ test("starts with blank content, provisional preview labels, and readable respon
       await expect(photoCaptureDate).toBeVisible();
     }
   }
+});
+
+test("validates decoded certificate-photo pixels and cleans preview object URLs", async ({ page }) => {
+  await page.addInitScript(() => {
+    const trackedWindow = window as typeof window & { __revokedPhotoUrls?: string[] };
+    trackedWindow.__revokedPhotoUrls = [];
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = (url) => {
+      trackedWindow.__revokedPhotoUrls!.push(url);
+      revoke(url);
+    };
+  });
+  await page.goto("/#builder");
+
+  const requirements = page.locator(".photo-requirements");
+  await expect(requirements).toContainText("112:91 landscape");
+  await expect(requirements).toContainText("560 x 455 px");
+  await expect(requirements).toContainText("1120 x 910 px or larger");
+  await expect(requirements).toContainText("decoded pixel dimensions, not EXIF metadata or a trusted DPI value");
+  await expect(requirements).toContainText("source file remains unchanged");
+
+  const upload = page.locator(".photo-drop input[type=file]");
+  await upload.setInputFiles({ name: "near-ratio.png", mimeType: "image/png", buffer: solidPng(560, 478) });
+  const validCard = page.locator(".photo-item").first();
+  await expect(validCard.locator(".photo-analysis")).toContainText("Valid display crop");
+  await expect(validCard.locator(".photo-analysis")).toContainText("560 x 478 px");
+  await expect(validCard.locator(".photo-analysis")).toContainText("crop 560 x 455 px at (0, 11)");
+  const previewUrl = await validCard.locator("img").getAttribute("src");
+  expect(previewUrl).toMatch(/^blob:/);
+
+  await validCard.getByRole("button", { name: "Remove near-ratio.png" }).click();
+  await upload.setInputFiles({ name: "odd-pixel-border.png", mimeType: "image/png", buffer: solidPng(561, 456) });
+  const cropViewport = page.locator(".certificate-preview__photo-viewport");
+  await expect(cropViewport).toHaveAttribute("data-display-crop", "0,0,560,455");
+  const cropGeometry = await cropViewport.evaluate((element) => {
+    const viewport = element.getBoundingClientRect();
+    const image = element.querySelector("img") as HTMLImageElement;
+    const imageBox = image.getBoundingClientRect();
+    return {
+      viewportRatio: viewport.width / viewport.height,
+      imageRatio: imageBox.width / imageBox.height,
+      naturalRatio: image.naturalWidth / image.naturalHeight,
+      widthScale: imageBox.width / viewport.width,
+      heightScale: imageBox.height / viewport.height,
+    };
+  });
+  expect(cropGeometry.viewportRatio).toBeCloseTo(112 / 91, 3);
+  expect(cropGeometry.imageRatio).toBeCloseTo(cropGeometry.naturalRatio, 4);
+  expect(cropGeometry.widthScale).toBeCloseTo(561 / 560, 3);
+  expect(cropGeometry.heightScale).toBeCloseTo(456 / 455, 3);
+
+  await upload.setInputFiles({ name: "too-tall.png", mimeType: "image/png", buffer: solidPng(560, 479) });
+  const unsuitableCard = page.locator(".photo-item").nth(1);
+  await expect(unsuitableCard.locator(".photo-analysis")).toContainText("Exact evidence only; not suitable for display");
+  await expect(unsuitableCard.locator(".photo-analysis")).toContainText("more than 5% would be removed");
+
+  await upload.setInputFiles({
+    name: "spoofed.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("not an image"),
+  });
+  await expect(page.locator(".inline-status")).toContainText("encoded file signature does not match");
+  await upload.setInputFiles({
+    name: "unsupported.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from("GIF89a"),
+  });
+  await expect(page.locator(".inline-status")).toContainText("unsupported MIME type");
+  await expect(page.locator(".photo-item")).toHaveCount(2);
+
+  const currentPreviewUrl = await page.locator(".photo-item").first().locator("img").getAttribute("src");
+  await page.locator(".photo-item").first().getByRole("button", { name: "Remove odd-pixel-border.png" }).click();
+  await expect(page.getByText("Primary photo blocks issuance")).toBeVisible();
+  await expect(page.getByText(/The first photo needs a valid 112:91 centered display crop/)).toBeVisible();
+  await expect.poll(() => page.evaluate((url) => {
+    const trackedWindow = window as typeof window & { __revokedPhotoUrls?: string[] };
+    return trackedWindow.__revokedPhotoUrls?.includes(url!) ?? false;
+  }, currentPreviewUrl)).toBe(true);
 });
 
 test("requires a superseded certificate ID only for superseded status", async ({ page }) => {
@@ -747,7 +825,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   const longCertificateId = `COA-${"X".repeat(116)}`;
   const longOwner = "Long-form collection owner name ".repeat(8).trim();
   await page.locator('input[name="certificateId"]').fill(longCertificateId);
-  await page.getByLabel("Recorded owner").fill(longOwner);
+  await page.getByLabel("Issuer display or legal name").fill(longOwner);
   await expect(preview.locator(".certificate-preview__id > strong")).toHaveText(longCertificateId);
   for (const [name, id] of certificateStyleCases) {
     await selectCertificateStyle(stylePicker, preview, name, id);
@@ -774,7 +852,7 @@ test("renders coherent specimen states and complete responsive certificate headi
     expect(boundaryOverflow.ownerContained, `${id} long owner containment`).toBe(true);
   }
   await page.locator('input[name="certificateId"]').fill("MUS-2026-0042");
-  await page.getByLabel("Recorded owner").fill("");
+  await page.getByLabel("Issuer display or legal name").fill("");
 
   await selectCertificateStyle(stylePicker, preview, "Museum Type", "museum-type");
   const museumSignature = await preview.evaluate((element) => {
@@ -806,7 +884,7 @@ test("renders coherent specimen states and complete responsive certificate headi
   expect(museumSignature.accessionBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(Number.parseFloat(museumSignature.factsBorder)).toBeGreaterThanOrEqual(2);
   expect(museumSignature.factLabelColor).not.toBe("rgb(0, 0, 0)");
-  expect(museumSignature.photoCaption).toContain("Specimen photo 01");
+  expect(museumSignature.photoCaption).toContain("Display crop 01");
   expect(museumSignature.photoCaptionFits).toBe(true);
   expect(museumSignature.photoCaptionWhiteSpace).toBe("nowrap");
   expect(Number.parseFloat(museumSignature.measurementRail)).toBeGreaterThanOrEqual(6);
@@ -1137,7 +1215,6 @@ test("keeps unbroken Museum Type export notes inside their ruled panel", async (
     numberOfPieces: "1",
     preparationState: "",
     identifyingMarks: "",
-    recordedOwner: "Test Owner",
     fallStatus: "Find",
     fallDate: "2024-01-15",
     country: "Canada",
@@ -1178,7 +1255,7 @@ test("keeps unbroken Museum Type export notes inside their ruled panel", async (
 
     try {
       const photo = new File([
-        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#333"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" width="560" height="455"><rect width="560" height="455" fill="#333"/></svg>',
       ], "specimen.svg", { type: "image/svg+xml" });
       await renderCertificate({
         values: renderValues,
@@ -1186,6 +1263,7 @@ test("keeps unbroken Museum Type export notes inside their ruled panel", async (
         recordHash: "a".repeat(64),
         qrPayload: "https://example.invalid/verify/WRAP-TEST-0001",
         mainPhoto: photo,
+        mainPhotoCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
       });
       return draws;
     } finally {
@@ -1250,16 +1328,16 @@ test("issues and verifies a minimal package without optional PII", async ({ page
   await page.getByRole("button", { name: "Download encrypted key backup" }).click();
   await backupDownload;
   await expect(issueButton).toBeDisabled();
-  await expect(page.getByText("Add at least one exact specimen photograph.")).toBeVisible();
+  await expect(page.getByText("Add at least one source-original specimen photograph.")).toBeVisible();
 
   await page.locator(".photo-drop input[type=file]").setInputFiles({
     name: "minimal-exact-specimen.png",
     mimeType: "image/png",
-    buffer: onePixelPng,
+    buffer: certificatePhotoPng,
   });
   await expect(issueButton).toBeDisabled();
-  await expect(page.getByText("Attest every photograph is an unmodified original.")).toBeVisible();
-  await page.getByLabel(/I attest this is an exact/).check();
+  await expect(page.getByText("Attest every source photograph is an unmodified original.")).toBeVisible();
+  await page.getByLabel(/I attest that this source file is an exact/).check();
   await expect(issueButton).toBeEnabled();
 
   const packageDownload = page.waitForEvent("download", { timeout: 90_000 });
@@ -1277,7 +1355,7 @@ test("issues and verifies a minimal package without optional PII", async ({ page
 
   expect(manifest).toEqual(expect.objectContaining({
     $schema: "coa-manifest-v2.schema.json",
-    schemaVersion: "2.0.0",
+    schemaVersion: "2.1.0",
     packageVersion: 2,
   }));
   expect(manifest.issuer).toEqual(expect.objectContaining({
@@ -1286,9 +1364,10 @@ test("issues and verifies a minimal package without optional PII", async ({ page
   }));
   for (const key of ["email", "phone", "address", "website", "logoFile"]) expect(manifest.issuer).not.toHaveProperty(key);
   for (const key of ["notes", "supersedes"]) expect(manifest.certificate).not.toHaveProperty(key);
-  for (const key of ["dimensions", "preparationState", "identifyingMarks", "recordedOwner"]) {
+  for (const key of ["dimensions", "preparationState", "identifyingMarks"]) {
     expect(manifest.specimen).not.toHaveProperty(key);
   }
+  expect(manifest.specimen.recordedOwner).toBe("Minimal Test Issuer");
   expect(manifest.specimen).toEqual(expect.objectContaining({
     meteoriteIdentity: "unclassified",
     meteoriteType: "Unclassified",
@@ -1308,7 +1387,7 @@ test("issues and verifies a minimal package without optional PII", async ({ page
   expect(record.photographs).toEqual(manifest.photographs);
 
   const certificateText = await archive.file(`${root}certificate.txt`)!.async("text");
-  expect(certificateText).toContain("Recorded owner: Not recorded");
+  expect(certificateText).toContain("Current owner: Minimal Test Issuer");
   expect(certificateText).toContain("Date: Not recorded");
   expect(certificateText).toContain("Region: Not recorded");
   expect(certificateText).toContain("Coordinates: Not recorded");
@@ -1348,7 +1427,6 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator('input[name="numberOfPieces"]').fill("1");
   await page.locator('input[name="preparationState"]').fill("Natural crust with one cut face");
   await page.locator('input[name="identifyingMarks"]').fill("Test collection label 42");
-  await page.locator('input[name="recordedOwner"]').fill("Test Owner");
   await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
   await page.locator('input[name="fallStatus"]').fill("Find");
   await page.locator('input[name="fallDate"]').fill("2024-01-15");
@@ -1389,11 +1467,11 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await page.locator(".photo-drop input[type=file]").setInputFiles({
     name: "exact-specimen.png",
     mimeType: "image/png",
-    buffer: onePixelPng,
+    buffer: certificatePhotoPng,
   });
   await page.getByLabel("Caption (optional)", { exact: true }).fill("Front face");
   await page.getByLabel("Capture date (optional)", { exact: true }).fill("2026-07-29");
-  await page.getByLabel(/I attest this is an exact/).check();
+  await page.getByLabel(/I attest that this source file is an exact/).check();
   const issueButton = page.getByRole("button", { name: "Issue cryptographically signed COA package" });
   await expect(issueButton).toBeEnabled();
   await page.locator('input[name="meteoriteName"]').fill("Test Meteorite revised");
@@ -1484,13 +1562,13 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
       fall: { date?: string; latitude?: string; longitude?: string; finderName?: string };
       provenance: { statement?: string; intermediaryPurchaserName?: string };
     };
-    photographs: Array<{ caption?: string; captureDate?: string }>;
-    files: Array<{ path: string }>;
+    photographs: Array<{ path: string; sha256: string; caption?: string; captureDate?: string; pixelWidth?: number; pixelHeight?: number; displayCrop?: Record<string, unknown> }>;
+    files: Array<{ path: string; role: string; sha256: string }>;
   };
   expect(manifest.certificate.visualStyle).toBe("museum-type");
   expect(manifest).toEqual(expect.objectContaining({
     $schema: "coa-manifest-v2.schema.json",
-    schemaVersion: "2.0.0",
+    schemaVersion: "2.1.0",
     packageVersion: 2,
   }));
   expect(manifest.certificate.visualTheme).toBe("royal-amethyst");
@@ -1501,7 +1579,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     website: "https://example.com",
     logoFile: "issuer-assets/issuer-logo.png",
   }));
-  expect(manifest.specimen.recordedOwner).toBe("Test Owner");
+  expect(manifest.specimen.recordedOwner).toBe("Test Issuer");
   expect(manifest.specimen).toEqual(expect.objectContaining({
     meteoriteIdentity: "official",
     meteoriteType: "Chondrite",
@@ -1518,6 +1596,16 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(manifest.specimen.provenance.statement).toBe("Documented test custody from recovery through issuance.");
   expect(manifest.specimen.provenance.intermediaryPurchaserName).toBe("Intermediary Test Dealer");
   expect(manifest.photographs[0]).toEqual(expect.objectContaining({ caption: "Front face", captureDate: "2026-07-29" }));
+  expect(manifest.photographs[0]).toEqual(expect.objectContaining({
+    pixelWidth: 560,
+    pixelHeight: 455,
+    displayCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
+  }));
+  const originalPhoto = await archive.file(`${root}${manifest.photographs[0].path}`)!.async("nodebuffer");
+  expect(originalPhoto).toEqual(certificatePhotoPng);
+  expect(manifest.photographs[0].sha256).toBe(createHash("sha256").update(certificatePhotoPng).digest("hex"));
+  expect(manifest.files.find((entry) => entry.path === manifest.photographs[0].path)?.role)
+    .toBe("exact original specimen photograph");
   const signedPaths = manifest.files.map((entry) => entry.path);
   expect(signedPaths).toEqual(expect.arrayContaining([
     "README-FIRST.txt",
@@ -1562,9 +1650,11 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
     );
   }
   const certificateRecord = JSON.parse(await archive.file(`${root}certificate-record.json`)!.async("text")) as {
+    schemaVersion?: string;
     certificate: { visualStyle?: string; visualTheme?: string };
     specimen: unknown;
   };
+  expect(certificateRecord.schemaVersion).toBe("2.1.0");
   expect(certificateRecord.certificate.visualStyle).toBe("museum-type");
   expect(certificateRecord.certificate.visualTheme).toBe("royal-amethyst");
   expect(certificateRecord.specimen).toEqual(manifest.specimen);
@@ -1573,6 +1663,7 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   expect(certificateText).toContain("Certificate color scheme: Royal Amethyst");
   expect(certificateText).toContain("Official name verified: Yes - issuer attestation");
   expect(certificateText).toContain("Official reference: https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345");
+  expect(certificateText).toContain("Certificate presentation uses signed center-cover-v1 crop x=0, y=0, width=560, height=455, target=112:91.");
   const packagedSchema = JSON.parse(await archive.file(`${root}coa-manifest-v2.schema.json`)!.async("text")) as {
     properties: {
       certificate: {
@@ -1610,6 +1701,15 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
       encoding: "utf8",
     });
     expect(verifierOutput).toContain("PACKAGE VERIFICATION PASSED");
+    expect(verifierOutput).toContain("OK    photograph metadata (2.1 crop semantics)");
+
+    const offlineManifestPath = join(extractedRoot, "manifest.json");
+    const offlineManifest = JSON.parse(await readFile(offlineManifestPath, "utf8"));
+    offlineManifest.photographs[0].displayCrop.x = 1;
+    await writeFile(offlineManifestPath, JSON.stringify(offlineManifest));
+    const tamperedOffline = spawnSync("python3", ["verify.py"], { cwd: extractedRoot, encoding: "utf8" });
+    expect(tamperedOffline.status).toBe(1);
+    expect(tamperedOffline.stdout).toContain("FAIL  photograph metadata");
   }
 
   await page.locator("#verify").scrollIntoViewIfNeeded();
@@ -1617,6 +1717,19 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await expect(page.locator(".verifier__report-head").getByText("PASS")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("All required cryptographic checks passed.")).toBeVisible();
   await expect(page.locator(".check", { hasText: "Official meteorite identity" })).toHaveClass(/check--pass/);
+  await expect(page.locator(".check", { hasText: "Photograph metadata" })).toHaveClass(/check--pass/);
+
+  const metadataArchive = await JSZip.loadAsync(packageBuffer);
+  const metadataManifest = JSON.parse(await metadataArchive.file(`${root}manifest.json`)!.async("text"));
+  metadataManifest.photographs[0].displayCrop.x = 1;
+  metadataManifest.photographs[0].bytes += 1;
+  metadataArchive.file(`${root}manifest.json`, JSON.stringify(metadataManifest));
+  await page.locator(".verifier input[type=file]").setInputFiles({
+    name: "tampered-photo-metadata.zip",
+    mimeType: "application/zip",
+    buffer: await metadataArchive.generateAsync({ type: "nodebuffer" }),
+  });
+  await expect(page.locator(".check", { hasText: "Photograph metadata" })).toHaveClass(/check--fail/, { timeout: 60_000 });
 
   const tamperedArchive = await JSZip.loadAsync(packageBuffer);
   const tamperedVerify = `${verifySource}\n# unauthorized change\n`;

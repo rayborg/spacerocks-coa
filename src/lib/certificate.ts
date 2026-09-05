@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
-import type { FormValues } from "../types";
+import type { DisplayCrop, FormValues } from "../types";
 import { certificateFooterLayout, getCertificateTheme } from "../certificateThemes";
 import type { CertificateStyleId } from "../certificateStyles";
 import { displayDate } from "./core";
@@ -41,6 +41,7 @@ export interface CertificateRenderInput {
   recordHash: string;
   qrPayload: string;
   mainPhoto: File;
+  mainPhotoCrop: DisplayCrop;
   logo?: File;
 }
 
@@ -160,30 +161,26 @@ async function dataUrlToImage(url: string): Promise<HTMLImageElement> {
   return image;
 }
 
-function drawCoverImage(
+function drawRecordedCrop(
   context: CanvasRenderingContext2D,
   image: HTMLImageElement,
+  crop: DisplayCrop,
   x: number,
   y: number,
   width: number,
   height: number,
 ) {
-  const imageRatio = image.naturalWidth / image.naturalHeight;
-  const frameRatio = width / height;
-  let sourceX = 0;
-  let sourceY = 0;
-  let sourceWidth = image.naturalWidth;
-  let sourceHeight = image.naturalHeight;
-
-  if (imageRatio > frameRatio) {
-    sourceWidth = image.naturalHeight * frameRatio;
-    sourceX = (image.naturalWidth - sourceWidth) / 2;
-  } else {
-    sourceHeight = image.naturalWidth / frameRatio;
-    sourceY = (image.naturalHeight - sourceHeight) / 2;
+  if (
+    crop.x < 0
+    || crop.y < 0
+    || crop.width <= 0
+    || crop.height <= 0
+    || crop.x + crop.width > image.naturalWidth
+    || crop.y + crop.height > image.naturalHeight
+  ) {
+    throw new Error("The recorded display crop is outside the decoded source photograph.");
   }
-
-  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  context.drawImage(image, crop.x, crop.y, crop.width, crop.height, x, y, width, height);
 }
 
 function drawContainedImage(
@@ -563,23 +560,23 @@ async function drawMuseumTypeCertificate(
   context.lineWidth = 3;
   roundedRect(context, photoFrame.x + 14, photoFrame.y + 14, photoFrame.width - 28, photoFrame.height - 72, 10);
   context.stroke();
-  try {
-    const photo = await fileToImage(input.mainPhoto);
-    drawContainedImage(context, photo, photoFrame.x + 25, photoFrame.y + 25, photoFrame.width - 50, photoFrame.height - 102);
-  } catch {
-    context.fillStyle = darkSoft;
-    context.fillRect(photoFrame.x + 25, photoFrame.y + 25, photoFrame.width - 50, photoFrame.height - 102);
-    context.fillStyle = paper;
-    context.textAlign = "center";
-    context.font = "800 21px Arial, sans-serif";
-    context.fillText("ORIGINAL PHOTO PRESERVED IN PACKAGE", photoFrame.x + photoFrame.width / 2, photoFrame.y + 276);
-    context.textAlign = "left";
-  }
+  const photo = await fileToImage(input.mainPhoto);
+  const photoWidth = 560;
+  const photoHeight = 455;
+  drawRecordedCrop(
+    context,
+    photo,
+    input.mainPhotoCrop,
+    photoFrame.x + (photoFrame.width - photoWidth) / 2,
+    photoFrame.y + 25,
+    photoWidth,
+    photoHeight,
+  );
   context.fillStyle = dark;
   context.fillRect(photoFrame.x + 3, photoFrame.y + photoFrame.height - 55, photoFrame.width - 6, 52);
   context.fillStyle = accentLight;
   context.font = "800 18px ui-monospace, SFMono-Regular, Menlo, monospace";
-  context.fillText("EXACT SPECIMEN / PHOTO RECORD 01", photoFrame.x + 26, photoFrame.y + photoFrame.height - 21);
+  context.fillText("DISPLAY CROP / SOURCE PHOTO 01", photoFrame.x + 26, photoFrame.y + photoFrame.height - 21);
 
   const panelX = photoFrame.x + photoFrame.width + 40;
   const panelY = 466;
@@ -606,7 +603,7 @@ async function drawMuseumTypeCertificate(
     ["LOCATION", formatCertificateLocation(input.values)],
     ["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)],
     ["SPECIMEN FORM", input.values.specimenForm],
-    ["RECORDED OWNER", recorded(input.values.recordedOwner)],
+    ["CURRENT OWNER", recorded(input.values.issuerName)],
     ["ISSUED", displayDate(input.values.issueDate)],
   ];
   const rowHeight = (panelHeight - 66) / catalogRows.length;
@@ -977,18 +974,8 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   context.save();
   roundedRect(context, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height, Math.max(0, detailRadius - 8));
   context.clip();
-  try {
-    const photo = await fileToImage(input.mainPhoto);
-    drawCoverImage(context, photo, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height);
-  } catch {
-    context.fillStyle = NAVY_SOFT;
-    context.fillRect(photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height);
-    context.fillStyle = "#ffffff";
-    context.textAlign = "center";
-    context.font = "600 21px Arial, sans-serif";
-    context.fillText("ORIGINAL PHOTO PRESERVED IN PACKAGE", photoFrame.x + photoFrame.width / 2, photoFrame.y + 225);
-    context.textAlign = "left";
-  }
+  const photo = await fileToImage(input.mainPhoto);
+  drawRecordedCrop(context, photo, input.mainPhotoCrop, photoFrame.x, photoFrame.y, photoFrame.width, photoFrame.height);
   context.restore();
   if (certificateStyle === "museum-ledger") {
     context.fillStyle = NAVY;
@@ -999,7 +986,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
   }
   context.fillStyle = NAVY;
   context.font = "600 18px Arial, sans-serif";
-  context.fillText("EXACT SPECIMEN PHOTOGRAPH", photoFrame.x, photoFrame.y + photoFrame.height + 42);
+  context.fillText("CENTERED DISPLAY CROP FROM SOURCE PHOTO", photoFrame.x, photoFrame.y + photoFrame.height + 42);
 
   const rows = [
     ["METEORITE", input.values.meteoriteName],
@@ -1008,7 +995,7 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
     ["LOCATION", formatCertificateLocation(input.values)],
     ["COORDINATES", recordedCoordinates(input.values.latitude, input.values.longitude)],
     ["SPECIMEN FORM", input.values.specimenForm],
-    ["RECORDED OWNER", recorded(input.values.recordedOwner)],
+    ["CURRENT OWNER", recorded(input.values.issuerName)],
   ];
   const tableX = 112;
   const tableY = 680;

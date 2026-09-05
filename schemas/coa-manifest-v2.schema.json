@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:spacerocks:coa:manifest:v2",
-  "title": "Spacerocks self-contained COA manifest v2",
-  "description": "Version 2 manifest for a signed, offline-verifiable meteorite certificate package.",
+  "title": "Spacerocks self-contained COA manifest v2.x",
+  "description": "Version 2 manifest supporting legacy 2.0 records and strict photo metadata in 2.1 records.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,9 +19,43 @@
     "signature",
     "generation"
   ],
+  "allOf": [
+    {
+      "if": { "properties": { "schemaVersion": { "const": "2.0.0" } }, "required": ["schemaVersion"] },
+      "then": {
+        "properties": {
+          "photographs": {
+            "items": {
+              "properties": {
+                "pixelWidth": false,
+                "pixelHeight": false,
+                "displayCrop": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "schemaVersion": { "const": "2.1.0" } }, "required": ["schemaVersion"] },
+      "then": {
+        "properties": {
+          "photographs": {
+            "prefixItems": [{ "required": ["pixelWidth", "pixelHeight", "displayCrop"] }],
+            "items": {
+              "required": ["pixelWidth", "pixelHeight"],
+              "properties": {
+                "mediaType": { "enum": ["image/jpeg", "image/png", "image/webp"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "$schema": { "const": "coa-manifest-v2.schema.json" },
-    "schemaVersion": { "const": "2.0.0" },
+    "schemaVersion": { "enum": ["2.0.0", "2.1.0"] },
     "packageFormat": { "const": "Spacerocks Self-Contained COA Package" },
     "packageVersion": { "const": 2 },
     "recordType": { "const": "meteorite-certificate-of-authenticity" },
@@ -207,6 +241,11 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["path", "originalFilename", "mediaType", "bytes", "sha256", "isUnmodifiedOriginal"],
+        "dependentRequired": {
+          "pixelWidth": ["pixelHeight"],
+          "pixelHeight": ["pixelWidth"],
+          "displayCrop": ["pixelWidth", "pixelHeight"]
+        },
         "properties": {
           "path": { "type": "string", "pattern": "^original-photographs/" },
           "originalFilename": { "type": "string", "minLength": 1 },
@@ -215,7 +254,10 @@
           "bytes": { "type": "integer", "minimum": 0, "maximum": 104857600 },
           "sha256": { "$ref": "#/$defs/sha256" },
           "captureDate": { "type": "string", "format": "date" },
-          "isUnmodifiedOriginal": { "const": true }
+          "isUnmodifiedOriginal": { "const": true },
+          "pixelWidth": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "pixelHeight": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "displayCrop": { "$ref": "#/$defs/displayCrop" }
         }
       }
     },
@@ -261,6 +303,19 @@
       "minLength": 1,
       "pattern": "\\S",
       "not": { "pattern": "^\\s*[Uu][Nn][Cc][Ll][Aa][Ss][Ss][Ii][Ff][Ii][Ee][Dd]\\s*$" }
+    },
+    "displayCrop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height", "targetAspect", "algorithm"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 560, "maximum": 100000 },
+        "height": { "type": "integer", "minimum": 455, "maximum": 100000 },
+        "targetAspect": { "const": "112:91" },
+        "algorithm": { "const": "center-cover-v1" }
+      }
     },
     "latitude": {
       "type": "string",

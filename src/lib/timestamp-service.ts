@@ -99,6 +99,19 @@ export interface ProofDownload {
   fileName: string;
 }
 
+export interface MetbullRecord {
+  code: number;
+  officialUrl: string;
+  canonicalName: string;
+  recordStatus: string;
+  recommendedClassification: string;
+  fallOrFind: "Fall" | "Find";
+  yearFound?: number;
+  country?: string;
+  latitude?: string;
+  longitude?: string;
+}
+
 type JsonRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -339,6 +352,74 @@ async function readJson(response: Response, containsToken = false): Promise<unkn
   }
 }
 
+function parseMetbullText(value: unknown, maximum: number): string {
+  if (typeof value !== "string" || value.length < 1 || value.length > maximum || value.trim() !== value || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new Error("The Meteoritical Bulletin service returned invalid data.");
+  }
+  return value;
+}
+
+function parseMetbullOptionalText(value: unknown, maximum: number): string | undefined {
+  if (value === null) return undefined;
+  return parseMetbullText(value, maximum);
+}
+
+function parseMetbullCoordinate(value: unknown, axis: "latitude" | "longitude"): string | undefined {
+  const coordinate = parseMetbullOptionalText(value, 32);
+  if (coordinate === undefined) return undefined;
+  if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(coordinate)) {
+    throw new Error("The Meteoritical Bulletin service returned invalid coordinates.");
+  }
+  const numeric = Number(coordinate);
+  const maximum = axis === "latitude" ? 90 : 180;
+  if (!Number.isFinite(numeric) || numeric < -maximum || numeric > maximum) {
+    throw new Error("The Meteoritical Bulletin service returned invalid coordinates.");
+  }
+  return coordinate;
+}
+
+function parseMetbullRecord(value: unknown, expectedCode: string): MetbullRecord {
+  const keys = [
+    "code", "official_url", "canonical_name", "record_status", "official_name",
+    "recommended_classification", "fall_or_find", "year_found", "country", "latitude", "longitude",
+  ];
+  if (!isRecord(value) || !hasExactKeys(value, keys)) {
+    throw new Error("The Meteoritical Bulletin service returned invalid data.");
+  }
+  const code = Number(expectedCode);
+  if (!Number.isSafeInteger(value.code) || value.code !== code || value.official_name !== true
+    || value.official_url !== `https://www.lpi.usra.edu/meteor/metbull.cfm?code=${expectedCode}`
+    || (value.fall_or_find !== "Fall" && value.fall_or_find !== "Find")) {
+    throw new Error("The Meteoritical Bulletin service returned mismatched data.");
+  }
+  let yearFound: number | undefined;
+  if (value.year_found !== null) {
+    if (typeof value.year_found !== "number" || !Number.isSafeInteger(value.year_found) || value.year_found < 1 || value.year_found > 9999) {
+      throw new Error("The Meteoritical Bulletin service returned an invalid year.");
+    }
+    yearFound = value.year_found;
+  }
+  return {
+    code,
+    officialUrl: value.official_url,
+    canonicalName: parseMetbullText(value.canonical_name, 128),
+    recordStatus: parseMetbullText(value.record_status, 64),
+    recommendedClassification: parseMetbullText(value.recommended_classification, 128),
+    fallOrFind: value.fall_or_find,
+    yearFound,
+    country: parseMetbullOptionalText(value.country, 128),
+    latitude: parseMetbullCoordinate(value.latitude, "latitude"),
+    longitude: parseMetbullCoordinate(value.longitude, "longitude"),
+  };
+}
+
+export class MetbullLookupError extends Error {
+  constructor(message: string, readonly code: "not-found" | "not-official" | "rate-limit" | "unavailable") {
+    super(message);
+    this.name = "MetbullLookupError";
+  }
+}
+
 export class TimestampServiceError extends Error {
   constructor(message: string, readonly code: "auth" | "deterministic" | "remote") {
     super(message);
@@ -470,6 +551,34 @@ function bearerRequest(token: string, signal?: AbortSignal): RequestInit {
 export function createTimestampService(config: TimestampServiceConfig, fetcher: typeof fetch = fetch) {
   return {
     config,
+    async lookupMetbull(codeInput: string, signal?: AbortSignal): Promise<MetbullRecord> {
+      const code = codeInput.trim();
+      if (!/^[1-9][0-9]{0,8}$/.test(code)) throw new MetbullLookupError("Enter a valid Meteoritical Bulletin code.", "not-found");
+      const url = new URL(endpoint(config, "v1/meteorites/metbull"));
+      url.searchParams.set("code", code);
+      let response: Response;
+      try {
+        response = await fetcher(url.href, {
+          method: "GET",
+          headers: { Accept: "application/json", "Cache-Control": "no-store" },
+          cache: "no-store",
+          credentials: "omit",
+          referrerPolicy: "no-referrer",
+          signal,
+        });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
+        throw new MetbullLookupError("The official meteorite lookup is temporarily unavailable.", "unavailable");
+      }
+      if (!response.ok) {
+        if (response.status === 404) throw new MetbullLookupError("No Meteoritical Bulletin record was found for that code.", "not-found");
+        if (response.status === 409) throw new MetbullLookupError("That Meteoritical Bulletin name is not official.", "not-official");
+        if (response.status === 429) throw new MetbullLookupError("Too many lookups were requested. Wait a moment and try again.", "rate-limit");
+        throw new MetbullLookupError("The official meteorite lookup is temporarily unavailable.", "unavailable");
+      }
+      requireNoStore(response);
+      return parseMetbullRecord(await readJson(response), code);
+    },
     async createCheckout(attempt: CheckoutAttempt, signal?: AbortSignal): Promise<CheckoutResponse> {
       validateCheckoutAttempt(attempt);
       const response = await fetcher(endpoint(config, "v1/checkout"), {

@@ -3,6 +3,13 @@ import type { VerificationCheck, VerificationResult } from "../types";
 import { publicKeyFingerprint, pemToDer } from "./crypto";
 import { sha256Hex, utf8 } from "./core";
 import { validateManifestVersion, validateOfficialMeteoriteIdentity } from "./manifest-validation";
+import {
+  PHOTO_CROP_ALGORITHM,
+  PHOTO_MAXIMUM_DIMENSION,
+  PHOTO_TARGET_ASPECT,
+  analyzePhotoDimensions,
+  matchesPhotoMimeSignature,
+} from "./photo";
 
 const MAX_ZIP_BYTES = 300 * 1024 * 1024;
 const MAX_FILE_COUNT = 250;
@@ -83,6 +90,117 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown verification error";
 }
 
+interface DecodedDimensions {
+  pixelWidth: number;
+  pixelHeight: number;
+}
+
+export function validatePhotographMetadata(
+  manifest: Record<string, any>,
+  decodedDimensions?: ReadonlyMap<string, DecodedDimensions>,
+): { valid: boolean; detail: string; failures: string[] } {
+  const photographs = Array.isArray(manifest.photographs) ? manifest.photographs : [];
+  const files = Array.isArray(manifest.files) ? manifest.files : [];
+  const failures: string[] = [];
+  const isNewFormat = manifest.schemaVersion === "2.1.0";
+  const seenPhotoPaths = new Set<string>();
+
+  photographs.forEach((photo: Record<string, any>, index: number) => {
+    const label = `photograph ${index + 1}`;
+    if (typeof photo?.path === "string" && seenPhotoPaths.has(photo.path)) {
+      failures.push(`${label} duplicates an earlier photograph path`);
+    }
+    if (typeof photo?.path === "string") seenPhotoPaths.add(photo.path);
+    const matchingFiles = files.filter((entry: Record<string, any>) => entry?.path === photo?.path);
+    if (matchingFiles.length !== 1) {
+      failures.push(`${label} must match exactly one manifest file entry`);
+    } else {
+      const fileEntry = matchingFiles[0];
+      for (const property of ["sha256", "bytes", "mediaType"] as const) {
+        if (photo[property] !== fileEntry[property]) failures.push(`${label} ${property} disagrees with its file entry`);
+      }
+      if (isNewFormat && fileEntry.role !== "exact original specimen photograph") {
+        failures.push(`${label} file role is not exact original specimen photograph`);
+      }
+    }
+
+    if (!isNewFormat) return;
+    const pixelWidth = photo.pixelWidth;
+    const pixelHeight = photo.pixelHeight;
+    if (
+      !Number.isInteger(pixelWidth)
+      || !Number.isInteger(pixelHeight)
+      || pixelWidth < 1
+      || pixelHeight < 1
+      || pixelWidth > PHOTO_MAXIMUM_DIMENSION
+      || pixelHeight > PHOTO_MAXIMUM_DIMENSION
+    ) {
+      failures.push(`${label} has invalid or unbounded decoded pixel dimensions`);
+      return;
+    }
+
+    const decoded = decodedDimensions?.get(photo.path);
+    if (decoded && (decoded.pixelWidth !== pixelWidth || decoded.pixelHeight !== pixelHeight)) {
+      failures.push(`${label} decoded dimensions disagree with its signed dimensions`);
+    }
+
+    const analysis = analyzePhotoDimensions(pixelWidth, pixelHeight);
+    const crop = photo.displayCrop;
+    if (!crop) {
+      if (analysis.valid) failures.push(`${label} is display-suitable but has no signed display crop`);
+      if (index === 0) failures.push("the primary photograph has no valid signed display crop");
+      return;
+    }
+    if (!analysis.valid) {
+      failures.push(`${label} records a crop for an unsuitable source image`);
+      return;
+    }
+    const expected = analysis.displayCrop;
+    if (
+      crop.x !== expected.x
+      || crop.y !== expected.y
+      || crop.width !== expected.width
+      || crop.height !== expected.height
+      || crop.targetAspect !== PHOTO_TARGET_ASPECT
+      || crop.algorithm !== PHOTO_CROP_ALGORITHM
+      || crop.width * 91 !== crop.height * 112
+    ) {
+      failures.push(`${label} crop is not the deterministic centered 112:91 rectangle`);
+    }
+  });
+
+  if (photographs.length === 0) failures.push("no source-original photographs are recorded");
+  return {
+    valid: failures.length === 0,
+    detail: failures.length === 0
+      ? `${photographs.length} photograph record${photographs.length === 1 ? "" : "s"} match signed file facts${isNewFormat ? ", decoded dimensions, and deterministic crop semantics" : " (legacy 2.0 format)"}.`
+      : failures.slice(0, 5).join("; "),
+    failures,
+  };
+}
+
+async function decodeImageDimensions(bytes: Uint8Array, mediaType: string): Promise<DecodedDimensions> {
+  const blob = new Blob([new Uint8Array(bytes)], { type: mediaType });
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      return { pixelWidth: bitmap.width, pixelHeight: bitmap.height };
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    return { pixelWidth: image.naturalWidth, pixelHeight: image.naturalHeight };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function verifyCertificateZip(file: File): Promise<VerificationResult> {
   if (file.size > MAX_ZIP_BYTES) {
     throw new Error("The ZIP exceeds the 300 MB browser verification limit.");
@@ -137,7 +255,7 @@ export async function verifyCertificateZip(file: File): Promise<VerificationResu
       label: "Manifest schema",
       status: manifestValidation.valid ? "pass" : "fail",
       detail: manifestValidation.valid
-        ? `The manifest conforms to coa-manifest-${manifestValidation.version}.`
+        ? `The manifest conforms to coa-manifest-${manifestValidation.version} schema ${manifestValidation.schemaVersion}.`
         : (manifestValidation.errors ?? [])
             .slice(0, 3)
             .map((item) => `${item.instancePath || "/"} ${item.message}`)
@@ -227,6 +345,41 @@ export async function verifyCertificateZip(file: File): Promise<VerificationResu
         ? `${verifiedEvidence} file${verifiedEvidence === 1 ? "" : "s"} match the signed byte lengths and SHA-256 hashes.`
         : `Failed: ${failedEvidence.slice(0, 5).join(", ")}${failedEvidence.length > 5 ? "..." : ""}`,
   });
+
+  if (manifestValidation.version === "v2") {
+    const decodedDimensions = new Map<string, DecodedDimensions>();
+    const decodingFailures: string[] = [];
+    const preflightMetadata = validatePhotographMetadata(manifest);
+    if (
+      preflightMetadata.valid
+      && manifestValidation.schemaVersion === "2.1.0"
+      && Array.isArray(manifest.photographs)
+    ) {
+      for (const [index, photo] of manifest.photographs.entries()) {
+        if (!photo || typeof photo.path !== "string" || typeof photo.mediaType !== "string") {
+          decodingFailures.push(`photograph ${index + 1} cannot be decoded because its path or media type is invalid`);
+          continue;
+        }
+        try {
+          const bytes = await readBytes(photo.path);
+          if (!matchesPhotoMimeSignature(photo.mediaType, bytes.subarray(0, 12))) {
+            throw new Error("encoded signature does not match media type");
+          }
+          decodedDimensions.set(photo.path, await decodeImageDimensions(bytes, photo.mediaType));
+        } catch (error) {
+          decodingFailures.push(`photograph ${index + 1} decode failed: ${errorMessage(error)}`);
+        }
+      }
+    }
+    const metadata = validatePhotographMetadata(manifest, decodedDimensions);
+    const failures = [...preflightMetadata.failures, ...metadata.failures, ...decodingFailures]
+      .filter((failure, index, all) => all.indexOf(failure) === index);
+    checks.push({
+      label: "Photograph metadata",
+      status: failures.length === 0 ? "pass" : "fail",
+      detail: failures.length === 0 ? metadata.detail : failures.slice(0, 5).join("; "),
+    });
+  }
 
   if (manifestValidation.version === "v1" || manifestValidation.version === "v2") {
     const expectedFiles = new Set<string>([

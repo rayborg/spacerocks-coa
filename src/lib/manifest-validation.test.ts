@@ -71,13 +71,25 @@ function v1Manifest() {
   };
 }
 
-function v2Manifest(identity: "official" | "unclassified" = "unclassified") {
+function v2Manifest(
+  identity: "official" | "unclassified" = "unclassified",
+  schemaVersion: "2.0.0" | "2.1.0" = "2.0.0",
+) {
   const official = identity === "official";
+  const base = commonManifest();
   return {
-    ...commonManifest(),
+    ...base,
     $schema: "coa-manifest-v2.schema.json",
-    schemaVersion: "2.0.0",
+    schemaVersion,
     packageVersion: 2,
+    photographs: schemaVersion === "2.1.0"
+      ? base.photographs.map((photo) => ({
+          ...photo,
+          pixelWidth: 560,
+          pixelHeight: 455,
+          displayCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
+        }))
+      : base.photographs,
     specimen: {
       meteorite: official ? "Aguas Zarcas" : "Working specimen 001",
       meteoriteIdentity: identity,
@@ -104,10 +116,10 @@ function v2Manifest(identity: "official" | "unclassified" = "unclassified") {
 }
 
 describe("manifest validation", () => {
-  it("validates the committed v1 shape with v1 and both new identity modes with v2", () => {
+  it("validates legacy 2.0 and strict 2.1 manifests", () => {
     expect(validateManifestVersion(v1Manifest())).toMatchObject({ version: "v1", valid: true });
-    expect(validateManifestVersion(v2Manifest("unclassified"))).toMatchObject({ version: "v2", valid: true });
-    expect(validateManifestVersion(v2Manifest("official"))).toMatchObject({ version: "v2", valid: true });
+    expect(validateManifestVersion(v2Manifest("unclassified"))).toMatchObject({ version: "v2", schemaVersion: "2.0.0", valid: true });
+    expect(validateManifestVersion(v2Manifest("official", "2.1.0"))).toMatchObject({ version: "v2", schemaVersion: "2.1.0", valid: true });
   });
 
   it("fails mismatched known identifiers instead of treating them as legacy", () => {
@@ -130,6 +142,17 @@ describe("manifest validation", () => {
     const invalidCaptureDate = structuredClone(v2Manifest());
     Object.assign(invalidCaptureDate.photographs[0], { captureDate: "2026-02-29" });
     expect(() => assertV2Manifest(invalidCaptureDate)).toThrow();
+    const croppedPhoto = structuredClone(v2Manifest("unclassified", "2.1.0"));
+    expect(() => assertV2Manifest(croppedPhoto)).not.toThrow();
+    const invalidCrop = structuredClone(croppedPhoto);
+    (invalidCrop.photographs[0] as Record<string, any>).displayCrop.targetAspect = "4:3";
+    expect(() => assertV2Manifest(invalidCrop)).toThrow();
+    const legacyWithNewMetadata = structuredClone(v2Manifest());
+    Object.assign(legacyWithNewMetadata.photographs[0], { pixelWidth: 560, pixelHeight: 455 });
+    expect(() => assertV2Manifest(legacyWithNewMetadata)).toThrow();
+    const newWithoutCrop = structuredClone(v2Manifest("unclassified", "2.1.0"));
+    delete (newWithoutCrop.photographs[0] as Record<string, any>).displayCrop;
+    expect(() => assertV2Manifest(newWithoutCrop)).toThrow();
     const invalidCoordinate = structuredClone(v2Manifest());
     Object.assign(invalidCoordinate.specimen.fall, { latitude: "91 N", longitude: "75 N" });
     expect(() => assertV2Manifest(invalidCoordinate)).toThrow();

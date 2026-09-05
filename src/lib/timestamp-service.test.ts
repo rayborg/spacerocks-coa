@@ -45,6 +45,19 @@ const statusFixture = {
   proof_available: true,
   message_code: "bitcoin_confirmation_pending",
 };
+const metbullFixture = {
+  code: 87447,
+  official_url: "https://www.lpi.usra.edu/meteor/metbull.cfm?code=87447",
+  canonical_name: "Northwest Africa 18652",
+  record_status: "Relict",
+  official_name: true,
+  recommended_classification: "Relict iron",
+  fall_or_find: "Find",
+  year_found: 2018,
+  country: "Western Sahara",
+  latitude: null,
+  longitude: null,
+};
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 const validateOrderStatusSchema = ajv.compile(orderStatusSchema);
@@ -95,6 +108,63 @@ class MemoryStorage implements Storage {
   removeItem(key: string) { this.values.delete(key); }
   setItem(key: string, value: string) { this.values.set(key, value); }
 }
+
+describe("Meteoritical Bulletin lookup", () => {
+  it("uses the configured API safely and validates the complete response", async () => {
+    const fetcher = vi.fn(async () => jsonResponse(metbullFixture));
+    const record = await createTimestampService(config(), fetcher).lookupMetbull("87447");
+    expect(record).toEqual({
+      code: 87447,
+      officialUrl: metbullFixture.official_url,
+      canonicalName: "Northwest Africa 18652",
+      recordStatus: "Relict",
+      recommendedClassification: "Relict iron",
+      fallOrFind: "Find",
+      yearFound: 2018,
+      country: "Western Sahara",
+      latitude: undefined,
+      longitude: undefined,
+    });
+    expect(fetcher).toHaveBeenCalledWith("https://timestamp.example.test/api/v1/meteorites/metbull?code=87447", expect.objectContaining({
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    }));
+  });
+
+  it("rejects malformed input and mismatched or extended responses", async () => {
+    const fetcher = vi.fn(async () => jsonResponse(metbullFixture));
+    const service = createTimestampService(config(), fetcher);
+    await expect(service.lookupMetbull("087447")).rejects.toThrow("valid Meteoritical Bulletin code");
+    expect(fetcher).not.toHaveBeenCalled();
+    for (const value of [
+      { ...metbullFixture, code: 87448 },
+      { ...metbullFixture, official_url: "https://www.lpi.usra.edu/meteor/metbull.cfm?code=87448" },
+      { ...metbullFixture, official_name: false },
+      { ...metbullFixture, extra: "unsafe" },
+      { ...metbullFixture, latitude: "91" },
+    ]) {
+      await expect(createTimestampService(config(), async () => jsonResponse(value)).lookupMetbull("87447")).rejects.toThrow();
+    }
+  });
+
+  it.each([
+    [404, "No Meteoritical Bulletin record"],
+    [409, "not official"],
+    [429, "Too many lookups"],
+    [503, "temporarily unavailable"],
+  ])("maps HTTP %i without parsing provider details", async (status, message) => {
+    const service = createTimestampService(config(), async () => jsonResponse({ detail: "provider secret" }, { status }));
+    await expect(service.lookupMetbull("87447")).rejects.toThrow(message);
+  });
+
+  it("requires no-store on successful lookup responses", async () => {
+    const response = jsonResponse(metbullFixture);
+    response.headers.delete("cache-control");
+    await expect(createTimestampService(config(), async () => response).lookupMetbull("87447")).rejects.toThrow("no-store");
+  });
+});
 
 describe("timestamp service configuration", () => {
   it("requires explicit secure configuration and preserves a base path", () => {

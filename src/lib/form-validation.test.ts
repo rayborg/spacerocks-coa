@@ -167,6 +167,9 @@ describe("formSchema", () => {
       caption: "",
       captureDate: overrides.captureDate ?? "",
       isUnmodifiedOriginal: true,
+      pixelWidth: 560,
+      pixelHeight: 455,
+      displayCrop: { x: 0, y: 0, width: 560, height: 455, targetAspect: "112:91", algorithm: "center-cover-v1" },
     });
 
     await expect(buildCertificatePackage({

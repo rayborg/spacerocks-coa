@@ -18,8 +18,14 @@ import {
   getCertificateStyle,
 } from "./certificateStyles";
 import PaidTimestampPanel from "./components/PaidTimestampPanel";
-import { timestampServiceConfig } from "./lib/timestamp-service";
+import { createTimestampService, MetbullLookupError, timestampServiceConfig } from "./lib/timestamp-service";
 import { formSchema } from "./lib/form-validation";
+import {
+  analyzePhotoDimensions,
+  describePhotoAnalysis,
+  isSupportedPhotoMimeType,
+  matchesPhotoMimeSignature,
+} from "./lib/photo";
 
 const defaultValues: FormValues = {
   issuerName: "",
@@ -86,6 +92,39 @@ function locationSummary(values: FormValues): string {
     .map((value) => value.trim())
     .filter((value, index, all) => value && all.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index);
   return parts.join(", ") || "Not entered";
+}
+
+function displayCropStyle(photo: PhotoInput): React.CSSProperties | undefined {
+  const crop = photo.displayCrop;
+  if (!crop) return undefined;
+  return {
+    position: "absolute",
+    width: `${photo.pixelWidth / crop.width * 100}%`,
+    height: `${photo.pixelHeight / crop.height * 100}%`,
+    maxWidth: "none",
+    left: `${-crop.x / crop.width * 100}%`,
+    top: `${-crop.y / crop.height * 100}%`,
+    objectFit: "contain",
+  };
+}
+
+async function decodePhotoDimensions(file: File): Promise<{ pixelWidth: number; pixelHeight: number }> {
+  const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (!matchesPhotoMimeSignature(file.type, signature)) {
+    throw new Error("The encoded file signature does not match its JPEG, PNG, or WebP MIME type.");
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error("The image has no decodable pixels.");
+    return { pixelWidth: image.naturalWidth, pixelHeight: image.naturalHeight };
+  } catch {
+    throw new Error("The file MIME type says it is an image, but its pixels could not be decoded. Choose a valid JPEG, PNG, or WebP file.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function Field({
@@ -192,10 +231,14 @@ function CertificatePreview({
               <p>{classificationSummary(values)}</p>
             </div>
             <div className="certificate-preview__photo">
-              {photo ? <img src={photo.previewUrl} alt={photo.caption || "Uploaded specimen"} /> : <span>Exact specimen photo required</span>}
+              {photo?.displayCrop ? (
+                <span className="certificate-preview__photo-viewport" data-display-crop={`${photo.displayCrop.x},${photo.displayCrop.y},${photo.displayCrop.width},${photo.displayCrop.height}`}>
+                  <img style={displayCropStyle(photo)} src={photo.previewUrl} alt={photo.caption || "Centered display crop of uploaded specimen"} />
+                </span>
+              ) : <span>Valid display photo required</span>}
               {isMuseumLedger || isMuseumType ? (
                 <small className="certificate-preview__photo-caption">
-                  {isMuseumType ? "Specimen photo 01" : "Exact specimen / photo record 01"}
+                  Display crop 01
                 </small>
               ) : null}
             </div>
@@ -203,7 +246,7 @@ function CertificatePreview({
               <div><dt>Fall / find</dt><dd>{values.fallStatus || "Pending"}</dd></div>
               <div><dt>Location</dt><dd>{locationSummary(values)}</dd></div>
               <div><dt>Specimen form</dt><dd>{values.specimenForm || "Not recorded"}</dd></div>
-              <div><dt>Recorded owner</dt><dd>{values.recordedOwner.trim() || "Not recorded"}</dd></div>
+              <div><dt>Current owner</dt><dd>{values.issuerName.trim() || "Pending"}</dd></div>
             </dl>
             {isMuseumType ? (
               <div className="certificate-preview__catalog-note">
@@ -336,6 +379,21 @@ export default function App() {
       setValue("officialNameVerified", false, { shouldDirty: true, shouldValidate: true });
     }
   };
+  const metbullRequest = useRef<{ id: number; controller: AbortController } | undefined>(undefined);
+  const [metbullStatus, setMetbullStatus] = useState("");
+  const [metbullError, setMetbullError] = useState(false);
+  const [metbullBusy, setMetbullBusy] = useState(false);
+  const cancelMetbullLookup = () => {
+    metbullRequest.current?.controller.abort();
+    metbullRequest.current = undefined;
+    setMetbullBusy(false);
+  };
+  const metbullSourceChanged = () => {
+    cancelMetbullLookup();
+    setMetbullStatus("");
+    setMetbullError(false);
+    resetOfficialAttestation();
+  };
   useEffect(() => {
     if (meteoriteIdentity === "official") {
       void trigger([
@@ -354,6 +412,14 @@ export default function App() {
   useEffect(() => {
     if (meteoriteIdentity === "official") void trigger("officialReferenceUrl");
   }, [meteoriteIdentity, watchedValues.metbullCode, trigger]);
+  useEffect(() => {
+    if (meteoriteIdentity !== "official") {
+      cancelMetbullLookup();
+      setMetbullStatus("");
+      setMetbullError(false);
+    }
+  }, [meteoriteIdentity]);
+  useEffect(() => () => metbullRequest.current?.controller.abort(), []);
 
   const [photos, setPhotos] = useState<PhotoInput[]>([]);
   const [logo, setLogo] = useState<File>();
@@ -372,8 +438,19 @@ export default function App() {
   const [generationBusy, setGenerationBusy] = useState(false);
   const [selectedService, setSelectedService] = useState<"free" | "blockchain">("free");
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string; certificateReference: string }>();
+  const photoUrlsRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
   const allPhotosAttested = photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal);
-  const issueReady = isValid && Boolean(identity) && backupDownloaded && allPhotosAttested;
+  const primaryPhotoReady = Boolean(photos[0]?.displayCrop);
+  const issueReady = isValid && Boolean(identity) && backupDownloaded && allPhotosAttested && primaryPhotoReady;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      photoUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      photoUrlsRef.current.clear();
+    };
+  }, []);
   useEffect(() => {
     if (!logo) {
       setLogoPreviewUrl(undefined);
@@ -447,7 +524,45 @@ export default function App() {
     setKeyStatus("The signing key was removed from this browser session.");
   };
 
-  const addPhotos = (files: FileList | null) => {
+  const lookupMetbull = async () => {
+    if (!timestampServiceConfig) return;
+    const code = getValues("metbullCode").trim();
+    cancelMetbullLookup();
+    const controller = new AbortController();
+    const id = Date.now() + Math.random();
+    metbullRequest.current = { id, controller };
+    setMetbullBusy(true);
+    setMetbullError(false);
+    setMetbullStatus("Looking up the official Meteoritical Bulletin record...");
+    try {
+      const record = await createTimestampService(timestampServiceConfig).lookupMetbull(code, controller.signal);
+      if (metbullRequest.current?.id !== id || getValues("metbullCode").trim() !== code || getValues("meteoriteIdentity") !== "official") return;
+      setValue("meteoriteName", record.canonicalName, { shouldDirty: true, shouldValidate: true });
+      setValue("classification", record.recommendedClassification, { shouldDirty: true, shouldValidate: true });
+      setValue("fallStatus", record.fallOrFind, { shouldDirty: true, shouldValidate: true });
+      if (record.country !== undefined) setValue("country", record.country, { shouldDirty: true, shouldValidate: true });
+      if (record.latitude !== undefined) setValue("latitude", record.latitude, { shouldDirty: true, shouldValidate: true });
+      if (record.longitude !== undefined) setValue("longitude", record.longitude, { shouldDirty: true, shouldValidate: true });
+      setValue("metbullCode", String(record.code), { shouldDirty: true, shouldValidate: true });
+      setValue("officialReferenceUrl", record.officialUrl, { shouldDirty: true, shouldValidate: true });
+      setValue("officialNameVerified", false, { shouldDirty: true, shouldValidate: true });
+      await trigger(["meteoriteName", "classification", "fallStatus", "country", "latitude", "longitude", "metbullCode", "officialReferenceUrl", "officialNameVerified"]);
+      const year = record.yearFound ? `; ${record.fallOrFind.toLowerCase()} year ${record.yearFound}` : "";
+      setMetbullStatus(`Loaded ${record.canonicalName} (${record.recordStatus}; ${record.recommendedClassification}${year}). Review the official entry, complete type and subclass, then attest it below.`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (metbullRequest.current?.id !== id) return;
+      setMetbullError(true);
+      setMetbullStatus(error instanceof MetbullLookupError ? error.message : "The official meteorite lookup could not be completed.");
+    } finally {
+      if (metbullRequest.current?.id === id) {
+        metbullRequest.current = undefined;
+        setMetbullBusy(false);
+      }
+    }
+  };
+
+  const addPhotos = async (files: FileList | null) => {
     if (!files) return;
     const selected = Array.from(files);
     if (selected.some((file) => file.size > 100 * 1024 * 1024)) {
@@ -464,20 +579,43 @@ export default function App() {
       setPhotoStatus("Original photographs and issuer assets cannot exceed 200 MB in one package.");
       return;
     }
-    const imageFiles = selected.filter((file) => file.type.startsWith("image/"));
-    if (imageFiles.length !== selected.length) setPhotoStatus("Only image files were added.");
-    else setPhotoStatus("");
-    setPhotos((current) => [
-      ...current,
-      ...imageFiles.map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-        caption: "",
-        captureDate: "",
-        isUnmodifiedOriginal: false,
-      })),
-    ]);
+    setPhotoStatus("Checking image type, decoded pixels, dimensions, and display crop locally...");
+    const accepted: PhotoInput[] = [];
+    const rejected: string[] = [];
+    for (const file of selected) {
+      if (!isSupportedPhotoMimeType(file.type)) {
+        rejected.push(`${file.name}: unsupported MIME type; use a browser-decodable JPEG, PNG, or WebP.`);
+        continue;
+      }
+      try {
+        const { pixelWidth, pixelHeight } = await decodePhotoDimensions(file);
+        const analysis = analyzePhotoDimensions(pixelWidth, pixelHeight);
+        const previewUrl = URL.createObjectURL(file);
+        photoUrlsRef.current.add(previewUrl);
+        accepted.push({
+          id: crypto.randomUUID(),
+          file,
+          previewUrl,
+          caption: "",
+          captureDate: "",
+          isUnmodifiedOriginal: false,
+          pixelWidth,
+          pixelHeight,
+          displayCrop: analysis.valid ? analysis.displayCrop : undefined,
+        });
+      } catch (error) {
+        rejected.push(`${file.name}: ${error instanceof Error ? error.message : "the image could not be decoded."}`);
+      }
+    }
+    if (!mountedRef.current) {
+      accepted.forEach((photo) => {
+        URL.revokeObjectURL(photo.previewUrl);
+        photoUrlsRef.current.delete(photo.previewUrl);
+      });
+      return;
+    }
+    if (accepted.length) setPhotos((current) => [...current, ...accepted]);
+    setPhotoStatus(rejected.length ? rejected.join(" ") : "All selected files decoded successfully. Review each photo's display status.");
   };
 
   const updatePhoto = (id: string, changes: Partial<PhotoInput>) => {
@@ -487,7 +625,10 @@ export default function App() {
   const removePhoto = (id: string) => {
     setPhotos((current) => {
       const removed = current.find((photo) => photo.id === id);
-      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      if (removed) {
+        URL.revokeObjectURL(removed.previewUrl);
+        photoUrlsRef.current.delete(removed.previewUrl);
+      }
       return current.filter((photo) => photo.id !== id);
     });
   };
@@ -503,11 +644,15 @@ export default function App() {
       return;
     }
     if (photos.length === 0) {
-      setGenerationStatus("Add at least one exact photograph of this specimen.");
+      setGenerationStatus("Add at least one source-original photograph of this specimen.");
       return;
     }
     if (photos.some((photo) => !photo.isUnmodifiedOriginal)) {
-      setGenerationStatus("Confirm that every listed photograph is an unmodified original of this exact specimen.");
+      setGenerationStatus("Confirm that every listed source file is an unmodified original photograph of this exact specimen.");
+      return;
+    }
+    if (!photos[0].displayCrop) {
+      setGenerationStatus("The first photograph must meet the 112:91 display ratio and 560 x 455 px minimum within the 5% crop-loss limit. Reframe it or remove it so a suitable photo is first.");
       return;
     }
 
@@ -628,7 +773,7 @@ export default function App() {
               <details className="workbench-section" open>
                 <summary><span>01</span><div><strong>Issuer identity</strong><small>Who is authorizing this record</small></div></summary>
                 <div className="workbench-section__body field-grid">
-                  <Field label="Issuer display or legal name" error={errors.issuerName?.message}>
+                  <Field label="Issuer display or legal name" hint="The issuer is also recorded as the specimen's current owner." error={errors.issuerName?.message}>
                     <input required aria-required="true" placeholder="e.g., John Doe" {...register("issuerName")} />
                   </Field>
                   <Field label="Collection or business" error={errors.collectionName?.message}>
@@ -788,9 +933,6 @@ export default function App() {
                   <Field label="Identifying marks (optional)" wide>
                     <input placeholder="Optional - e.g., collection label or distinguishing feature" {...register("identifyingMarks")} />
                   </Field>
-                  <Field label="Recorded owner (optional)" error={errors.recordedOwner?.message}>
-                    <input placeholder="Optional - e.g., John Doe" {...register("recordedOwner")} />
-                  </Field>
                 </div>
               </details>
 
@@ -821,16 +963,24 @@ export default function App() {
                   {meteoriteIdentity === "official" ? (
                     <>
                       <Field label="Meteoritical Bulletin code" error={errors.metbullCode?.message}>
-                        <input required aria-required="true" inputMode="numeric" placeholder="e.g., 12345" {...register("metbullCode", { onChange: resetOfficialAttestation })} />
+                        <input required aria-required="true" inputMode="numeric" placeholder="e.g., 12345" {...register("metbullCode", { onChange: metbullSourceChanged })} />
                       </Field>
                       <Field label="Official Meteoritical Bulletin URL" wide error={errors.officialReferenceUrl?.message}>
-                        <input required aria-required="true" type="url" placeholder="https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345" {...register("officialReferenceUrl", { onChange: resetOfficialAttestation })} />
+                        <input required aria-required="true" type="url" placeholder="https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345" {...register("officialReferenceUrl", { onChange: metbullSourceChanged })} />
                       </Field>
+                      {timestampServiceConfig ? (
+                        <div className="metbull-lookup field--wide">
+                          <button type="button" className="button button--outline button--small" disabled={metbullBusy} onClick={() => void lookupMetbull()}>
+                            {metbullBusy ? "Looking up official record..." : "Fill from Meteoritical Bulletin"}
+                          </button>
+                          {metbullStatus ? <p className={`inline-status${metbullError ? " inline-status--error" : ""}`} role={metbullError ? "alert" : "status"} aria-live="polite">{metbullStatus}</p> : null}
+                        </div>
+                      ) : null}
                       <Field
                         label="Official name verification"
                         wide
                         error={errors.officialNameVerified?.message}
-                        hint="No lookup is performed. Open the official record and make this attestation yourself."
+                        hint="Autofill is only an aid. Open the official record and make this attestation yourself."
                       >
                         <span className="attestation">
                           <input required aria-required="true" type="checkbox" {...register("officialNameVerified")} />
@@ -862,7 +1012,7 @@ export default function App() {
                   <Field label="Intermediary purchaser name (optional)">
                     <input placeholder="Optional - e.g., dealer or interim purchaser" {...register("intermediaryPurchaserName")} />
                   </Field>
-                  <Field label="Buyer / transferee (optional)">
+                  <Field label="Buyer / transferee in this transfer (optional)" hint="The recipient in the specific transaction documented here; this may differ from the current owner.">
                     <input placeholder="Optional - e.g., receiving collector or institution" {...register("buyer")} />
                   </Field>
                   <Field label="Transfer date (optional)" error={errors.transferDate?.message}>
@@ -878,36 +1028,50 @@ export default function App() {
               </details>
 
               <section className="evidence-section">
-                <div className="evidence-section__head"><span>05</span><div><strong>Exact specimen photographs</strong><small>At least one unmodified original is mandatory</small></div></div>
+                <div className="evidence-section__head"><span>05</span><div><strong>Source-original specimen photographs</strong><small>At least one unmodified source with a valid display crop is mandatory</small></div></div>
+                <div className="photo-requirements" aria-labelledby="photo-requirements-title">
+                  <strong id="photo-requirements-title">Certificate display photo requirements</strong>
+                  <p><b>Ratio:</b> 112:91 landscape. <b>Minimum usable crop:</b> 560 x 455 px. <b>Recommended:</b> 1120 x 910 px or larger.</p>
+                  <p>The browser validates decoded pixel dimensions, not EXIF metadata or a trusted DPI value. A deterministic geometric center crop is accepted only when it removes no more than 5% of source area; it does not perform visual subject detection.</p>
+                  <p>The source file remains unchanged and is packaged and hashed byte-for-byte. The crop is presentation metadata only; it does not replace or modify the original evidence.</p>
+                </div>
                 <label
                   className="photo-drop"
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault();
-                    addPhotos(event.dataTransfer.files);
+                    void addPhotos(event.dataTransfer.files);
                   }}
                 >
-                  <input type="file" accept="image/*" multiple onChange={(event) => addPhotos(event.target.files)} />
+                  <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void addPhotos(event.target.files)} />
                   <span>+</span>
-                  <strong>Drop exact source photographs here</strong>
-                  <small>or choose files - JPEG, PNG, WebP, TIFF, or another browser-readable image</small>
+                  <strong>Drop source-original photographs here</strong>
+                  <small>or choose browser-decodable JPEG, PNG, or WebP files</small>
                 </label>
-                {photoStatus ? <p className="inline-status inline-status--error">{photoStatus}</p> : null}
+                {photoStatus ? <p className="inline-status" role="status" aria-live="polite">{photoStatus}</p> : null}
                 <div className="photo-list">
-                  {photos.map((photo, index) => (
+                  {photos.map((photo, index) => {
+                    const analysis = analyzePhotoDimensions(photo.pixelWidth, photo.pixelHeight);
+                    const analysisId = `photo-analysis-${photo.id}`;
+                    return (
                     <article className="photo-item" key={photo.id}>
-                      <img src={photo.previewUrl} alt="" />
+                      <img className={photo.displayCrop ? "photo-item__crop-preview" : "photo-item__source-preview"} src={photo.previewUrl} alt="" />
                       <div className="photo-item__fields">
                         <div className="photo-item__heading">
-                          <div className="photo-item__meta"><span>Original {String(index + 1).padStart(2, "0")}</span><strong>{photo.file.name}</strong><small>{(photo.file.size / 1024 / 1024).toFixed(2)} MB</small></div>
+                          <div className="photo-item__meta"><span>Source original {String(index + 1).padStart(2, "0")}{index === 0 ? " / primary" : ""}</span><strong>{photo.file.name}</strong><small>{(photo.file.size / 1024 / 1024).toFixed(2)} MB</small></div>
                           <button type="button" className="remove-button" onClick={() => removePhoto(photo.id)} aria-label={`Remove ${photo.file.name}`}>Remove</button>
                         </div>
+                        <p id={analysisId} className={`photo-analysis photo-analysis--${analysis.valid ? "valid" : "invalid"}`} role={analysis.valid ? "status" : "alert"}>
+                          <strong>{analysis.valid ? "Valid display crop" : index === 0 ? "Primary photo blocks issuance" : "Exact evidence only; not suitable for display"}</strong>
+                          <span>{describePhotoAnalysis(analysis)}</span>
+                        </p>
                         <label>Caption (optional)<input placeholder="Optional - e.g., front face" value={photo.caption} onChange={(event) => updatePhoto(photo.id, { caption: event.target.value })} /></label>
                         <label>Capture date (optional)<input type="date" placeholder="Optional - e.g., 2026-07-29" value={photo.captureDate} onChange={(event) => updatePhoto(photo.id, { captureDate: event.target.value })} /></label>
-                        <label className="attestation"><input type="checkbox" checked={photo.isUnmodifiedOriginal} onChange={(event) => updatePhoto(photo.id, { isUnmodifiedOriginal: event.target.checked })} /><span>I attest this is an exact, unmodified photograph of the specimen.</span></label>
+                        <label className="attestation"><input aria-describedby={analysisId} type="checkbox" checked={photo.isUnmodifiedOriginal} onChange={(event) => updatePhoto(photo.id, { isUnmodifiedOriginal: event.target.checked })} /><span>I attest that this source file is an exact, unmodified original photograph of the specimen. I understand the certificate uses the recorded centered presentation crop while preserving and hashing the original unchanged.</span></label>
                       </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
 
@@ -962,8 +1126,9 @@ export default function App() {
                       {!isValid ? <li>Complete the required form fields.</li> : null}
                       {!identity ? <li>Generate or import a signing identity.</li> : null}
                       {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
-                      {photos.length === 0 ? <li>Add at least one exact specimen photograph.</li> : null}
-                      {photos.length > 0 && !allPhotosAttested ? <li>Attest every photograph is an unmodified original.</li> : null}
+                      {photos.length === 0 ? <li>Add at least one source-original specimen photograph.</li> : null}
+                      {photos.length > 0 && !primaryPhotoReady ? <li>The first photo needs a valid 112:91 centered display crop of at least 560 x 455 px with no more than 5% source-area loss. Reframe it or remove it so a suitable photo is first.</li> : null}
+                      {photos.length > 0 && !allPhotosAttested ? <li>Attest every source photograph is an unmodified original.</li> : null}
                     </ul>
                   ) : null}
                 </div>
@@ -1010,7 +1175,8 @@ export default function App() {
               </div>
               <div className="preview-checks">
                 <span className={identity ? "complete" : ""}><i />Signing identity</span>
-                <span className={photos.length ? "complete" : ""}><i />Original evidence</span>
+                <span className={photos.length ? "complete" : ""}><i />Source-original evidence</span>
+                <span className={primaryPhotoReady ? "complete" : ""}><i />Valid display crop</span>
                 <span className={allPhotosAttested ? "complete" : ""}><i />Photo attestation</span>
                 <span><i />Offline verifier included</span>
               </div>

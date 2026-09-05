@@ -1253,6 +1253,29 @@ a {
   cursor: pointer;
 }
 
+.photo-requirements {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 16px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--gold-light) 13%, white);
+  border-left: 4px solid var(--gold);
+}
+
+.photo-requirements > strong {
+  color: var(--navy);
+  font-family: var(--serif);
+  font-size: 16px;
+}
+
+.photo-requirements p {
+  margin: 0;
+  color: #4d5965;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .photo-drop:hover {
   background: rgba(189, 135, 48, 0.05);
   border-color: var(--gold);
@@ -1296,6 +1319,18 @@ a {
   color: #9d3030;
 }
 
+.metbull-lookup {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.metbull-lookup .inline-status {
+  flex: 1 1 22rem;
+  margin: 0;
+}
+
 .photo-list {
   display: grid;
   min-width: 0;
@@ -1315,9 +1350,14 @@ a {
 
 .photo-item > img {
   width: 112px;
-  height: 112px;
+  height: 91px;
   object-fit: cover;
+  object-position: center;
   background: var(--navy);
+}
+
+.photo-item > img.photo-item__source-preview {
+  object-fit: contain;
 }
 
 .photo-item__fields {
@@ -1334,6 +1374,35 @@ a {
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
+}
+
+.photo-analysis {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 9px 10px;
+  border-left: 3px solid;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.photo-analysis strong {
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.photo-analysis--valid {
+  color: #245f43;
+  background: #edf8f1;
+  border-color: #3d8c64;
+}
+
+.photo-analysis--invalid {
+  color: #852b2b;
+  background: #fff4f1;
+  border-color: #a43d3d;
 }
 
 .photo-item__meta {
@@ -2307,7 +2376,7 @@ a {
 }
 
 .certificate-preview--museum-type .certificate-preview__photo img {
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .certificate-preview--museum-type .certificate-preview__photo-caption {
@@ -2756,6 +2825,26 @@ a {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.certificate-preview .certificate-preview__photo {
+  height: auto;
+  padding: 0;
+  aspect-ratio: 112 / 91;
+}
+
+.certificate-preview__photo-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  aspect-ratio: 112 / 91;
+}
+
+.certificate-preview__photo-caption {
+  z-index: 1;
 }
 
 .certificate-preview__facts {
@@ -3966,7 +4055,7 @@ footer > div:last-child a {
 
   .photo-item > img {
     width: 82px;
-    height: 82px;
+    height: 67px;
   }
 
   .photo-item__fields {

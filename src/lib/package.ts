@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import manifestSchema from "../../schemas/coa-manifest-v2.schema.json";
-import type { FormValues, ManifestFile, PhotoInput, SigningIdentity } from "../types";
+import type { DisplayCrop, FormValues, ManifestFile, PhotoInput, SigningIdentity } from "../types";
 import {
   displayDate,
   mediaTypeForFile,
@@ -16,6 +16,7 @@ import { getCertificateTheme } from "../certificateThemes";
 import { getCertificateStyle } from "../certificateStyles";
 import { isValidIsoDate, validateFormValues } from "./form-validation";
 import { assertV2Manifest } from "./manifest-validation";
+import { isSupportedPhotoMimeType, matchesPhotoMimeSignature, matchesRecordedCrop } from "./photo";
 
 const APPLICATION_VERSION = "1.0.0";
 const MAX_PHOTO_COUNT = 100;
@@ -38,6 +39,9 @@ interface PreparedPhoto {
   sha256: string;
   captureDate?: string;
   isUnmodifiedOriginal: true;
+  pixelWidth: number;
+  pixelHeight: number;
+  displayCrop?: DisplayCrop;
   content: Uint8Array;
 }
 
@@ -78,7 +82,7 @@ function buildSpecimen(values: FormValues) {
     numberOfPieces: Number(values.numberOfPieces),
     preparationState: optional(values.preparationState),
     identifyingMarks: optional(values.identifyingMarks),
-    recordedOwner: optional(values.recordedOwner),
+    recordedOwner: optional(values.issuerName),
     fall: {
       status: values.fallStatus.trim(),
       date: optional(values.fallDate),
@@ -124,7 +128,7 @@ function buildCertificateText(
   values: FormValues,
   identity: SigningIdentity,
   recordHash: string,
-  photoCount: number,
+  photos: Array<Omit<PreparedPhoto, "content">>,
 ) {
   const official = values.meteoriteIdentity === "official";
   const meteoriteType = official ? values.meteoriteType.trim() : "Unclassified";
@@ -154,7 +158,7 @@ Dimensions: ${recorded(values.dimensions)}
 Number of pieces: ${values.numberOfPieces}
 Preparation state: ${recorded(values.preparationState)}
 Identifying marks: ${recorded(values.identifyingMarks)}
-Recorded owner: ${recorded(values.recordedOwner)}
+Current owner: ${recorded(values.issuerName)}
 
 FALL OR FIND
 Status: ${values.fallStatus}
@@ -184,7 +188,12 @@ Public-key fingerprint (SHA-256 of SubjectPublicKeyInfo DER):
 ${identity.fingerprint}
 Certificate record SHA-256:
 ${recordHash}
-Exact original specimen photographs included: ${photoCount}
+Source-original specimen photographs included unchanged: ${photos.length}
+
+PHOTO EVIDENCE AND PRESENTATION
+${photos.map((photo, index) => photo.displayCrop
+    ? `Source original ${String(index + 1).padStart(2, "0")}: ${photo.path}; ${photo.pixelWidth} x ${photo.pixelHeight} px. Certificate presentation uses signed ${photo.displayCrop.algorithm} crop x=${photo.displayCrop.x}, y=${photo.displayCrop.y}, width=${photo.displayCrop.width}, height=${photo.displayCrop.height}, target=${photo.displayCrop.targetAspect}. Original bytes remain unchanged and hashed.`
+    : `Source original ${String(index + 1).padStart(2, "0")}: ${photo.path}; ${photo.pixelWidth} x ${photo.pixelHeight} px. Retained as exact evidence only; no certificate presentation crop recorded. Original bytes remain unchanged and hashed.`).join("\n")}
 
 The private key is not included. Verify the signature and every file hash using
 verify.py or another Ed25519 and SHA-256 implementation. The package remains
@@ -269,13 +278,15 @@ Expected OpenSSL output:
 
   Signature Verified Successfully
 
-The verifier performs four checks:
+The verifier performs five checks:
 
 1. The Ed25519 signature matches the exact manifest.json bytes.
 2. The SHA-256 fingerprint of public-key.pem matches the signed manifest.
 3. Every evidence file listed in manifest.json has the expected byte length and
    SHA-256 hash.
-4. Every distributed support file listed in sha256sums.txt is unchanged.
+4. Photograph records agree with signed file facts; schema 2.1 additionally
+   validates bounded signed dimensions and deterministic 112:91 crop semantics.
+5. Every distributed support file listed in sha256sums.txt is unchanged.
 
 The signing public key must also be associated with the named issuer through an
 independent trusted source. Cryptography proves key possession and integrity; it
@@ -359,6 +370,61 @@ for entry in manifest.get("files", []):
     if not ok:
         failures.append(relative)
 
+photo_failures = []
+file_entries = manifest.get("files", [])
+photos = manifest.get("photographs", [])
+new_photo_format = manifest.get("schemaVersion") == "2.1.0"
+seen_photo_paths = set()
+for index, photo in enumerate(photos):
+    label = f"photograph {index + 1}"
+    photo_path = photo.get("path")
+    if photo_path in seen_photo_paths:
+        photo_failures.append(f"{label} duplicate path")
+    seen_photo_paths.add(photo_path)
+    matches = [entry for entry in file_entries if entry.get("path") == photo.get("path")]
+    if len(matches) != 1:
+        photo_failures.append(f"{label} file entry count")
+    else:
+        file_entry = matches[0]
+        if any(photo.get(key) != file_entry.get(key) for key in ("sha256", "bytes", "mediaType")):
+            photo_failures.append(f"{label} file facts")
+        if new_photo_format and file_entry.get("role") != "exact original specimen photograph":
+            photo_failures.append(f"{label} file role")
+    if not new_photo_format:
+        continue
+    width = photo.get("pixelWidth")
+    height = photo.get("pixelHeight")
+    if type(width) is not int or type(height) is not int or not (1 <= width <= 100000 and 1 <= height <= 100000):
+        photo_failures.append(f"{label} dimensions")
+        continue
+    scale = min(width // 112, height // 91)
+    crop_width = 112 * scale
+    crop_height = 91 * scale
+    source_area = width * height
+    crop_area = crop_width * crop_height
+    suitable = scale >= 5 and (source_area - crop_area) * 20 <= source_area
+    expected_crop = {
+        "x": (width - crop_width) // 2,
+        "y": (height - crop_height) // 2,
+        "width": crop_width,
+        "height": crop_height,
+        "targetAspect": "112:91",
+        "algorithm": "center-cover-v1",
+    }
+    crop = photo.get("displayCrop")
+    if crop is None:
+        if suitable or index == 0:
+            photo_failures.append(f"{label} missing required crop")
+    elif not suitable or crop != expected_crop:
+        photo_failures.append(f"{label} crop semantics")
+if not photos:
+    photo_failures.append("no photographs")
+if photo_failures:
+    print(f"FAIL  photograph metadata: {photo_failures[:5]}")
+    failures.append("photograph-metadata")
+else:
+    print(f"OK    photograph metadata ({'2.1 crop semantics' if new_photo_format else 'legacy 2.0 file binding'})")
+
 record_file = manifest["certificate"]["recordFile"]
 record_hash = sha256_file(safe_path(record_file))
 if record_hash == manifest["certificate"]["recordSha256"]:
@@ -434,13 +500,13 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
       }
     : validatedValues;
   const { photos, logo, identity } = input;
-  if (photos.length === 0) throw new Error("Add at least one exact specimen photograph.");
+  if (photos.length === 0) throw new Error("Add at least one source-original specimen photograph.");
   if (photos.length > MAX_PHOTO_COUNT) {
     throw new Error(`A package can contain at most ${MAX_PHOTO_COUNT} original photographs.`);
   }
   for (const photo of photos) {
-    if (!photo.file.type.startsWith("image/")) {
-      throw new Error(`Specimen photograph ${photo.file.name} must have an image MIME type.`);
+    if (!isSupportedPhotoMimeType(photo.file.type)) {
+      throw new Error(`Specimen photograph ${photo.file.name} must have an image MIME type supported for certificate photos (JPEG, PNG, or WebP).`);
     }
     if (photo.file.size > MAX_PHOTO_BYTES) {
       throw new Error(`Specimen photograph ${photo.file.name} exceeds the 100 MB per-photo limit.`);
@@ -449,6 +515,13 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
     if (captureDate && !isValidIsoDate(captureDate)) {
       throw new Error(`Specimen photograph ${photo.file.name} has an invalid capture date; use YYYY-MM-DD.`);
     }
+    const signature = new Uint8Array(await photo.file.slice(0, 12).arrayBuffer());
+    if (!matchesPhotoMimeSignature(photo.file.type, signature)) {
+      throw new Error(`Specimen photograph ${photo.file.name} does not match its declared JPEG, PNG, or WebP MIME type.`);
+    }
+    if (!matchesRecordedCrop(photo.pixelWidth, photo.pixelHeight, photo.displayCrop)) {
+      throw new Error(`Specimen photograph ${photo.file.name} has missing or inconsistent decoded dimensions/display crop metadata.`);
+    }
   }
   const sourceBytes = photos.reduce((total, photo) => total + photo.file.size, logo?.size ?? 0);
   if (sourceBytes > MAX_SOURCE_BYTES) {
@@ -456,6 +529,9 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
   }
   if (photos.some((photo) => !photo.isUnmodifiedOriginal)) {
     throw new Error("Confirm that every specimen photograph is an unmodified original.");
+  }
+  if (!photos[0].displayCrop) {
+    throw new Error("The first specimen photograph must have a valid 112:91 centered display crop of at least 560 x 455 px within the 5% source-area loss limit.");
   }
 
   const generatedAt = new Date().toISOString();
@@ -475,6 +551,9 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
       sha256: await sha256Hex(content),
       captureDate: optional(photo.captureDate),
       isUnmodifiedOriginal: true,
+      pixelWidth: photo.pixelWidth,
+      pixelHeight: photo.pixelHeight,
+      displayCrop: photo.displayCrop,
       content,
     });
   }
@@ -492,6 +571,7 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
   const certificateRecord = {
     format: "Spacerocks immutable certificate record",
     version: 1,
+    schemaVersion: "2.1.0",
     certificate: {
       id: values.certificateId.trim(),
       issueDate: values.issueDate,
@@ -522,9 +602,10 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
     recordHash,
     qrPayload,
     mainPhoto: photos[0].file,
+    mainPhotoCrop: photos[0].displayCrop,
     logo,
   });
-  const certificateText = utf8(buildCertificateText(values, identity, recordHash, photos.length));
+  const certificateText = utf8(buildCertificateText(values, identity, recordHash, photographRecords));
   const auditLog = utf8(buildAuditLog(values, generatedAt, recordHash));
 
   const packageFiles = new Map<string, Uint8Array>();
@@ -614,7 +695,7 @@ export async function buildCertificatePackage(input: PackageInput): Promise<Pack
   manifestFiles.sort((left, right) => left.path.localeCompare(right.path));
   const manifest = {
     $schema: "coa-manifest-v2.schema.json",
-    schemaVersion: "2.0.0",
+    schemaVersion: "2.1.0",
     packageFormat: "Spacerocks Self-Contained COA Package",
     packageVersion: 2,
     recordType: "meteorite-certificate-of-authenticity",
