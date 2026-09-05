@@ -492,12 +492,6 @@ async function drawMuseumTypeCertificate(
       width: fittedLogo.width + 16,
       height: fittedLogo.height + 16,
     };
-    context.fillStyle = `${paper}f2`;
-    roundedRect(context, logoFrame.x, logoFrame.y, logoFrame.width, logoFrame.height, 8);
-    context.fill();
-    context.strokeStyle = accentLight;
-    context.lineWidth = 2;
-    context.stroke();
     context.drawImage(logo, logoFrame.x + 8, logoFrame.y + 8, fittedLogo.width, fittedLogo.height);
     logoTextX = Math.max(255, logoFrame.x + logoFrame.width + 24);
   } else {
@@ -905,13 +899,6 @@ export async function renderCertificate(input: CertificateRenderInput): Promise<
         width: fittedLogo.width + 20,
         height: fittedLogo.height + 20,
       };
-      context.fillStyle = `${NAVY}66`;
-      roundedRect(context, logoFrame.x, logoFrame.y, logoFrame.width, logoFrame.height, 12);
-      context.fill();
-      context.strokeStyle = `${GOLD_LIGHT}99`;
-      context.lineWidth = 2;
-      roundedRect(context, logoFrame.x, logoFrame.y, logoFrame.width, logoFrame.height, 12);
-      context.stroke();
       context.drawImage(logo, logoFrame.x + 10, logoFrame.y + 10, fittedLogo.width, fittedLogo.height);
       headerContentX = logoFrame.x + logoFrame.width + 24;
       headerTitleX = headerContentX;

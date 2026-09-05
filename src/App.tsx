@@ -178,8 +178,8 @@ function fitLogoPreview(dimensions?: ImageDimensions): React.CSSProperties {
   if (!dimensions) return { width: 0, height: 0, visibility: "hidden" };
   const scale = Math.min(180 / dimensions.pixelWidth, 92 / dimensions.pixelHeight);
   return {
-    width: dimensions.pixelWidth * scale + 10,
-    height: dimensions.pixelHeight * scale + 10,
+    width: dimensions.pixelWidth * scale + 8,
+    height: dimensions.pixelHeight * scale + 8,
   };
 }
 

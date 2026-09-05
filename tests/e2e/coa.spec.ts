@@ -1226,6 +1226,8 @@ test("fits square, wide, and tall issuer logos at natural ratio in both responsi
             frameContentRatio: (frameBox.width - horizontalInset) / (frameBox.height - verticalInset),
             naturalRatio: image.naturalWidth / image.naturalHeight,
             canonicalArea: imageBox.width * imageBox.height / (scale * scale),
+            frameBackground: frameStyle.backgroundColor,
+            frameBorderWidth: Number.parseFloat(frameStyle.borderTopWidth),
             recordType: toBox(recordType),
             title: toBox(title),
             id: toBox(id),
@@ -1239,6 +1241,8 @@ test("fits square, wide, and tall issuer logos at natural ratio in both responsi
         expect(geometry.image.width / geometry.image.height, `${styleId} ${logoCase.name} image ratio`).toBeCloseTo(geometry.naturalRatio, 2);
         expect(geometry.frameContentRatio, `${styleId} ${logoCase.name} frame ratio`).toBeCloseTo(geometry.naturalRatio, 2);
         expect(geometry.canonicalArea, `${styleId} ${logoCase.name} area`).toBeGreaterThanOrEqual(previousArea * 3);
+        expect(geometry.frameBackground, `${styleId} ${logoCase.name} frame background`).toBe("rgba(0, 0, 0, 0)");
+        expect(geometry.frameBorderWidth, `${styleId} ${logoCase.name} frame border`).toBe(0);
         expect(boxesIntersect(geometry.frame, geometry.recordType), `${styleId} ${logoCase.name} logo/record type ${JSON.stringify({ frame: geometry.frame, recordType: geometry.recordType })}`).toBe(false);
         expect(boxesIntersect(geometry.frame, geometry.title), `${styleId} ${logoCase.name} logo/title`).toBe(false);
         expect(boxesIntersect(geometry.frame, geometry.id), `${styleId} ${logoCase.name} logo/id`).toBe(false);

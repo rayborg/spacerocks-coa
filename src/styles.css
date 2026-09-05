@@ -2663,9 +2663,8 @@ a {
   max-height: 102px;
   padding: 4px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--certificate-paper) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--certificate-accent-light) 60%, transparent);
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
 }
 
 .certificate-preview__logo {
@@ -2678,20 +2677,14 @@ a {
 
 .certificate-preview--regal-archive .certificate-preview__logo-frame {
   padding: 2px;
-  border-block: 1px solid color-mix(in srgb, var(--certificate-accent-light) 65%, transparent);
 }
 
 .certificate-preview--museum-ledger .certificate-preview__logo-frame {
   padding: 2px;
-  background: color-mix(in srgb, var(--certificate-paper) 85%, white);
-  border: 1px solid color-mix(in srgb, var(--certificate-dark) 65%, transparent);
 }
 
 .certificate-preview--celestial-formal .certificate-preview__logo-frame {
   padding: 4px;
-  background: color-mix(in srgb, var(--certificate-dark) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--certificate-accent-light) 60%, transparent);
-  border-radius: 6px;
 }
 
 .orbit-mark {
