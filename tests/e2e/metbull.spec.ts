@@ -35,6 +35,8 @@ test("autofills only authoritative MetBull fields and requires fresh attestation
   await page.getByLabel("Meteorite subclass").fill("Issuer-reviewed subclass");
   await page.getByLabel("Weight (grams)").fill("2.4");
   await page.getByLabel("Specimen form").selectOption("Fragment");
+  await expect(page.getByLabel("Meteoritical Bulletin code")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Fill from Meteoritical Bulletin" })).toBeVisible();
   await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
   await page.getByLabel("Region (optional)").fill("Issuer region");
   await page.getByLabel("Locality / city (optional)").fill("Issuer locality");
@@ -74,7 +76,6 @@ test("ignores a stale lookup after the code changes", async ({ page }) => {
   });
   await page.goto("/#builder");
   await page.getByRole("radio", { name: /Official/ }).click();
-  await page.locator("details.workbench-section", { hasText: "Fall, find, and provenance" }).locator("summary").click();
   const code = page.getByLabel("Meteoritical Bulletin code");
   await code.fill("87447");
   await page.getByRole("button", { name: "Fill from Meteoritical Bulletin" }).click();

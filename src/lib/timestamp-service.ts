@@ -560,7 +560,7 @@ export function createTimestampService(config: TimestampServiceConfig, fetcher: 
       try {
         response = await fetcher(url.href, {
           method: "GET",
-          headers: { Accept: "application/json", "Cache-Control": "no-store" },
+          headers: { Accept: "application/json" },
           cache: "no-store",
           credentials: "omit",
           referrerPolicy: "no-referrer",

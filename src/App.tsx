@@ -923,6 +923,24 @@ export default function App() {
                       </label>
                     </div>
                   </fieldset>
+                  {meteoriteIdentity === "official" ? (
+                    <>
+                      <Field label="Meteoritical Bulletin code" error={errors.metbullCode?.message}>
+                        <input required aria-required="true" inputMode="numeric" placeholder="e.g., 12345" {...register("metbullCode", { onChange: metbullSourceChanged })} />
+                      </Field>
+                      {metbullLookupEnabled ? (
+                        <div className="metbull-lookup field--wide">
+                          <button type="button" className="button button--outline button--small" disabled={metbullBusy} onClick={() => void lookupMetbull()}>
+                            {metbullBusy ? "Looking up official record..." : "Fill from Meteoritical Bulletin"}
+                          </button>
+                          {metbullStatus ? <p className={`inline-status${metbullError ? " inline-status--error" : ""}`} role={metbullError ? "alert" : "status"} aria-live="polite">{metbullStatus}</p> : null}
+                        </div>
+                      ) : null}
+                      <Field label="Official Meteoritical Bulletin URL" wide error={errors.officialReferenceUrl?.message}>
+                        <input required aria-required="true" type="url" placeholder="Filled automatically from the bulletin code" {...register("officialReferenceUrl", { onChange: metbullSourceChanged })} />
+                      </Field>
+                    </>
+                  ) : null}
                   <Field label={meteoriteIdentity === "official" ? "Official canonical meteorite name" : "Working specimen name"} error={errors.meteoriteName?.message}>
                     <input required aria-required="true" placeholder={meteoriteIdentity === "official" ? "e.g., Aguas Zarcas" : "e.g., Unclassified specimen 001"} {...register("meteoriteName", { onChange: resetOfficialAttestation })} />
                   </Field>
@@ -1003,20 +1021,6 @@ export default function App() {
                   </Field>
                   {meteoriteIdentity === "official" ? (
                     <>
-                      <Field label="Meteoritical Bulletin code" error={errors.metbullCode?.message}>
-                        <input required aria-required="true" inputMode="numeric" placeholder="e.g., 12345" {...register("metbullCode", { onChange: metbullSourceChanged })} />
-                      </Field>
-                      <Field label="Official Meteoritical Bulletin URL" wide error={errors.officialReferenceUrl?.message}>
-                        <input required aria-required="true" type="url" placeholder="https://www.lpi.usra.edu/meteor/metbull.cfm?code=12345" {...register("officialReferenceUrl", { onChange: metbullSourceChanged })} />
-                      </Field>
-                      {metbullLookupEnabled ? (
-                        <div className="metbull-lookup field--wide">
-                          <button type="button" className="button button--outline button--small" disabled={metbullBusy} onClick={() => void lookupMetbull()}>
-                            {metbullBusy ? "Looking up official record..." : "Fill from Meteoritical Bulletin"}
-                          </button>
-                          {metbullStatus ? <p className={`inline-status${metbullError ? " inline-status--error" : ""}`} role={metbullError ? "alert" : "status"} aria-live="polite">{metbullStatus}</p> : null}
-                        </div>
-                      ) : null}
                       <Field
                         label="Official name verification"
                         wide
