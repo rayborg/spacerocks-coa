@@ -135,10 +135,11 @@ test("advertises free and blockchain COA options before the builder", async ({ p
   await expect(page.locator(".ledger__foot")).toContainText("COA verification website dependency");
   await expect(page.getByRole("heading", { name: "Four open COA checks. No permanent verification middleman." })).toBeVisible();
   const options = page.locator("#coa-options");
-  await expect(options.getByRole("heading", { name: "Choose how your COA can be checked." })).toBeVisible();
+  await expect(options).toContainText("Welcome to Spacerocks COA Studio");
+  await expect(options.getByRole("heading", { name: "Create your meteorite COA." })).toBeVisible();
   await expect(options.getByRole("heading", { name: "Signed COA", exact: true })).toBeVisible();
   await expect(options.getByRole("heading", { name: "Signed COA + Bitcoin Trust Anchor" })).toBeVisible();
-  await expect(options).toContainText("Create and download your signed COA for free. For a one-time $9.99, permanently anchor its unique digital fingerprint to Bitcoin, tying the exact COA to the blockchain so anyone can independently verify it later.");
+  await expect(options).toContainText("Document your specimen with photos and provenance, then download a professional, digitally signed certificate package. Start free or add a permanent Bitcoin trust anchor for $9.99.");
   await expect(options).toContainText("Bind the exact COA to a permanent Bitcoin record. Anyone can compare the COA with the public blockchain proof and detect any later change.");
   await expect(options).toContainText("$0");
   await expect(options).toContainText("$9.99");

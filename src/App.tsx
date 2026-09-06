@@ -784,9 +784,9 @@ export default function App() {
         {timestampServiceConfig ? (
           <section className="service-options" id="coa-options" aria-labelledby="coa-options-heading">
             <div className="service-options__intro">
-              <p className="eyebrow eyebrow--dark"><span>01</span> Choose your proof level</p>
-              <h2 id="coa-options-heading">Choose how your COA can be checked.</h2>
-              <p>Create and download your signed COA for free. For a one-time $9.99, permanently anchor its unique digital fingerprint to Bitcoin, tying the exact COA to the blockchain so anyone can independently verify it later.</p>
+              <p className="eyebrow eyebrow--dark"><span>01</span> Welcome to Spacerocks COA Studio</p>
+              <h2 id="coa-options-heading">Create your meteorite COA.</h2>
+              <p>Document your specimen with photos and provenance, then download a professional, digitally signed certificate package. Start free or add a permanent Bitcoin trust anchor for $9.99.</p>
             </div>
             <div className="service-options__grid">
               <article className={`service-option${selectedService === "free" ? " service-option--selected" : ""}`}>
