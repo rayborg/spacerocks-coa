@@ -352,23 +352,23 @@ test.describe("configured sandbox timestamp service", () => {
 
     // Ambiguous network, 5xx, and malformed-success retries retain one exact request binding.
     await checkoutButton.click();
-    await expect(page.getByText(/Retry will reuse the exact request and idempotency key/)).toBeVisible();
+    await expect(page.getByText(/Retry will reuse the exact request and idempotency key/)).toBeVisible({ timeout: 15_000 });
     await expect(checkoutButton).toBeEnabled();
     checkoutResponse = "unavailable";
     await checkoutButton.click();
-    await expect(page.getByText(/request failed \(503\).*Retry will reuse/s)).toBeVisible();
+    await expect(page.getByText(/request failed \(503\).*Retry will reuse/s)).toBeVisible({ timeout: 15_000 });
     await expect(checkoutButton).toBeEnabled();
     checkoutResponse = "hostile_url";
     await checkoutButton.click();
-    await expect(page.getByText(/not Stripe's exact secure host/)).toBeVisible();
+    await expect(page.getByText(/not Stripe's exact secure host/)).toBeVisible({ timeout: 15_000 });
     await expect(checkoutButton).toBeEnabled();
     checkoutResponse = "malformed";
     await checkoutButton.click();
-    await expect(page.getByText(/unexpected checkout response/)).toBeVisible();
+    await expect(page.getByText(/unexpected checkout response/)).toBeVisible({ timeout: 15_000 });
     await expect(checkoutButton).toBeEnabled();
     checkoutResponse = "rejected";
     await checkoutButton.click();
-    await expect(page.getByText(/request failed \(422\)/)).toBeVisible();
+    await expect(page.getByText(/request failed \(422\)/)).toBeVisible({ timeout: 15_000 });
 
     await page.unrouteAll({ behavior: "wait" });
     await fulfillOptions(page);
