@@ -495,14 +495,24 @@ test("organizes final release into responsive summary and action columns", async
   expect(desktop[0] && desktop[1]).toBeTruthy();
   expect(desktop[1]!.x).toBeGreaterThan(desktop[0]!.x + desktop[0]!.width);
   expect(await contents.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
-  const actionButton = await action.getByRole("button", { name: "Issue cryptographically signed COA package" }).boundingBox();
+  const issueButton = action.getByRole("button", { name: "Issue cryptographically signed COA package" });
+  const actionButton = await issueButton.boundingBox();
   expect(actionButton).toBeTruthy();
   expect(actionButton!.width).toBeCloseTo(desktop[1]!.width - 34, 0);
+  await issueButton.click();
+  const desktopRequirements = await section.locator("#issuance-readiness").boundingBox();
+  const desktopExpandedButton = await issueButton.boundingBox();
+  expect(desktopRequirements && desktopExpandedButton).toBeTruthy();
+  expect(desktopExpandedButton!.y).toBeGreaterThanOrEqual(desktopRequirements!.y + desktopRequirements!.height + 15);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobile = await Promise.all([intro.boundingBox(), action.boundingBox()]);
   expect(mobile[0] && mobile[1]).toBeTruthy();
   expect(mobile[1]!.y).toBeGreaterThanOrEqual(mobile[0]!.y + mobile[0]!.height);
+  const mobileRequirements = await section.locator("#issuance-readiness").boundingBox();
+  const mobileButton = await issueButton.boundingBox();
+  expect(mobileRequirements && mobileButton).toBeTruthy();
+  expect(mobileButton!.y).toBeGreaterThanOrEqual(mobileRequirements!.y + mobileRequirements!.height + 15);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

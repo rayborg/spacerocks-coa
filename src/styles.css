@@ -1636,13 +1636,9 @@ a {
   border: 0;
 }
 
-.issue-section__intro,
-.issue-section__action {
+.issue-section__intro {
   display: grid;
   align-content: start;
-}
-
-.issue-section__intro {
   gap: 8px;
 }
 
@@ -1700,8 +1696,11 @@ a {
 }
 
 .issue-section__action {
-  gap: 12px;
+  display: flex;
+  min-width: 0;
   width: 100%;
+  flex-direction: column;
+  gap: 16px;
   padding: 16px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -1709,12 +1708,24 @@ a {
 }
 
 .issue-section__action .button {
+  position: relative;
+  z-index: 0;
+  flex: 0 0 auto;
+  min-width: 0;
   width: 100%;
+  height: auto;
+  padding-block: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 #issuance-readiness {
   display: grid;
   gap: 8px;
+  position: static;
+  width: 100%;
+  min-width: 0;
   padding: 12px;
   color: var(--ink);
   background: var(--ivory);
@@ -3897,6 +3908,10 @@ footer > div:last-child a {
   }
 
   .service-options__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .issue-section {
     grid-template-columns: 1fr;
   }
 }
