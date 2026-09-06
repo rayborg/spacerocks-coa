@@ -524,9 +524,11 @@ export default function App() {
   const [photoStatus, setPhotoStatus] = useState("");
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationBusy, setGenerationBusy] = useState(false);
+  const [showIssuanceRequirements, setShowIssuanceRequirements] = useState(false);
   const [selectedService, setSelectedService] = useState<"free" | "blockchain">("free");
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string; certificateReference: string }>();
   const photoUrlsRef = useRef(new Set<string>());
+  const issuanceReadinessRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
   const allPhotosAttested = photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal);
   const sourcePhotoReady = photos.length > 0;
@@ -770,6 +772,21 @@ export default function App() {
     }
   };
 
+  const revealIssuanceRequirements = (message: string) => {
+    setShowIssuanceRequirements(true);
+    setGenerationStatus(message);
+    requestAnimationFrame(() => issuanceReadinessRef.current?.focus());
+  };
+
+  const submitPackage = async (values: FormValues) => {
+    if (!issueReady) {
+      revealIssuanceRequirements("Complete the listed requirements before issuing the COA.");
+      return;
+    }
+    setShowIssuanceRequirements(false);
+    await generatePackage(values);
+  };
+
   return (
     <>
       <a className="skip-link" href="#builder">Skip to certificate builder</a>
@@ -867,7 +884,14 @@ export default function App() {
             ) : null}
           </div>
 
-          <form className="builder-grid" onSubmit={handleSubmit(generatePackage, () => setGenerationStatus("Review the highlighted required fields."))}>
+          <form
+            className="builder-grid"
+            noValidate
+            onSubmit={handleSubmit(
+              submitPackage,
+              () => revealIssuanceRequirements("Review the highlighted required fields."),
+            )}
+          >
             <div className="workbench">
               <details className="workbench-section" open>
                 <summary><span>01</span><div><strong>Issuer identity</strong><small>Who is authorizing this record</small></div></summary>
@@ -1237,35 +1261,27 @@ export default function App() {
                   <h3>Build, sign, and package</h3>
                   <p>Creates PDF, PNG, text, deterministic JSON, original photos, hashes, signature, public key, schema, audit log, and offline verifier.</p>
                 </div>
-                <div id="issuance-readiness" aria-live="polite">
-                  <strong>{issueReady ? "Ready to issue." : "Complete these requirements before issuance:"}</strong>
-                  {!issueReady ? (
-                    <ul>
-                      {!isValid ? formRequirements.map((requirement) => (
-                        <li key={requirement.label}><strong>{requirement.label}:</strong> {requirement.message}</li>
-                      )) : null}
-                      {!identity ? <li>Generate or import a signing identity.</li> : null}
-                      {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
-                      {photos.length === 0 ? <li>Add at least one source-original specimen photograph.</li> : null}
-                      {photos.length > 0 && !allPhotosAttested ? <li>Attest every source photograph is an unmodified original.</li> : null}
-                    </ul>
-                  ) : null}
-                </div>
-                {!isValid ? (
-                  <button
-                    className="button button--outline button--small"
-                    type="button"
-                    onClick={() => {
-                      void trigger();
-                      setGenerationStatus("Review the highlighted required fields.");
-                    }}
-                  >Review missing form fields</button>
+                {showIssuanceRequirements ? (
+                  <div id="issuance-readiness" ref={issuanceReadinessRef} tabIndex={-1} aria-live="polite">
+                    <strong>{issueReady ? "Ready to issue." : "Complete these requirements before issuance:"}</strong>
+                    {!issueReady ? (
+                      <ul>
+                        {!isValid ? formRequirements.map((requirement) => (
+                          <li key={requirement.label}><strong>{requirement.label}:</strong> {requirement.message}</li>
+                        )) : null}
+                        {!identity ? <li>Generate or import a signing identity.</li> : null}
+                        {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
+                        {photos.length === 0 ? <li>Add at least one source-original specimen photograph.</li> : null}
+                        {photos.length > 0 && !allPhotosAttested ? <li>Attest every source photograph is an unmodified original.</li> : null}
+                      </ul>
+                    ) : null}
+                  </div>
                 ) : null}
                 <button
                   className="button button--gold button--issue"
                   type="submit"
-                  aria-describedby="issuance-readiness"
-                  disabled={generationBusy || !issueReady}
+                  aria-describedby={showIssuanceRequirements ? "issuance-readiness" : undefined}
+                  disabled={generationBusy}
                 >{generationBusy ? "Building package..." : selectedService === "blockchain" ? "Issue COA and continue to Bitcoin proof" : "Issue cryptographically signed COA package"}</button>
                 <p className="generation-status" aria-live="polite">{generationStatus}</p>
                 {receipt ? (

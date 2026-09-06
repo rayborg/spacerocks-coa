@@ -214,15 +214,18 @@ test("starts with blank content, provisional preview labels, and readable respon
   await expect(specimenSummary).not.toContainText(/--|0 g|Specimen form/);
   await expect(preview.locator(".certificate-preview__signoff strong")).toHaveText("Issuer");
 
-  await expect(page.getByRole("button", { name: "Issue cryptographically signed COA package" })).toBeDisabled();
-  await expect(page.getByText("Complete these requirements before issuance:")).toBeVisible();
+  const issueButton = page.getByRole("button", { name: "Issue cryptographically signed COA package" });
+  await expect(issueButton).toBeEnabled();
   const readiness = page.locator("#issuance-readiness");
+  await expect(readiness).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Review missing form fields" })).toHaveCount(0);
+  await issueButton.click();
+  await expect(page.getByText("Complete these requirements before issuance:")).toBeVisible();
   await expect(readiness).toContainText("Issuer name:");
   await expect(readiness).toContainText("Certificate ID:");
   await expect(readiness).toContainText("Meteorite name:");
   await expect(readiness).toContainText("Weight:");
   await expect(readiness).not.toContainText("Complete the required form fields.");
-  await page.getByRole("button", { name: "Review missing form fields" }).click();
   await expect(page.locator(".generation-status")).toHaveText("Review the highlighted required fields.");
   await expect(page.getByLabel("Issuer display or legal name")).toHaveValue("");
 
@@ -1585,7 +1588,9 @@ test("issues and verifies a minimal package without optional PII", async ({ page
   await page.getByRole("radio", { name: /Unclassified/ }).check();
   await page.locator('input[name="suspectedType"]').fill("Possible L5 chondrite");
   const issueButton = page.getByRole("button", { name: "Issue cryptographically signed COA package" });
-  await expect(issueButton).toBeDisabled();
+  await expect(issueButton).toBeEnabled();
+  await expect(page.locator("#issuance-readiness")).toHaveCount(0);
+  await issueButton.click();
   await expect(page.getByText("Generate or import a signing identity.")).toBeVisible();
 
   const createKey = page.locator(".key-option").first();
@@ -1593,12 +1598,12 @@ test("issues and verifies a minimal package without optional PII", async ({ page
   await createKey.getByLabel("Confirm passphrase").fill("minimal package passphrase");
   await createKey.getByRole("button", { name: "Generate Ed25519 key" }).click();
   await expect(page.getByText("Key loaded", { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(issueButton).toBeDisabled();
+  await expect(issueButton).toBeEnabled();
   await expect(page.getByText("Download the encrypted signing-key backup.")).toBeVisible();
   const backupDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download encrypted key backup" }).click();
   await backupDownload;
-  await expect(issueButton).toBeDisabled();
+  await expect(issueButton).toBeEnabled();
   await expect(page.getByText("Add at least one source-original specimen photograph.")).toBeVisible();
 
   await page.locator(".photo-drop input[type=file]").setInputFiles({
@@ -1606,7 +1611,7 @@ test("issues and verifies a minimal package without optional PII", async ({ page
     mimeType: "image/png",
     buffer: certificatePhotoPng,
   });
-  await expect(issueButton).toBeDisabled();
+  await expect(issueButton).toBeEnabled();
   await expect(page.getByText("Attest every source photograph is an unmodified original.")).toBeVisible();
   await page.getByLabel(/I attest that this source file is an exact/).check();
   await expect(issueButton).toBeEnabled();
@@ -1749,7 +1754,9 @@ test("generates, downloads, verifies, and rejects tampering", async ({ page }, t
   await expect(issueButton).toBeEnabled();
   await page.locator('input[name="meteoriteName"]').fill("Test Meteorite revised");
   await expect(page.locator('input[name="officialNameVerified"]')).not.toBeChecked();
-  await expect(issueButton).toBeDisabled();
+  await expect(issueButton).toBeEnabled();
+  await issueButton.click();
+  await expect(page.locator("#issuance-readiness")).toContainText("Official name verification:");
   await page.locator('input[name="officialNameVerified"]').check();
   await expect(issueButton).toBeEnabled();
   await page.getByLabel("Logo (optional)").setInputFiles({
