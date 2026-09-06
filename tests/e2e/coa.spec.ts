@@ -457,7 +457,7 @@ test("requires a superseded certificate ID only for superseded status", async ({
   await page.goto("/#builder");
   const status = page.locator('select[name="certificateStatus"]');
   const supersededId = page.locator('input[name="supersededCertificateId"]');
-  const review = page.getByRole("button", { name: "Review missing form fields" });
+  const review = page.getByRole("button", { name: "Issue cryptographically signed COA package" });
 
   await status.selectOption("superseded");
   await review.click();
