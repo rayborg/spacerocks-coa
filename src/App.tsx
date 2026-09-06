@@ -528,7 +528,6 @@ export default function App() {
   const [selectedService, setSelectedService] = useState<"free" | "blockchain">("free");
   const [receipt, setReceipt] = useState<{ recordHash: string; manifestHash: string; certificateReference: string }>();
   const photoUrlsRef = useRef(new Set<string>());
-  const issuanceReadinessRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
   const allPhotosAttested = photos.length > 0 && photos.every((photo) => photo.isUnmodifiedOriginal);
   const sourcePhotoReady = photos.length > 0;
@@ -775,7 +774,6 @@ export default function App() {
   const revealIssuanceRequirements = (message: string) => {
     setShowIssuanceRequirements(true);
     setGenerationStatus(message);
-    requestAnimationFrame(() => issuanceReadinessRef.current?.focus());
   };
 
   const submitPackage = async (values: FormValues) => {
@@ -1262,7 +1260,7 @@ export default function App() {
                   <p>Creates PDF, PNG, text, deterministic JSON, original photos, hashes, signature, public key, schema, audit log, and offline verifier.</p>
                 </div>
                 {showIssuanceRequirements ? (
-                  <div id="issuance-readiness" ref={issuanceReadinessRef} tabIndex={-1} aria-live="polite">
+                  <div id="issuance-readiness" aria-live="polite">
                     <strong>{issueReady ? "Ready to issue." : "Complete these requirements before issuance:"}</strong>
                     {!issueReady ? (
                       <ul>
