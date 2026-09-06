@@ -484,6 +484,28 @@ test("keeps the form before the live preview when the builder stacks", async ({ 
   expect(preview!.y).toBeGreaterThanOrEqual(workbench!.y + workbench!.height);
 });
 
+test("organizes final release into responsive summary and action columns", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/#builder");
+  const section = page.locator(".issue-section");
+  const intro = section.locator(".issue-section__intro");
+  const action = section.locator(".issue-section__action");
+  const contents = section.locator(".issue-section__contents");
+  const desktop = await Promise.all([intro.boundingBox(), action.boundingBox()]);
+  expect(desktop[0] && desktop[1]).toBeTruthy();
+  expect(desktop[1]!.x).toBeGreaterThan(desktop[0]!.x + desktop[0]!.width);
+  expect(await contents.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
+  const actionButton = await action.getByRole("button", { name: "Issue cryptographically signed COA package" }).boundingBox();
+  expect(actionButton).toBeTruthy();
+  expect(actionButton!.width).toBeCloseTo(desktop[1]!.width - 34, 0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobile = await Promise.all([intro.boundingBox(), action.boundingBox()]);
+  expect(mobile[0] && mobile[1]).toBeTruthy();
+  expect(mobile[1]!.y).toBeGreaterThanOrEqual(mobile[0]!.y + mobile[0]!.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("enforces fresh official evidence across value and mode changes and validates location methods", async ({ page }) => {
   const lpiRequests: string[] = [];
   page.on("request", (request) => {

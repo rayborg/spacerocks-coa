@@ -1254,34 +1254,42 @@ export default function App() {
               </section>
 
               <section className="issue-section">
-                <div>
+                <div className="issue-section__intro">
                   <span>Final release</span>
                   <h3>Build, sign, and package</h3>
-                  <p>Creates PDF, PNG, text, deterministic JSON, original photos, hashes, signature, public key, schema, audit log, and offline verifier.</p>
-                </div>
-                {showIssuanceRequirements ? (
-                  <div id="issuance-readiness" aria-live="polite">
-                    <strong>{issueReady ? "Ready to issue." : "Complete these requirements before issuance:"}</strong>
-                    {!issueReady ? (
-                      <ul>
-                        {!isValid ? formRequirements.map((requirement) => (
-                          <li key={requirement.label}><strong>{requirement.label}:</strong> {requirement.message}</li>
-                        )) : null}
-                        {!identity ? <li>Generate or import a signing identity.</li> : null}
-                        {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
-                        {photos.length === 0 ? <li>Add at least one source-original specimen photograph.</li> : null}
-                        {photos.length > 0 && !allPhotosAttested ? <li>Attest every source photograph is an unmodified original.</li> : null}
-                      </ul>
-                    ) : null}
+                  <p>One self-contained download holds the certificate, source evidence, signed record, and everything needed to verify it.</p>
+                  <div className="issue-section__contents" aria-label="COA package contents">
+                    <div><strong>Certificate</strong><span>PDF · PNG · text</span></div>
+                    <div><strong>Signed record</strong><span>JSON · hashes · audit log</span></div>
+                    <div><strong>Source evidence</strong><span>Original specimen photos</span></div>
+                    <div><strong>Verification</strong><span>Public key · schema · offline verifier</span></div>
                   </div>
-                ) : null}
-                <button
-                  className="button button--gold button--issue"
-                  type="submit"
-                  aria-describedby={showIssuanceRequirements ? "issuance-readiness" : undefined}
-                  disabled={generationBusy}
-                >{generationBusy ? "Building package..." : selectedService === "blockchain" ? "Issue COA and continue to Bitcoin proof" : "Issue cryptographically signed COA package"}</button>
-                <p className="generation-status" aria-live="polite">{generationStatus}</p>
+                </div>
+                <div className="issue-section__action">
+                  {showIssuanceRequirements ? (
+                    <div id="issuance-readiness" aria-live="polite">
+                      <strong>{issueReady ? "Ready to issue." : "Complete these requirements before issuance:"}</strong>
+                      {!issueReady ? (
+                        <ul>
+                          {!isValid ? formRequirements.map((requirement) => (
+                            <li key={requirement.label}><strong>{requirement.label}:</strong> {requirement.message}</li>
+                          )) : null}
+                          {!identity ? <li>Generate or import a signing identity.</li> : null}
+                          {identity && !backupDownloaded ? <li>Download the encrypted signing-key backup.</li> : null}
+                          {photos.length === 0 ? <li>Add at least one source-original specimen photograph.</li> : null}
+                          {photos.length > 0 && !allPhotosAttested ? <li>Attest every source photograph is an unmodified original.</li> : null}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <button
+                    className="button button--gold button--issue"
+                    type="submit"
+                    aria-describedby={showIssuanceRequirements ? "issuance-readiness" : undefined}
+                    disabled={generationBusy}
+                  >{generationBusy ? "Building package..." : selectedService === "blockchain" ? "Issue COA and continue to Bitcoin proof" : "Issue cryptographically signed COA package"}</button>
+                  <p className="generation-status" aria-live="polite">{generationStatus}</p>
+                </div>
                 {receipt ? (
                   <div className="release-receipt">
                     <strong>Release created</strong>
